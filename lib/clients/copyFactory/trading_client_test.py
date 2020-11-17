@@ -75,24 +75,25 @@ class TestTradingClient:
                    'https://app.metaapi.cloud/token page to invoke this method.'
 
     @pytest.mark.asyncio
-    async def test_reset_stopout(self):
+    async def test_reset_stopouts(self):
         with responses.RequestsMock() as rsps:
             rsps.add(responses.POST, f'{copy_factory_api_url}/users/current/accounts/' +
-                     '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef/stopouts/daily-equity/reset',
+                     '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef/strategies-subscribed/ABCD' +
+                     '/stopouts/daily-equity/reset',
                      status=200)
-            await trading_client.reset_stopout('0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
-                                               'daily-equity')
+            await trading_client.reset_stopouts('0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
+                                                'ABCD', 'daily-equity')
             assert rsps.calls[0].request.method == 'POST'
             assert rsps.calls[0].request.headers['auth-token'] == 'header.payload.sign'
 
     @pytest.mark.asyncio
-    async def test_not_reset_stopout_with_account_token(self):
+    async def test_not_reset_stopouts_with_account_token(self):
         """Should not reset stopout with account token."""
         trading_client = TradingClient(http_client, 'token')
         try:
-            await trading_client.reset_stopout('0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
-                                               'daily-equity')
+            await trading_client.reset_stopouts('0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
+                                                'ABCD', 'daily-equity')
         except Exception as err:
-            assert err.__str__() == 'You can not invoke reset_stopout method, ' + \
+            assert err.__str__() == 'You can not invoke reset_stopouts method, ' + \
                    'because you have connected with account access token. Please use API access token from ' + \
                    'https://app.metaapi.cloud/token page to invoke this method.'

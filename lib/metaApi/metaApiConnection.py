@@ -2,6 +2,7 @@ from ..clients.metaApi.synchronizationListener import SynchronizationListener
 from ..clients.metaApi.reconnectListener import ReconnectListener
 from ..clients.metaApi.metaApiWebsocket_client import MetaApiWebsocketClient
 from .terminalState import TerminalState
+from .connectionHealthMonitor import ConnectionHealthMonitor
 from .memoryHistoryStorage import MemoryHistoryStorage
 from .metatraderAccountModel import MetatraderAccountModel
 from .connectionRegistryModel import ConnectionRegistryModel
@@ -14,6 +15,7 @@ from datetime import datetime, timedelta
 from typing import Coroutine, List, TypedDict, Optional
 import pytz
 import asyncio
+from threading import Timer
 
 
 class SynchronizationOptions(TypedDict):
@@ -45,7 +47,6 @@ class MetaApiConnection(SynchronizationListener, ReconnectListener):
         super().__init__()
         self._websocketClient = websocket_client
         self._account = account
-        self._synchronized = False
         self._closed = False
         self._ordersSynchronized = {}
         self._dealsSynchronized = {}
@@ -55,10 +56,15 @@ class MetaApiConnection(SynchronizationListener, ReconnectListener):
         self._history_start_time = history_start_time
         self._terminalState = TerminalState()
         self._historyStorage = history_storage or MemoryHistoryStorage(account.id)
+        self._healthMonitor = ConnectionHealthMonitor(self)
         self._websocketClient.add_synchronization_listener(account.id, self)
         self._websocketClient.add_synchronization_listener(account.id, self._terminalState)
         self._websocketClient.add_synchronization_listener(account.id, self._historyStorage)
+        self._websocketClient.add_synchronization_listener(account.id, self._healthMonitor)
         self._websocketClient.add_reconnect_listener(self)
+        self._subscriptions = {}
+        self._synchronized = False
+        self._shouldSynchronize = None
 
     def get_account_information(self) -> 'Coroutine[asyncio.Future[MetatraderAccountInformation]]':
         """Returns account information (see
@@ -542,7 +548,17 @@ class MetaApiConnection(SynchronizationListener, ReconnectListener):
         Returns:
             Promise which resolves when subscription request was processed.
         """
+        self._subscriptions[symbol] = True
         return self._websocketClient.subscribe_to_market_data(self._account.id, symbol)
+
+    @property
+    def subscribed_symbols(self) -> List[str]:
+        """Returns list of the symbols connection is subscribed to.
+
+        Returns:
+            List of the symbols connection is subscribed to.
+        """
+        return list(self._subscriptions.keys())
 
     def get_symbol_specification(self, symbol: str) -> 'Coroutine[asyncio.Future[MetatraderSymbolSpecification]]':
         """Retrieves specification for a symbol (see
@@ -608,16 +624,18 @@ class MetaApiConnection(SynchronizationListener, ReconnectListener):
         Returns:
             A coroutine which resolves when the asynchronous event is processed.
         """
-        try:
-            await self.synchronize()
-        except Exception as err:
-            print(f'[{datetime.now().isoformat()}] MetaApi websocket client for account {self._account.id} '
-                  'failed to synchronize', err)
+        key = random_id(32)
+        self._shouldSynchronize = key
+        self._synchronizationRetryIntervalInSeconds = 1
+        self._synchronized = False
+        await self._ensure_synchronized(key)
 
     async def on_disconnected(self):
         """Invoked when connection to MetaTrader terminal terminated"""
         self._lastDisconnectedSynchronizationId = self._lastSynchronizationId
         self._lastSynchronizationId = None
+        self._shouldSynchronize = None
+        self._synchronized = False
 
     async def on_deal_synchronization_finished(self, synchronization_id: str):
         """Invoked when a synchronization of history deals on a MetaTrader account have finished.
@@ -699,3 +717,46 @@ class MetaApiConnection(SynchronizationListener, ReconnectListener):
             self._websocketClient.remove_synchronization_listener(self._account.id, self._historyStorage)
             self._connection_registry.remove(self._account.id)
             self._closed = True
+
+    @property
+    def synchronized(self) -> bool:
+        """Returns synchronization status.
+
+        Returns:
+            Synchronization status.
+        """
+        return self._synchronized
+
+    @property
+    def account(self) -> MetatraderAccountModel:
+        """Returns MetaApi account.
+
+        Returns:
+            MetaApi account.
+        """
+        return self._account
+
+    @property
+    def health_monitor(self) -> ConnectionHealthMonitor:
+        """Returns connection health monitor instance.
+
+        Returns:
+            Connection health monitor instance.
+        """
+        return self._healthMonitor
+
+    async def _ensure_synchronized(self, key):
+        try:
+            await self.synchronize()
+            for symbol in self.subscribed_symbols:
+                await self.subscribe_to_market_data(symbol)
+            self._synchronized = True
+        except Exception as err:
+            print(f'[{datetime.now().isoformat()}] MetaApi websocket client for account ' + self.account.id +
+                  ' failed to synchronize', err)
+            if self._shouldSynchronize == key:
+                def restart_ensure_sync():
+                    asyncio.create_task(self._ensure_synchronized(key))
+                self._ensure_sync_timer = Timer(self._synchronizationRetryIntervalInSeconds, restart_ensure_sync)
+                self._ensure_sync_timer.start()
+                self._synchronizationRetryIntervalInSeconds = min(self._synchronizationRetryIntervalInSeconds * 2, 300)

@@ -109,7 +109,7 @@ class AutoMockAccount(MetatraderAccount):
 account = MockAccount(MagicMock(), MagicMock(), MagicMock(), MagicMock())
 auto_account = AutoMockAccount(MagicMock(), MagicMock(), MagicMock(), MagicMock())
 client = MockClient('token')
-api = MetaApiConnection(client, account, MagicMock(), MagicMock())
+api: MetaApiConnection = None
 
 
 @pytest.fixture(autouse=True)
@@ -707,6 +707,33 @@ class TestMetaApiConnection:
             await api.on_connected()
             client.synchronize.assert_called_with('accountId', 'synchronizationId', date('2020-01-01T00:00:00.000Z'),
                                                   date('2020-01-02T00:00:00.000Z'))
+
+    @pytest.mark.asyncio
+    async def test_maintain_sync(self):
+        """Should maintain synchronization if connection has failed."""
+        with patch('lib.metaApi.metaApiConnection.random_id', return_value='synchronizationId'):
+            client.synchronize = AsyncMock(side_effect=[Exception('test error'), None])
+            api = MetaApiConnection(client, account, None, MagicMock())
+            await api.history_storage.on_history_order_added({'doneTime': date('2020-01-01T00:00:00.000Z')})
+            await api.history_storage.on_deal_added({'time': date('2020-01-02T00:00:00.000Z')})
+            await api.on_connected()
+            client.synchronize.assert_called_with('accountId', 'synchronizationId', date('2020-01-01T00:00:00.000Z'),
+                                                  date('2020-01-02T00:00:00.000Z'))
+
+    @pytest.mark.asyncio
+    async def test_restore_market_data_subs_on_sync(self):
+        """Should restore market data subscriptions on synchronization."""
+        with patch('lib.metaApi.metaApiConnection.random_id', return_value='synchronizationId'):
+            client.synchronize = AsyncMock()
+            client.subscribe_to_market_data = AsyncMock()
+            api = MetaApiConnection(client, account, None, MagicMock())
+            await api.history_storage.on_history_order_added({'doneTime': date('2020-01-01T00:00:00.000Z')})
+            await api.history_storage.on_deal_added({'time': date('2020-01-02T00:00:00.000Z')})
+            await api.subscribe_to_market_data('EURUSD')
+            await api.on_connected()
+            client.synchronize.assert_called_with('accountId', 'synchronizationId', date('2020-01-01T00:00:00.000Z'),
+                                                  date('2020-01-02T00:00:00.000Z'))
+            assert client.subscribe_to_market_data.call_count == 2
 
     @pytest.mark.asyncio
     async def test_unsubscribe_from_events_on_close(self):

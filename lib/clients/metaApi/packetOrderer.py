@@ -6,7 +6,7 @@ from datetime import datetime
 class PacketOrderer:
     """Class which orders the synchronization packets."""
 
-    def __init__(self, out_of_order_listener, ordering_timeout_in_seconds: float = 10):
+    def __init__(self, out_of_order_listener, ordering_timeout_in_seconds: float):
         """Inits the class.
 
         Args:

@@ -251,6 +251,103 @@ class TestConfigurationClient:
                                     'https://app.metaapi.cloud/token page to invoke this method.'
 
     @pytest.mark.asyncio
+    async def test_retrieve_portfolio_strategies(self):
+        """Should retrieve portfolio strategies from API."""
+        expected = [{
+            '_id': 'ABCD',
+            'providerId': 'providerId',
+            'platformCommissionRate': 0.01,
+            'name': 'Test strategy',
+            'members': [{
+                'strategyId': 'BCDE'
+            }],
+            'maxTradeRisk': 0.1,
+            'stopOutRisk': {
+                'value': 0.4,
+                'startTime': '2020-08-24T00:00:00.000Z'
+            }
+        }]
+        with responses.RequestsMock() as rsps:
+            rsps.add(responses.GET, f'{copy_factory_api_url}/users/current/configuration/portfolio-strategies',
+                     json=expected, status=200)
+            strategies = await copy_factory_client.get_portfolio_strategies()
+            assert rsps.calls[0].request.url == f'{copy_factory_api_url}/users/current/configuration/' \
+                                                f'portfolio-strategies'
+            assert rsps.calls[0].request.method == 'GET'
+            assert rsps.calls[0].request.headers['auth-token'] == 'header.payload.sign'
+            assert strategies == expected
+
+    @pytest.mark.asyncio
+    async def test_not_retrieve_portfolio_strategies_with_account_token(self):
+        """Should not retrieve portfolio strategies from API with account token."""
+        copy_factory_client = ConfigurationClient(http_client, 'token')
+        try:
+            await copy_factory_client.get_portfolio_strategies()
+        except Exception as err:
+            assert err.__str__() == 'You can not invoke get_portfolio_strategies method, because you have connected '\
+                                    'with account access token. Please use API access token from '\
+                                    'https://app.metaapi.cloud/token page to invoke this method.'
+
+    @pytest.mark.asyncio
+    async def test_update_portfolio_strategy(self):
+        """Should update portfolio strategy via API."""
+        strategy = {
+            'name': 'Test strategy',
+            'members': [{
+                'strategyId': 'BCDE'
+            }],
+            'maxTradeRisk': 0.1,
+            'stopOutRisk': {
+                'value': 0.4,
+                'startTime': '2020-08-24T00:00:00.000Z'
+            }
+        }
+        with responses.RequestsMock() as rsps:
+            rsps.add(responses.PUT, f'{copy_factory_api_url}/users/current/configuration/portfolio-strategies/ABCD',
+                     json=strategy, status=200)
+
+            await copy_factory_client.update_portfolio_strategy('ABCD', strategy)
+            assert rsps.calls[0].request.url == f'{copy_factory_api_url}/users/current/configuration/' \
+                                                f'portfolio-strategies/ABCD'
+            assert rsps.calls[0].request.method == 'PUT'
+            assert rsps.calls[0].request.headers['auth-token'] == 'header.payload.sign'
+            assert rsps.calls[0].request.body == json.dumps(strategy).encode('utf-8')
+
+    @pytest.mark.asyncio
+    async def test_not_update_portfolio_strategy_with_account_token(self):
+        """Should not update portfolio strategy via API with account token."""
+        copy_factory_client = ConfigurationClient(http_client, 'token')
+        try:
+            await copy_factory_client.update_portfolio_strategy('ABCD', {})
+        except Exception as err:
+            assert err.__str__() == 'You can not invoke update_portfolio_strategy method, because you have connected ' \
+                                    'with account access token. Please use API access token from ' \
+                                    'https://app.metaapi.cloud/token page to invoke this method.'
+
+    @pytest.mark.asyncio
+    async def test_remove_portfolio_strategy(self):
+        """Should remove portfolio strategy via API."""
+        with responses.RequestsMock() as rsps:
+            rsps.add(responses.DELETE, f'{copy_factory_api_url}/users/current/configuration/portfolio-strategies/ABCD',
+                     status=204)
+            await copy_factory_client.remove_portfolio_strategy('ABCD')
+            assert rsps.calls[0].request.url == f'{copy_factory_api_url}/users/current/configuration/' \
+                                                f'portfolio-strategies/ABCD'
+            assert rsps.calls[0].request.method == 'DELETE'
+            assert rsps.calls[0].request.headers['auth-token'] == 'header.payload.sign'
+
+    @pytest.mark.asyncio
+    async def test_not_remove_portfolio_strategy_with_account_token(self):
+        """Should not remove portfolio strategy with account token."""
+        copy_factory_client = ConfigurationClient(http_client, 'token')
+        try:
+            await copy_factory_client.remove_portfolio_strategy('ABCD')
+        except Exception as err:
+            assert err.__str__() == 'You can not invoke remove_portfolio_strategy method, because you have ' \
+                                    'connected with account access token. Please use API access token from ' + \
+                                    'https://app.metaapi.cloud/token page to invoke this method.'
+
+    @pytest.mark.asyncio
     async def test_retrieve_active_resync_tasks_from_api(self):
         """Should retrieve active resynchronization tasks via API."""
         result = [{

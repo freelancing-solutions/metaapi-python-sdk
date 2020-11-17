@@ -67,23 +67,26 @@ class TradingClient(MetaApiClient):
         }
         return await self._httpClient.request(opts)
 
-    async def reset_stopout(self, account_id: str, reason: str) -> Response:
-        """Resets account stopout. See
-        https://trading-api-v1.agiliumtrade.agiliumtrade.ai/swagger/#!/default
-        /post_users_current_accounts_accountId_stopouts_reason_reset
+    async def reset_stopouts(self, account_id: str, strategy_id: str, reason: str) -> Response:
+        """Resets strategy stopouts. See
+        https://trading-api-v1.agiliumtrade.agiliumtrade.ai/swagger/#!/default/post_users_current_accounts_accountId_
+        strategies_subscribed_strategyId_stopouts_reason_reset
+
 
         Args:
             account_id: Account id.
+            strategy_id: Strategy id.
             reason: Stopout reason to reset. One of yearly-balance, monthly-balance, daily-balance, yearly-equity,
             monthly-equity, daily-equity, max-drawdown.
 
         Returns:
-            A coroutine which resolves when the stopout is reset.
+            A coroutine which resolves when the stopouts are reset.
         """
         if self._is_not_jwt_token():
-            return self._handle_no_access_exception('reset_stopout')
+            return self._handle_no_access_exception('reset_stopouts')
         opts = {
-            'url': f'{self._host}/users/current/accounts/{account_id}/stopouts/{reason}/reset',
+            'url': f'{self._host}/users/current/accounts/{account_id}/strategies-subscribed/{strategy_id}' +
+                   f'/stopouts/{reason}/reset',
             'method': 'POST',
             'headers': {
                 'auth-token': self._token

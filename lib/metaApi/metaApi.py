@@ -15,7 +15,7 @@ class MetaApi:
     """MetaApi MetaTrader API SDK"""
 
     def __init__(self, token: str, application: str = 'MetaApi', domain: str = 'agiliumtrade.agiliumtrade.ai',
-                 request_timeout: float = 60, connect_timeout: float = 60):
+                 request_timeout: float = 60, connect_timeout: float = 60, packet_ordering_timeout: float = 60):
         """Inits MetaApi class instance.
 
         Args:
@@ -30,7 +30,7 @@ class MetaApi:
                                       'from letters, digits and _ only')
         http_client = HttpClient(request_timeout)
         self._metaApiWebsocketClient = MetaApiWebsocketClient(token, application, domain, request_timeout,
-                                                              connect_timeout)
+                                                              connect_timeout, packet_ordering_timeout)
         self._provisioningProfileApi = ProvisioningProfileApi(ProvisioningProfileClient(http_client, token, domain))
         self._connectionRegistry = ConnectionRegistry(self._metaApiWebsocketClient, application)
         self._metatraderAccountApi = MetatraderAccountApi(MetatraderAccountClient(http_client, token, domain),
