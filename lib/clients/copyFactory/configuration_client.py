@@ -1,7 +1,8 @@
 from ..metaApi_client import MetaApiClient
 from ...metaApi.models import random_id, date
 from .copyFactory_models import StrategyId, CopyFactoryAccountUpdate, CopyFactoryStrategyUpdate, \
-    ResynchronizationTask, CopyFactoryAccount, CopyFactoryStrategy
+    ResynchronizationTask, CopyFactoryAccount, CopyFactoryStrategy, CopyFactoryPortfolioStrategy, \
+    CopyFactoryPortfolioStrategyUpdate
 from ..timeoutException import TimeoutException
 from requests import Response
 from datetime import datetime
@@ -140,7 +141,7 @@ class ConfigurationClient(MetaApiClient):
 
         Args:
             id: Copy trading strategy id.
-            strategy: Account trading strategy update.
+            strategy: Trading strategy update.
 
         Returns:
             A coroutine resolving when strategy is updated.
@@ -172,6 +173,71 @@ class ConfigurationClient(MetaApiClient):
             return self._handle_no_access_exception('remove_strategy')
         opts = {
             'url': f"{self._host}/users/current/configuration/strategies/{id}",
+            'method': 'DELETE',
+            'headers': {
+                'auth-token': self._token
+            }
+        }
+        return await self._httpClient.request(opts)
+
+    async def get_portfolio_strategies(self) -> 'List[CopyFactoryPortfolioStrategy]':
+        """Retrieves CopyFactory copy portfolio strategies. See
+        https://trading-api-v1.agiliumtrade.agiliumtrade.ai/swagger/#!/default/
+        get_users_current_configuration_portfolio_strategies
+
+        Returns:
+            A coroutine resolving with CopyFactory portfolio strategies found.
+        """
+        if self._is_not_jwt_token():
+            return self._handle_no_access_exception('get_portfolio_strategies')
+        opts = {
+            'url': f"{self._host}/users/current/configuration/portfolio-strategies",
+            'method': 'GET',
+            'headers': {
+                'auth-token': self._token
+            }
+        }
+        return await self._httpClient.request(opts)
+
+    async def update_portfolio_strategy(self, id: str, strategy: CopyFactoryPortfolioStrategyUpdate):
+        """Updates a CopyFactory portfolio strategy. See
+        https://trading-api-v1.agiliumtrade.agiliumtrade.ai/swagger/#!/default/
+        put_users_current_configuration_portfolio_strategies_portfolioId
+
+        Args:
+            id: Copy trading portfolio strategy id.
+            strategy: Portfolio strategy update.
+
+        Returns:
+            A coroutine resolving when portfolio strategy is updated.
+        """
+        if self._is_not_jwt_token():
+            return self._handle_no_access_exception('update_portfolio_strategy')
+        opts = {
+            'url': f"{self._host}/users/current/configuration/portfolio-strategies/{id}",
+            'method': 'PUT',
+            'headers': {
+                'auth-token': self._token
+            },
+            'body': strategy
+        }
+        return await self._httpClient.request(opts)
+
+    async def remove_portfolio_strategy(self, id: str):
+        """Deletes a CopyFactory portfolio strategy. See
+        https://trading-api-v1.agiliumtrade.agiliumtrade.ai/swagger/#!/default/
+        delete_users_current_configuration_portfolio_strategies_portfolioId
+
+        Args:
+            id: Portfolio strategy id.
+
+        Returns:
+            A coroutine resolving when portfolio strategy is removed.
+        """
+        if self._is_not_jwt_token():
+            return self._handle_no_access_exception('remove_portfolio_strategy')
+        opts = {
+            'url': f"{self._host}/users/current/configuration/portfolio-strategies/{id}",
             'method': 'DELETE',
             'headers': {
                 'auth-token': self._token

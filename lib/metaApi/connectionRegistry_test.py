@@ -88,7 +88,7 @@ class TestConnectionRegistry:
             connection = await registry.connect(account, mock_storage)
             assert isinstance(connection, MetaApiConnection)
             assert connection.history_storage == mock_storage
-            mock_client.add_synchronization_listener.assert_called_with('id', mock_storage)
+            mock_client.add_synchronization_listener.assert_any_call('id', mock_storage)
             mock_client.subscribe.assert_called_with('id')
             connection.initialize.assert_called()
             assert 'id' in registry._connections

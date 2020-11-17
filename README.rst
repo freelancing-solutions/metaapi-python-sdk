@@ -360,6 +360,18 @@ Execute trades (both RPC and streaming APIs)
                                                                                  'clientId': 'TE_GBPUSD_7hyINWqAl'})
     print('Trade successful, result code is ' + result['stringCode'])
 
+Monitoring account connection health and uptime
+===========================================
+You can monitor account connection health using MetaApiConnection.healthMonitor API.
+
+.. code-block:: python
+
+    monitor = connection.health_monitor
+    # retrieve detailed connection health status
+    print(monitor.health_status)
+    # retrieve account connection update measured over last 7 days
+    print(monitor.uptime)
+
 Managing MetaTrader demo accounts via API
 ===========================================
 Please note that not all MT4/MT5 servers allows you to create demo accounts using the method below.
@@ -421,6 +433,9 @@ Features supported:
 - synchronize subscriber account with strategy providers
 - monitor trading history
 - calculate trade copying commissions for account managers
+- [coming soon] support portfolio strategies as trading signal source, i.e. the strategies which include signals of several other strategies (also known as combos on some platforms)
+
+Please note that trade copying to MT5 netting accounts is not supported in the current API version
 
 Configuring trade copying
 -------------------------------------

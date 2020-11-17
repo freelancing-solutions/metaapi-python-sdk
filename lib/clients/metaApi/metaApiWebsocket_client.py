@@ -21,7 +21,7 @@ class MetaApiWebsocketClient:
     """MetaApi websocket API client (see https://metaapi.cloud/docs/client/websocket/overview/)"""
 
     def __init__(self, token: str, application: str = 'MetaApi', domain: str = 'agiliumtrade.agiliumtrade.ai',
-                 request_timeout: float = 60, connect_timeout: float = 60):
+                 request_timeout: float = 60, connect_timeout: float = 60, packet_ordering_timeout: float = 60):
         """Inits MetaApi websocket API client instance.
 
         Args:
@@ -29,6 +29,7 @@ class MetaApiWebsocketClient:
             domain: Domain to connect to, default is agiliumtrade.agiliumtrade.ai.
             request_timeout: Timeout for socket requests in seconds.
             connect_timeout: Timeout for connecting to server in seconds.
+            packet_ordering_timeout: Packet ordering timeout in seconds.
         """
         self._application = application
         self._url = f'https://mt-client-api-v1.{domain}'
@@ -40,7 +41,7 @@ class MetaApiWebsocketClient:
         self._connected = False
         self._socket = None
         self._reconnectListeners = []
-        self._packetOrderer = PacketOrderer(self)
+        self._packetOrderer = PacketOrderer(self, packet_ordering_timeout)
 
     def on_out_of_order_packet(self, account_id: str, expected_sequence_number: int, actual_sequence_number: int,
                                packet: Dict, received_at: datetime):
