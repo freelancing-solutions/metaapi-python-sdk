@@ -10,10 +10,10 @@ login = os.getenv('LOGIN') or '<put in your MT login here>'
 password = os.getenv('PASSWORD') or '<put in your MT password here>'
 server_name = os.getenv('SERVER') or '<put in your MT server name here>'
 server_dat_file = os.getenv('PATH_TO_SERVERS_DAT') or '/path/to/your/servers.dat'
-api = MetaApi(token)
 
 
 async def test_meta_api_synchronization():
+    api = MetaApi(token)
     try:
         profiles = await api.provisioning_profile_api.get_provisioning_profiles()
 

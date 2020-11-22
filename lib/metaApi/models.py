@@ -179,6 +179,10 @@ class MetatraderOrder(TypedDict):
     """Optional order expiration time."""
     accountCurrencyExchangeRate: Optional[float]
     """Current exchange rate of account currency into USD."""
+    closeByPositionId: Optional[str]
+    """Identifier of an opposite position used for closing by order ORDER_TYPE_CLOSE_BY"""
+    stopLimitPrice: Optional[float]
+    """The limit order price for the StopLimit order."""
 
 
 class MetatraderHistoryOrders(TypedDict):
@@ -464,7 +468,7 @@ class TradeOptions(TypedDict):
     slippage: Optional[int]
     """Optional slippage in points. Should be greater or equal to zero. In not set, default value specified in
     account entity will be used. Slippage is ignored if execution mode set to SYMBOL_TRADE_EXECUTION_MARKET in
-    symbol specification."""
+    symbol specification. Not used for close by orders."""
 
 
 class MarketTradeOptions(TradeOptions):

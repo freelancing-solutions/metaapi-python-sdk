@@ -7,7 +7,6 @@ from metaapi_cloud_sdk.metaApi.models import MetatraderSymbolPrice
 token = os.getenv('TOKEN') or '<put in your token here>'
 account_id = os.getenv('ACCOUNT_ID') or '<put in your account id here>'
 
-api = MetaApi(token)
 
 
 class EURUSDListener(SynchronizationListener):
@@ -17,6 +16,7 @@ class EURUSDListener(SynchronizationListener):
 
 
 async def stream_quotes():
+    api = MetaApi(token)
     try:
         account = await api.metatrader_account_api.get_account(account_id)
 

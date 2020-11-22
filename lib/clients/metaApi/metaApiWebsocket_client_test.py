@@ -9,7 +9,7 @@ import re
 from urllib.parse import parse_qs
 from mock import MagicMock, AsyncMock, patch
 sio = None
-client = MetaApiWebsocketClient('token', 'application', 'project-stock.agiliumlabs.cloud', 3)
+client = MetaApiWebsocketClient('token')
 
 
 class FakeServer:
@@ -46,7 +46,8 @@ async def run_around_tests():
     fake_server = FakeServer()
     await fake_server.start()
     global client
-    client = MetaApiWebsocketClient('token', 'application', 'project-stock.agiliumlabs.cloud', 3)
+    client = MetaApiWebsocketClient('token', {'application': 'application', 'domain': 'project-stock.agiliumlabs.cloud',
+                                              'requestTimeout': 3})
     client.set_url('http://localhost:8080')
     await client.connect()
     yield

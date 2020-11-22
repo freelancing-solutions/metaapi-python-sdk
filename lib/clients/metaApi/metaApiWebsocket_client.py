@@ -9,6 +9,7 @@ from ...metaApi.models import MetatraderHistoryOrders, MetatraderDeals, date, ra
     MetatraderSymbolSpecification, MetatraderTradeResponse, MetatraderSymbolPrice, MetatraderAccountInformation, \
     MetatraderPosition, MetatraderOrder, format_date
 from .packetOrderer import PacketOrderer
+from .packetLogger import PacketLogger
 import socketio
 import asyncio
 import re
@@ -20,28 +21,31 @@ from typing import Coroutine, List, Dict
 class MetaApiWebsocketClient:
     """MetaApi websocket API client (see https://metaapi.cloud/docs/client/websocket/overview/)"""
 
-    def __init__(self, token: str, application: str = 'MetaApi', domain: str = 'agiliumtrade.agiliumtrade.ai',
-                 request_timeout: float = 60, connect_timeout: float = 60, packet_ordering_timeout: float = 60):
+    def __init__(self, token: str, opts: Dict = None):
         """Inits MetaApi websocket API client instance.
 
         Args:
             token: Authorization token.
-            domain: Domain to connect to, default is agiliumtrade.agiliumtrade.ai.
-            request_timeout: Timeout for socket requests in seconds.
-            connect_timeout: Timeout for connecting to server in seconds.
-            packet_ordering_timeout: Packet ordering timeout in seconds.
+            opts: Websocket client options.
         """
-        self._application = application
-        self._url = f'https://mt-client-api-v1.{domain}'
-        self._request_timeout = request_timeout
-        self._connect_timeout = connect_timeout
+        opts = opts or {}
+        opts['packetOrderingTimeout'] = opts['packetOrderingTimeout'] if 'packetOrderingTimeout' in opts else 60
+        self._application = opts['application'] if 'application' in opts else 'MetaApi'
+        self._url = f'https://mt-client-api-v1.{opts["domain"] if "domain" in opts else "agiliumtrade.agiliumtrade.ai"}'
+        self._request_timeout = opts['requestTimeout'] if 'requestTimeout' in opts else 60
+        self._connect_timeout = opts['connectTimeout'] if 'connectTimeout' in opts else 60
         self._token = token
         self._requestResolves = {}
         self._synchronizationListeners = {}
         self._connected = False
         self._socket = None
         self._reconnectListeners = []
-        self._packetOrderer = PacketOrderer(self, packet_ordering_timeout)
+        self._packetOrderer = PacketOrderer(self, opts['packetOrderingTimeout'])
+        if 'packetLogger' in opts and 'enabled' in opts['packetLogger'] and opts['packetLogger']['enabled']:
+            self._packetLogger = PacketLogger(opts['packetLogger'])
+            self._packetLogger.start()
+        else:
+            self._packetLogger = None
 
     def on_out_of_order_packet(self, account_id: str, expected_sequence_number: int, actual_sequence_number: int,
                                packet: Dict, received_at: datetime):
@@ -628,6 +632,8 @@ class MetaApiWebsocketClient:
 
     async def _process_synchronization_packet(self, packet):
         try:
+            if self._packetLogger:
+                self._packetLogger.log_packet(packet)
             packets = self._packetOrderer.restore_order(packet)
             for data in packets:
                 if data['type'] == 'authenticated':

@@ -348,9 +348,14 @@ Execute trades (both RPC and streaming APIs)
                                                                                  'clientId': 'TE_GBPUSD_7hyINWqAl'}))
     print(await connection.create_stop_sell_order('GBPUSD', 0.07, 1.0, 2.0, 0.9, {'comment': 'comment',
                                                                                   'clientId': 'TE_GBPUSD_7hyINWqAl'}))
+    print(await connection.create_stop_limit_buy_order('GBPUSD', 0.07, 1.5, 1.4, 0.9, 2.0, {
+        'comment': 'comment', 'clientId': 'TE_GBPUSD_7hyINWqAl'}))
+    print(await connection.create_stop_limit_sell_order('GBPUSD', 0.07, 1.0, 2.0, 0.9, {'comment': 'comment',
+                                                                                  'clientId': 'TE_GBPUSD_7hyINWqAl'}))
     print(await connection.modify_position('46870472', 2.0, 0.9))
     print(await connection.close_position_partially('46870472', 0.9))
     print(await connection.close_position('46870472'))
+    print(await connection.close_by('46870472', '46870482'))
     print(await connection.close_positions_by_symbol('EURUSD'))
     print(await connection.modify_order('46870472', 1.0, 2.0, 0.9))
     print(await connection.cancel_order('46870472'))

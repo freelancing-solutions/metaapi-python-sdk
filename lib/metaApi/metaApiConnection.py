@@ -234,7 +234,7 @@ class MetaApiConnection(SynchronizationListener, ReconnectListener):
             A coroutine resolving with trade result.
 
         Raises:
-            TradeException: On trade error.
+            TradeException: On trade error, check error properties for error code details.
         """
         trade_params = {'actionType': 'ORDER_TYPE_BUY', 'symbol': symbol, 'volume': volume}
         if stop_loss:
@@ -260,7 +260,7 @@ class MetaApiConnection(SynchronizationListener, ReconnectListener):
             A coroutine resolving with trade result.
 
         Raises:
-            TradeException: On trade error.
+            TradeException: On trade error, check error properties for error code details.
         """
         trade_params = {'actionType': 'ORDER_TYPE_SELL', 'symbol': symbol, 'volume': volume}
         if stop_loss:
@@ -287,7 +287,7 @@ class MetaApiConnection(SynchronizationListener, ReconnectListener):
             A coroutine resolving with trade result.
 
         Raises:
-            TradeException: On trade error.
+            TradeException: On trade error, check error properties for error code details.
         """
         trade_params = {'actionType': 'ORDER_TYPE_BUY_LIMIT', 'symbol': symbol, 'volume': volume,
                         'openPrice': open_price}
@@ -315,7 +315,7 @@ class MetaApiConnection(SynchronizationListener, ReconnectListener):
             A coroutine resolving with trade result.
 
         Raises:
-            TradeException: On trade error.
+            TradeException: On trade error, check error properties for error code details.
         """
         trade_params = {'actionType': 'ORDER_TYPE_SELL_LIMIT', 'symbol': symbol, 'volume': volume,
                         'openPrice': open_price}
@@ -343,7 +343,7 @@ class MetaApiConnection(SynchronizationListener, ReconnectListener):
             A coroutine resolving with trade result.
 
         Raises:
-            TradeException: On trade error.
+            TradeException: On trade error, check error properties for error code details.
         """
         trade_params = {'actionType': 'ORDER_TYPE_BUY_STOP', 'symbol': symbol, 'volume': volume,
                         'openPrice': open_price}
@@ -371,10 +371,68 @@ class MetaApiConnection(SynchronizationListener, ReconnectListener):
             A coroutine resolving with trade result.
 
         Raises:
-            TradeException: On trade error.
+            TradeException: On trade error, check error properties for error code details.
         """
         trade_params = {'actionType': 'ORDER_TYPE_SELL_STOP', 'symbol': symbol, 'volume': volume,
                         'openPrice': open_price}
+        if stop_loss:
+            trade_params['stopLoss'] = stop_loss
+        if take_profit:
+            trade_params['takeProfit'] = take_profit
+        trade_params.update(options or {})
+        return self._websocketClient.trade(self._account.id, trade_params)
+
+    def create_stop_limit_buy_order(self, symbol: str, volume: float, open_price: float, stop_limit_price: float,
+                                    stop_loss: float = None, take_profit: float = None,
+                                    options: PendingTradeOptions = None):
+        """Creates a stop limit buy order (see https://metaapi.cloud/docs/client/websocket/api/trade/).
+
+        Args:
+            symbol: Symbol to trade.
+            volume: Order volume.
+            open_price: Order limit price.
+            stop_limit_price: The limit order price for the stop limit order.
+            stop_loss: Optional stop loss price.
+            take_profit: Optional take profit price.
+            options: Optional trade options.
+
+        Returns:
+            A coroutine resolving with trade result.
+
+        Raises:
+            TradeException: On trade error, check error properties for error code details.
+        """
+        trade_params = {'actionType': 'ORDER_TYPE_BUY_STOP_LIMIT', 'symbol': symbol, 'volume': volume,
+                        'openPrice': open_price, 'stopLimitPrice': stop_limit_price}
+        if stop_loss:
+            trade_params['stopLoss'] = stop_loss
+        if take_profit:
+            trade_params['takeProfit'] = take_profit
+        trade_params.update(options or {})
+        return self._websocketClient.trade(self._account.id, trade_params)
+
+    def create_stop_limit_sell_order(self, symbol: str, volume: float, open_price: float, stop_limit_price: float,
+                                     stop_loss: float = None, take_profit: float = None,
+                                     options: PendingTradeOptions = None):
+        """Creates a stop limit sell order (see https://metaapi.cloud/docs/client/websocket/api/trade/).
+
+        Args:
+            symbol: Symbol to trade.
+            volume: Order volume.
+            open_price: Order limit price.
+            stop_limit_price: The limit order price for the stop limit order.
+            stop_loss: Optional stop loss price.
+            take_profit: Optional take profit price.
+            options: Optional trade options.
+
+        Returns:
+            A coroutine resolving with trade result.
+
+        Raises:
+            TradeException: On trade error, check error properties for error code details.
+        """
+        trade_params = {'actionType': 'ORDER_TYPE_SELL_STOP_LIMIT', 'symbol': symbol, 'volume': volume,
+                        'openPrice': open_price, 'stopLimitPrice': stop_limit_price}
         if stop_loss:
             trade_params['stopLoss'] = stop_loss
         if take_profit:
@@ -417,7 +475,7 @@ class MetaApiConnection(SynchronizationListener, ReconnectListener):
             A coroutine resolving with trade result.
 
         Raises:
-            TradeException: On trade error.
+            TradeException: On trade error, check error properties for error code details.
         """
         trade_params = {'actionType': 'POSITION_PARTIAL', 'positionId': position_id, 'volume': volume}
         trade_params.update(options or {})
@@ -435,9 +493,29 @@ class MetaApiConnection(SynchronizationListener, ReconnectListener):
             A coroutine resolving with trade result.
 
         Raises:
-            TradeException: On trade error.
+            TradeException: On trade error, check error properties for error code details.
         """
         trade_params = {'actionType': 'POSITION_CLOSE_ID', 'positionId': position_id}
+        trade_params.update(options or {})
+        return self._websocketClient.trade(self._account.id, trade_params)
+
+    def close_by(self, position_id: str, opposite_position_id: str, options: MarketTradeOptions = None) -> \
+            'Coroutine[asyncio.Future[MetatraderTradeResponse]]':
+        """Fully closes a position (see https://metaapi.cloud/docs/client/websocket/api/trade/).
+
+        Args:
+            position_id: Position id to close by opposite position.
+            opposite_position_id: Opposite position id to close.
+            options: Optional trade options.
+
+        Returns:
+            A coroutine resolving with trade result.
+
+        Raises:
+            TradeException: On trade error, check error properties for error code details.
+        """
+        trade_params = {'actionType': 'POSITION_CLOSE_BY', 'positionId': position_id,
+                        'closeByPositionId': opposite_position_id}
         trade_params.update(options or {})
         return self._websocketClient.trade(self._account.id, trade_params)
 
@@ -453,7 +531,7 @@ class MetaApiConnection(SynchronizationListener, ReconnectListener):
             A coroutine resolving with trade result.
 
         Raises:
-            TradeException: On trade error.
+            TradeException: On trade error, check error properties for error code details.
         """
         trade_params = {'actionType': 'POSITIONS_CLOSE_SYMBOL', 'symbol': symbol}
         trade_params.update(options or {})
@@ -474,7 +552,7 @@ class MetaApiConnection(SynchronizationListener, ReconnectListener):
             A coroutine resolving with trade result.
 
         Raises:
-            TradeException: On trade error.
+            TradeException: On trade error, check error properties for error code details.
         """
         trade_params = {'actionType': 'ORDER_MODIFY', 'orderId': order_id, 'openPrice': open_price}
         if stop_loss:
@@ -494,7 +572,7 @@ class MetaApiConnection(SynchronizationListener, ReconnectListener):
             A coroutine resolving with trade result.
 
         Raises:
-            TradeException: On trade error.
+            TradeException: On trade error, check error properties for error code details.
         """
         return self._websocketClient.trade(self._account.id, {'actionType': 'ORDER_CANCEL', 'orderId': order_id})
 

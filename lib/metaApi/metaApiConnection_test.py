@@ -511,6 +511,40 @@ class TestMetaApiConnection:
                                                       'clientId': 'TE_GBPUSD_7hyINWqAlE'})
 
     @pytest.mark.asyncio
+    async def test_create_stop_limit_buy_order(self):
+        """Should create stop limit buy order."""
+        trade_result = {
+            'error': 10009,
+            'description': 'TRADE_RETCODE_DONE',
+            'orderId': 46870472
+        }
+        client.trade = AsyncMock(return_value=trade_result)
+        actual = await api.create_stop_limit_buy_order('GBPUSD', 0.07, 1.5, 1.4, 0.9, 2.0, {
+            'comment': 'comment', 'clientId': 'TE_GBPUSD_7hyINWqAlE'})
+        assert actual == trade_result
+        client.trade.assert_called_with('accountId', {'actionType': 'ORDER_TYPE_BUY_STOP_LIMIT', 'symbol': 'GBPUSD',
+                                                      'volume': 0.07, 'openPrice': 1.5, 'stopLimitPrice': 1.4,
+                                                      'stopLoss': 0.9, 'takeProfit': 2.0, 'comment': 'comment',
+                                                      'clientId': 'TE_GBPUSD_7hyINWqAlE'})
+
+    @pytest.mark.asyncio
+    async def test_create_stop_limit_sell_order(self):
+        """Should create stop limit sell order."""
+        trade_result = {
+            'error': 10009,
+            'description': 'TRADE_RETCODE_DONE',
+            'orderId': 46870472
+        }
+        client.trade = AsyncMock(return_value=trade_result)
+        actual = await api.create_stop_limit_sell_order('GBPUSD', 0.07, 1.0, 1.1, 2.0, 0.9, {
+            'comment': 'comment', 'clientId': 'TE_GBPUSD_7hyINWqAlE'})
+        assert actual == trade_result
+        client.trade.assert_called_with('accountId', {'actionType': 'ORDER_TYPE_SELL_STOP_LIMIT', 'symbol': 'GBPUSD',
+                                                      'volume': 0.07, 'openPrice': 1.0, 'stopLimitPrice': 1.1,
+                                                      'stopLoss': 2.0, 'takeProfit': 0.9, 'comment': 'comment',
+                                                      'clientId': 'TE_GBPUSD_7hyINWqAlE'})
+
+    @pytest.mark.asyncio
     async def test_modify_position(self):
         """Should modify position."""
         trade_result = {
@@ -550,6 +584,22 @@ class TestMetaApiConnection:
         actual = await api.close_position('46870472')
         assert actual == trade_result
         client.trade.assert_called_with('accountId', {'actionType': 'POSITION_CLOSE_ID', 'positionId': '46870472'})
+
+    @pytest.mark.asyncio
+    async def test_close_position_by_opposite(self):
+        """Should close position by an opposite one."""
+        trade_result = {
+            'error': 10009,
+            'description': 'TRADE_RETCODE_DONE',
+            'positionId': '46870472',
+            'closeByPositionId': '46870482'
+        }
+        client.trade = AsyncMock(return_value=trade_result)
+        actual = await api.close_by('46870472', '46870482', {'comment': 'comment', 'clientId': 'TE_GBPUSD_7hyINWqAlE'})
+        assert actual == trade_result
+        client.trade.assert_called_with('accountId', {'actionType': 'POSITION_CLOSE_BY', 'positionId': '46870472',
+                                                      'closeByPositionId': '46870482', 'comment': 'comment',
+                                                      'clientId': 'TE_GBPUSD_7hyINWqAlE'})
 
     @pytest.mark.asyncio
     async def test_close_positions_by_symbol(self):
