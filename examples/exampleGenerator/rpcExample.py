@@ -8,10 +8,10 @@ from datetime import datetime, timedelta
 
 token = os.getenv('TOKEN') or '<put in your token here>'
 accountId = os.getenv('ACCOUNT_ID') or '<put in your account id here>'
-api = MetaApi(token)
 
 
 async def test_meta_api_synchronization():
+    api = MetaApi(token)
     try:
         account = await api.metatrader_account_api.get_account(accountId)
         initial_state = account.state

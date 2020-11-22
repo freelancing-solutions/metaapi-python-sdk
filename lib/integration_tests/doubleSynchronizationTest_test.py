@@ -18,7 +18,7 @@ class TestDoubleSync:
         if token:
             if not os.path.exists('.metaapi'):
                 os.mkdir('.metaapi')
-            api = MetaApi(token, 'MetaApi', 'project-stock.agiliumlabs.cloud')
+            api = MetaApi(token, {'application': 'MetaApi', 'domain': 'project-stock.agiliumlabs.cloud'})
             profiles = await api.provisioning_profile_api.get_provisioning_profiles()
             profile = None
             for item in profiles:

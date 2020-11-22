@@ -61,7 +61,6 @@ class MockConnection(MetaApiConnection):
 
     @property
     def synchronized(self) -> bool:
-        print('Synchronized', self._synchronized)
         return self._synchronized
 
 
@@ -80,7 +79,6 @@ async def run_around_tests():
         global health_monitor
         health_monitor = ConnectionHealthMonitor(connection)
         health_monitor._quotesHealthy = True
-        print(datetime.now())
         global prices
         prices = [{
           'symbol': 'EURUSD',

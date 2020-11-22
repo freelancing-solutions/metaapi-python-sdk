@@ -1,3 +1,9 @@
+11.0.0
+  - breaking change: MetaApi options are now specified via an object
+  - added traffic logger
+  - added close by order support
+  - added stop limit order support
+
 10.1.0
   - added support for portfolio strategies (i.e. the strategies which include several other member strategies) to CopyFactory API
 
