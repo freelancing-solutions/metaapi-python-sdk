@@ -82,6 +82,18 @@ class TestPacketLogger:
         assert json.loads(result[0]['message']) == packets['accountInformation']
 
     @pytest.mark.asyncio
+    async def test_record_price_packets_without_sn(self):
+        """Should record price packets without sequence number."""
+        packet = packets['prices']
+        del packet['sequenceNumber']
+        packet_logger.log_packet(packet)
+        packet_logger.log_packet(packets['prices'])
+        packet_logger.log_packet(packet)
+        await sleep(0.04)
+        result = await packet_logger.read_logs('accountId')
+        assert json.loads(result[0]['message']) == packet
+
+    @pytest.mark.asyncio
     async def test_not_record_status(self):
         """Should not record status."""
         packet_logger.log_packet(packets['status'])

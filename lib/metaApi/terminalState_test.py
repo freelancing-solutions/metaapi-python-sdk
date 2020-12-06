@@ -94,16 +94,16 @@ class TestTerminalState:
     async def test_return_price(self):
         """Should return price."""
         assert not state.price('EURUSD')
-        await state.on_symbol_price_updated({'symbol': 'EURUSD', 'bid': 1, 'ask': 1.1})
-        await state.on_symbol_price_updated({'symbol': 'GBPUSD'})
-        await state.on_symbol_price_updated({'symbol': 'EURUSD', 'bid': 1, 'ask': 1.2})
+        await state.on_symbol_prices_updated([{'symbol': 'EURUSD', 'bid': 1, 'ask': 1.1}])
+        await state.on_symbol_prices_updated([{'symbol': 'GBPUSD'}])
+        await state.on_symbol_prices_updated([{'symbol': 'EURUSD', 'bid': 1, 'ask': 1.2}])
         assert state.price('EURUSD') == {'symbol': 'EURUSD', 'bid': 1, 'ask': 1.2}
 
     @pytest.mark.asyncio
     async def test_update_account_equity_and_position(self):
         """Should update account equity and position profit on price update."""
         await state.on_account_information_updated({'equity': 1000, 'balance': 800})
-        await state.on_position_updated({
+        await state.on_positions_replaced([{
             'id': '1',
             'symbol': 'EURUSD',
             'type': 'POSITION_TYPE_BUY',
@@ -112,7 +112,7 @@ class TestTerminalState:
             'openPrice': 8,
             'profit': 100,
             'volume': 2
-        })
+        }])
         await state.on_position_updated({
             'id': '2',
             'symbol': 'AUDUSD',
@@ -121,19 +121,40 @@ class TestTerminalState:
             'currentTickValue': 0.5,
             'openPrice': 8,
             'profit': 100,
-            'volume': 10
+            'volume': 2
         })
         await state.on_symbol_specification_updated({'symbol': 'EURUSD', 'tickSize': 0.01})
-        await state.on_symbol_price_updated({
+        await state.on_symbol_specification_updated({'symbol': 'AUDUSD', 'tickSize': 0.01})
+        await state.on_symbol_prices_updated([
+          {
             'symbol': 'EURUSD',
             'profitTickValue': 0.5,
             'lossTickValue': 0.5,
             'bid': 10,
             'ask': 11
-        })
-        assert list(map(lambda p: p['profit'], state.positions)) == [200, 100]
-        assert list(map(lambda p: p['currentPrice'], state.positions)) == [10, 9]
-        assert state.account_information['equity'] == 1100
+          },
+          {
+            'symbol': 'AUDUSD',
+            'profitTickValue': 0.5,
+            'lossTickValue': 0.5,
+            'bid': 10,
+            'ask': 11
+          }
+        ])
+        assert list(map(lambda p: p['profit'], state.positions)) == [200, 200]
+        assert list(map(lambda p: p['unrealizedProfit'], state.positions)) == [200, 200]
+        assert list(map(lambda p: p['currentPrice'], state.positions)) == [10, 10]
+        assert state.account_information['equity'] == 1200
+
+    @pytest.mark.asyncio
+    async def test_update_margin_fields(self):
+        """Should update margin fields on price update."""
+        await state.on_account_information_updated({'equity': 1000, 'balance': 800})
+        await state.on_symbol_prices_updated([], 100, 200, 400, 40000)
+        assert state.account_information['equity'] == 100
+        assert state.account_information['margin'] == 200
+        assert state.account_information['freeMargin'] == 400
+        assert state.account_information['marginLevel'] == 40000
 
     @pytest.mark.asyncio
     async def test_update_order_current_price_on_price_update(self):
@@ -152,11 +173,11 @@ class TestTerminalState:
             'currentPrice': 9
         })
         await state.on_symbol_specification_updated({'symbol': 'EURUSD', 'tickSize': 0.01})
-        await state.on_symbol_price_updated({
+        await state.on_symbol_prices_updated([{
           'symbol': 'EURUSD',
           'profitTickValue': 0.5,
           'lossTickValue': 0.5,
           'bid': 10,
           'ask': 11
-        })
+        }])
         assert list(map(lambda o: o['currentPrice'], state.orders)) == [11, 9]

@@ -438,7 +438,7 @@ Features supported:
 - synchronize subscriber account with strategy providers
 - monitor trading history
 - calculate trade copying commissions for account managers
-- [coming soon] support portfolio strategies as trading signal source, i.e. the strategies which include signals of several other strategies (also known as combos on some platforms)
+- support portfolio strategies as trading signal source, i.e. the strategies which include signals of several other strategies (also known as combos on some platforms)
 
 Please note that trade copying to MT5 netting accounts is not supported in the current API version
 
@@ -461,10 +461,10 @@ In order to configure trade copying you need to:
     copy_factory = CopyFactory(token)
 
     # retrieve MetaApi MetaTrader accounts with CopyFactory as application field value
-    master_metaapi_account = await api.metatrader_account_api.get_account('masterMetaapiAccountId')
+    master_metaapi_account = await metaapi.metatrader_account_api.get_account('masterMetaapiAccountId')
     if master_metaapi_account.application != 'CopyFactory'
         raise Exception('Please specify CopyFactory application field value in your MetaApi account in order to use it in CopyFactory API')
-    slave_metaapi_account = await api.metatrader_account_api.get_account('slaveMetaapiAccountId')
+    slave_metaapi_account = await metaapi.metatrader_account_api.get_account('slaveMetaapiAccountId')
     if slave_metaapi_account.application != 'CopyFactory'
         raise Exception('Please specify CopyFactory application field value in your MetaApi account in order to use it in CopyFactory API')
 
@@ -484,7 +484,7 @@ In order to configure trade copying you need to:
         'name': 'Test strategy',
         'description': 'Some useful description about your strategy',
         'positionLifecycle': 'hedging',
-        'connectionId': slave_metaapi_account.id,
+        'connectionId': master_metaapi_account.id,
         'maxTradeRisk': 0.1,
         'stopOutRisk': {
             'value': 0.4,
@@ -497,9 +497,9 @@ In order to configure trade copying you need to:
     })
 
     # subscribe slave CopyFactory accounts to the strategy
-    await configuration_api.update_account(master_account_id, {
+    await configuration_api.update_account(slave_account_id, {
         'name': 'Demo account',
-        'connectionId': master_metaapi_account.id,
+        'connectionId': slave_metaapi_account.id,
         'subscriptions': [
             {
                 'strategyId': strategy_id,
@@ -572,12 +572,13 @@ A subscription to a strategy can be stopped if the strategy have exceeded allowe
 
     trading_api = copy_factory.trading_api
     account_id = '...' # CopyFactory account id
+    strategy_id = '...' # CopyFactory strategy id
 
     # retrieve list of strategy stopouts
     print(await trading_api.get_stopouts(account_id))
 
     # reset a stopout so that subscription can continue
-    await trading_api.reset_stopout(account_id, 'daily-equity)
+    await trading_api.reset_stopout(account_id, strategy_id, 'daily-equity)
 
 Keywords: MetaTrader API, MetaTrader REST API, MetaTrader websocket API,
 MetaTrader 5 API, MetaTrader 5 REST API, MetaTrader 5 websocket API,

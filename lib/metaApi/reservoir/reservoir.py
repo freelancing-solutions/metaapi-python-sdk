@@ -45,6 +45,10 @@ class Reservoir:
             self._intermediaryRecord = object['_intermediaryRecord']
             self.statistics = self.check_statistics_on_restore(object['statistics'])
 
+    def fill_array(self, index: int):
+        while len(self.array) <= index:
+            self.array.append(None)
+
     def check_statistics_on_restore(self, statistics):
         if statistics['count'] == 0:
             statistics = {
@@ -119,6 +123,7 @@ class Reservoir:
             if remove_element_index >= self.size:
                 remove_element_index = 0
 
+            self.fill_array(remove_element_index)
             self._update_statistics_on_remove(self.array[remove_element_index], remove_element_index)
             self.array[remove_element_index] = {
                 'count': 0,
@@ -188,6 +193,7 @@ class Reservoir:
 
     def _add_record(self, empty_elements_count):
         if self._intermediaryRecord is not None:
+            self.fill_array(self._firstQueueIndex)
             self.array[self._firstQueueIndex] = self._intermediaryRecord
             self._intermediaryRecord = None
         cur_index_in_array = self._update_running_statistics_on_remove(empty_elements_count)

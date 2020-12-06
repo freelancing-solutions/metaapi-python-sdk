@@ -1,5 +1,6 @@
 import os
-from typing import Dict, List, TypedDict, Optional
+from typing import Dict, List, Optional
+from typing_extensions import TypedDict
 import json
 import math
 from datetime import datetime
@@ -80,7 +81,8 @@ class PacketLogger:
                     else:
                         self._previousPrices[packet['accountId']]['last'] = packet
                 else:
-                    self._previousPrices[packet['accountId']] = {'first': packet, 'last': packet}
+                    if 'sequenceNumber' in packet:
+                        self._previousPrices[packet['accountId']] = {'first': packet, 'last': packet}
                     queue.append(json.dumps(packet))
 
     async def read_logs(self, account_id: str, date_after: datetime = None, date_before: datetime = None):
@@ -163,7 +165,7 @@ class PacketLogger:
 
     async def _append_logs(self):
         """Writes logs to files."""
-        for key in list(self._writeQueue.keys()):
+        for key in self._writeQueue:
             queue = self._writeQueue[key]
             if (not queue['isWriting']) and len(queue['queue']):
                 queue['isWriting'] = True

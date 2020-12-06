@@ -53,6 +53,9 @@ async def run_around_tests():
     yield
     await client.close()
     await fake_server.stop()
+    tasks = [task for task in asyncio.all_tasks() if task is not
+             asyncio.tasks.current_task()]
+    list(map(lambda task: task.cancel(), tasks))
 
 
 # This method closes the client once the required socket event has been called
@@ -524,14 +527,15 @@ class TestMetaApiWebsocketClient:
                     and data['application'] == 'application':
                 nonlocal request_received
                 request_received = True
+                await sio.emit('response', {'type': 'response', 'accountId': data['accountId'],
+                                            'requestId': data['requestId']})
 
-        client.subscribe('accountId')
+        await client.subscribe('accountId')
         await asyncio.sleep(0.05)
         assert request_received
 
     @pytest.mark.asyncio
-    @patch('builtins.print', autospec=True, side_effect=print)
-    async def test_return_error_if_failed(self, mock_print):
+    async def test_return_error_if_failed(self):
         """Should return error if connect to MetaTrader terminal failed."""
         request_received = False
 
@@ -544,9 +548,14 @@ class TestMetaApiWebsocketClient:
             await sio.emit('processingError', {'id': 1, 'error': 'NotAuthenticatedError', 'message': 'Error message',
                                                'requestId': data['requestId']})
 
-        client.subscribe('accountId')
-        await asyncio.sleep(0.05)
-        re.match(r'MetaApi websocket client failed to receive subscribe response', mock_print.call_args_list[0].args[0])
+        success = True
+        try:
+            await client.subscribe('accountId')
+            await asyncio.sleep(0.05)
+            success = False
+        except Exception as err:
+            assert err.__class__.__name__ == 'NotConnectedException'
+        assert success
         assert request_received
 
     @pytest.mark.asyncio
@@ -610,6 +619,18 @@ class TestMetaApiWebsocketClient:
 
         actual = await client.get_symbol_price('accountId', 'AUDNZD')
         assert actual == price
+
+    @pytest.mark.asyncio
+    async def test_send_uptime_stats(self):
+        """Should send uptime stats to the server."""
+
+        @sio.on('request')
+        async def on_request(sid, data):
+            if data['type'] == 'saveUptime' and data['accountId'] == 'accountId' and \
+                    data['uptime'] == {'1h': 100} and data['application'] == 'application':
+                await sio.emit('response', {'type': 'response', 'accountId': data['accountId'],
+                                            'requestId': data['requestId']})
+        await client.save_uptime('accountId', {'1h': 100})
 
     @pytest.mark.asyncio
     async def test_handle_validation_exception(self):
@@ -714,6 +735,18 @@ class TestMetaApiWebsocketClient:
         await sio.emit('synchronization', {'type': 'status', 'accountId': 'accountId', 'connected': True})
         await client._socket.wait()
         listener.on_broker_connection_status_changed.assert_called_with(True)
+
+    @pytest.mark.asyncio
+    async def test_process_server_health_status(self):
+        """Should process server-side health status event."""
+        listener = MagicMock()
+        listener.on_broker_connection_status_changed = AsyncMock()
+        listener.on_health_status = FinalMock()
+        client.add_synchronization_listener('accountId', listener)
+        await sio.emit('synchronization', {'type': 'status', 'accountId': 'accountId', 'connected': True,
+                                           'healthStatus': {'restApiHealthy': True}})
+        await client._socket.wait()
+        listener.on_health_status.assert_called_with({'restApiHealthy': True})
 
     @pytest.mark.asyncio
     async def test_process_disconnected_synchronization_event(self):
@@ -1069,10 +1102,13 @@ class TestMetaApiWebsocketClient:
             'lossTickValue': 0.60203
         }]
         listener = MagicMock()
+        listener.on_symbol_prices_updated = AsyncMock()
         listener.on_symbol_price_updated = FinalMock()
         client.add_synchronization_listener('accountId', listener)
-        await sio.emit('synchronization', {'type': 'prices', 'accountId': 'accountId', 'prices': prices})
+        await sio.emit('synchronization', {'type': 'prices', 'accountId': 'accountId', 'prices': prices,
+                                           'equity': 100, 'margin': 200, 'freeMargin': 400, 'marginLevel': 40000})
         await client._socket.wait()
+        listener.on_symbol_prices_updated.assert_called_with(prices, 100, 200, 400, 40000)
         listener.on_symbol_price_updated.assert_called_with(prices[0])
 
     @pytest.mark.asyncio

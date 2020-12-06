@@ -1,7 +1,7 @@
-from ..clients.metaApi.synchronizationListener import SynchronizationListener
+from ..clients.metaApi.synchronizationListener import SynchronizationListener, HealthStatus
 from .reservoir.reservoir import Reservoir
 from .models import MetatraderSymbolPrice, date
-from typing import TypedDict
+from typing_extensions import TypedDict
 import asyncio
 from datetime import datetime
 import functools
@@ -48,9 +48,20 @@ class ConnectionHealthMonitor(SynchronizationListener):
         self._quotesHealthy = False
         self._offset = 0
         self._minQuoteInterval = 60
-        self._uptimeReservoir = Reservoir(24 * 7, 7 * 24 * 60 * 60 * 1000)
-        asyncio.create_task(update_quote_health_job())
-        asyncio.create_task(measure_uptime_job())
+        self._updateQuoteHealthStatusInterval = asyncio.create_task(update_quote_health_job())
+        self._measureUptimeInterval = asyncio.create_task(measure_uptime_job())
+        self._uptimeReservoirs = {
+            '5m': Reservoir(300, 5 * 60 * 1000),
+            '1h': Reservoir(600, 60 * 60 * 1000),
+            '1d': Reservoir(24 * 60, 24 * 60 * 60 * 1000),
+            '1w': Reservoir(24 * 7, 7 * 24 * 60 * 60 * 1000),
+        }
+        self._serverHealthStatus = None
+
+    def stop(self):
+        """Stops health monitor."""
+        self._updateQuoteHealthStatusInterval.cancel()
+        self._measureUptimeInterval.cancel()
 
     async def on_symbol_price_updated(self, price: MetatraderSymbolPrice):
         """Invoked when a symbol price was updated.
@@ -66,6 +77,26 @@ class ConnectionHealthMonitor(SynchronizationListener):
         except Exception as err:
             print(f'[{datetime.now().isoformat()}] failed to update quote streaming health status on price ' +
                   'update for account ' + self._connection.account.id, err)
+
+    async def on_health_status(self, status: HealthStatus):
+        """Invoked when a server-side application health status is received from MetaApi.
+
+        Args:
+            status: Server-side application health status.
+
+        Returns:
+            A coroutine which resolves when the asynchronous event is processed.
+        """
+        self._serverHealthStatus = status
+
+    @property
+    def server_health_status(self) -> HealthStatus:
+        """Returns server-side application health status.
+
+        Returns:
+            Server-side application health status.
+        """
+        return self._serverHealthStatus
 
     @property
     def health_status(self) -> ConnectionHealthStatus:
@@ -100,19 +131,25 @@ class ConnectionHealthMonitor(SynchronizationListener):
         return status
 
     @property
-    def uptime(self) -> float:
-        """Returns uptime in percents measured over a period of one week.
+    def uptime(self) -> dict:
+        """Returns uptime in percents measured over specific periods of time.
 
         Returns:
-            Uptime in percents measured over a period of one week.
+            Uptime in percents measured over specific periods of time.
         """
-        return self._uptimeReservoir.get_statistics()['average']
+        uptime = {}
+        for key in self._uptimeReservoirs:
+            e: Reservoir = self._uptimeReservoirs[key]
+            uptime[key] = e.get_statistics()['average']
+        return uptime
 
     def _measure_uptime(self):
         try:
-            self._uptimeReservoir.push_measurement(100 if (
-                self._connection.terminal_state.connected and self._connection.terminal_state.connected_to_broker
-                and self._connection.synchronized and self._quotesHealthy) else 0)
+            for key in self._uptimeReservoirs:
+                r = self._uptimeReservoirs[key]
+                r.push_measurement(100 if (
+                    self._connection.terminal_state.connected and self._connection.terminal_state.connected_to_broker
+                    and self._connection.synchronized and self._quotesHealthy) else 0)
         except Exception as err:
             print(f'[{datetime.now().isoformat()}] failed to measure uptime for account ' +
                   self._connection.account.id, err)

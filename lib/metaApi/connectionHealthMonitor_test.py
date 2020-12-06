@@ -96,7 +96,7 @@ class TestConnectionHealthMonitor:
         """Should return 100 uptime."""
         await health_monitor.on_symbol_price_updated(prices[0])
         await sleep(0.2)
-        assert health_monitor.uptime == 100
+        assert health_monitor.uptime == {'5m': 100, '1h': 100, '1d': 100, '1w': 100}
 
     @pytest.mark.asyncio
     async def test_return_average_uptime(self):
@@ -106,28 +106,28 @@ class TestConnectionHealthMonitor:
             await sleep(0.6)
             frozen_datetime.tick(60)
             await sleep(0.4)
-            assert health_monitor.uptime == 60
+            assert health_monitor.uptime == {'5m': 60, '1h': 60, '1d': 60, '1w': 60}
 
     @pytest.mark.asyncio
     async def test_check_downtime(self):
         """Should check connection for downtime."""
         await health_monitor.on_symbol_price_updated(prices[0])
         await sleep(0.22)
-        assert health_monitor.uptime == 100
+        assert health_monitor.uptime == {'5m': 100, '1h': 100, '1d': 100, '1w': 100}
         connection.terminal_state._connected = False
         await sleep(0.22)
-        assert health_monitor.uptime == 50
+        assert health_monitor.uptime == {'5m': 50, '1h': 50, '1d': 50, '1w': 50}
         connection.terminal_state._connected = True
         connection.terminal_state._connected_to_broker = False
         await sleep(0.42)
-        assert health_monitor.uptime == 25
+        assert health_monitor.uptime == {'5m': 25, '1h': 25, '1d': 25, '1w': 25}
         connection.terminal_state._connected_to_broker = True
         connection._synchronized = False
         await sleep(0.22)
-        assert health_monitor.uptime == 20
+        assert health_monitor.uptime == {'5m': 20, '1h': 20, '1d': 20, '1w': 20}
         connection._synchronized = True
         await sleep(0.61)
-        assert health_monitor.uptime == 50
+        assert health_monitor.uptime == {'5m': 50, '1h': 50, '1d': 50, '1w': 50}
 
     @pytest.mark.asyncio
     async def test_return_ok(self):

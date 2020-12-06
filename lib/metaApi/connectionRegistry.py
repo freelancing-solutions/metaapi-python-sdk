@@ -4,6 +4,7 @@ from .metatraderAccountModel import MetatraderAccountModel
 from .historyStorage import HistoryStorage
 from .connectionRegistryModel import ConnectionRegistryModel
 from datetime import datetime
+import asyncio
 
 
 class ConnectionRegistry(ConnectionRegistryModel):
@@ -19,6 +20,7 @@ class ConnectionRegistry(ConnectionRegistryModel):
         self._meta_api_websocket_client = meta_api_websocket_client
         self._application = application
         self._connections = {}
+        self._connectionLocks = {}
 
     async def connect(self, account: MetatraderAccountModel, history_storage: HistoryStorage,
                       history_start_time: datetime = None) -> MetaApiConnection:
@@ -35,11 +37,21 @@ class ConnectionRegistry(ConnectionRegistryModel):
         if account.id in self._connections:
             return self._connections[account.id]
         else:
+            while account.id in self._connectionLocks:
+                await self._connectionLocks[account.id]['promise']
+            if account.id in self._connections:
+                return self._connections[account.id]
+            connection_lock = asyncio.Future()
+            self._connectionLocks[account.id] = {'promise': connection_lock}
             connection = MetaApiConnection(self._meta_api_websocket_client, account, history_storage, self,
                                            history_start_time)
-            await connection.initialize()
-            await connection.subscribe()
-            self._connections[account.id] = connection
+            try:
+                await connection.initialize()
+                await connection.subscribe()
+                self._connections[account.id] = connection
+            finally:
+                del self._connectionLocks[account.id]
+                connection_lock.set_result(None)
             return connection
 
     def remove(self, account_id: str):

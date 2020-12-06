@@ -45,6 +45,13 @@ class MetatraderAccountInformation(TypedDict):
     """Account leverage coefficient."""
     marginLevel: float
     """Margin level calculated as % of equity/margin."""
+    tradeAllowed: bool
+    """Flag indicating that trading is allowed."""
+    investorMode: Optional[bool]
+    """Flag indicating that investor password was used (supported for g2 only)."""
+    marginMode: str
+    """Margin calculation mode, one of ACCOUNT_MARGIN_MODE_EXCHANGE, ACCOUNT_MARGIN_MODE_RETAIL_NETTING,
+    ACCOUNT_MARGIN_MODE_RETAIL_HEDGING."""
 
 
 class MetatraderPosition(TypedDict):

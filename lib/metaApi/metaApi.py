@@ -10,7 +10,8 @@ from ..metaApi.connectionRegistry import ConnectionRegistry
 from .metatraderDemoAccountApi import MetatraderDemoAccountApi
 from ..clients.metaApi.metatraderDemoAccount_client import MetatraderDemoAccountClient
 import re
-from typing import TypedDict, Optional
+from typing import Optional
+from typing_extensions import TypedDict
 
 
 class MetaApiOpts(TypedDict):
