@@ -12,7 +12,8 @@ from .models import random_id, MetatraderSymbolSpecification, MetatraderAccountI
     MetatraderPosition, MetatraderOrder, MetatraderHistoryOrders, MetatraderDeals, MetatraderTradeResponse, \
     MetatraderSymbolPrice, MarketTradeOptions, PendingTradeOptions
 from datetime import datetime, timedelta
-from typing import Coroutine, List, TypedDict, Optional
+from typing import Coroutine, List, Optional, Dict
+from typing_extensions import TypedDict
 import pytz
 import asyncio
 from threading import Timer
@@ -614,7 +615,11 @@ class MetaApiConnection(SynchronizationListener, ReconnectListener):
         Returns:
             A coroutine which resolves when subscription is initiated.
         """
-        return self._websocketClient.subscribe(self._account.id)
+        try:
+            return await self._websocketClient.subscribe(self._account.id)
+        except Exception as err:
+            if err.__class__.__name__ != 'TimeoutException':
+                raise err
 
     def subscribe_to_market_data(self, symbol: str) -> Coroutine:
         """Subscribes on market data of specified symbol (see
@@ -661,6 +666,17 @@ class MetaApiConnection(SynchronizationListener, ReconnectListener):
             A coroutine which resolves when price MetatraderSymbolPrice is retrieved.
         """
         return self._websocketClient.get_symbol_price(self._account.id, symbol)
+
+    def save_uptime(self, uptime: Dict):
+        """Sends client uptime stats to the server.
+
+        Args:
+            uptime: Uptime statistics to send to the server.
+
+        Returns:
+            A coroutine which resolves when uptime statistics is submitted.
+        """
+        return self._websocketClient.save_uptime(self._account.id, uptime)
 
     @property
     def terminal_state(self) -> TerminalState:
@@ -773,6 +789,8 @@ class MetaApiConnection(SynchronizationListener, ReconnectListener):
         synchronization_id = opts['synchronizationId'] if 'synchronizationId' in opts else None
         timeout_in_seconds = opts['timeoutInSeconds'] if 'timeoutInSeconds' in opts else 300
         interval_in_milliseconds = opts['intervalInMilliseconds'] if 'intervalInMilliseconds' in opts else 1000
+        application_pattern = opts['applicationPattern'] if 'applicationPattern' in opts \
+            else ('CopyFactory.*|RPC' if self._account.application == 'CopyFactory' else 'RPC')
         synchronized = await self.is_synchronized(synchronization_id)
         while not synchronized and (start_time + timedelta(seconds=timeout_in_seconds) > datetime.now()):
             await asyncio.sleep(interval_in_milliseconds / 1000)
@@ -784,16 +802,18 @@ class MetaApiConnection(SynchronizationListener, ReconnectListener):
                                                                                  self._lastDisconnectedSynchronizationId
                                                                                  or 'None'))
         time_left_in_seconds = max(0, timeout_in_seconds - (datetime.now() - start_time).total_seconds())
-        await self._websocketClient.wait_synchronized(self._account.id, opts['applicationPattern'] if
-                                                      'applicationPattern' in opts else '.*', time_left_in_seconds)
+        await self._websocketClient.wait_synchronized(self._account.id, application_pattern, time_left_in_seconds)
 
     def close(self):
         """Closes the connection. The instance of the class should no longer be used after this method is invoked."""
         if not self._closed:
+            self._shouldSynchronize = None
             self._websocketClient.remove_synchronization_listener(self._account.id, self)
             self._websocketClient.remove_synchronization_listener(self._account.id, self._terminalState)
             self._websocketClient.remove_synchronization_listener(self._account.id, self._historyStorage)
+            self._websocketClient.remove_synchronization_listener(self._account.id, self._healthMonitor)
             self._connection_registry.remove(self._account.id)
+            self._healthMonitor.stop()
             self._closed = True
 
     @property

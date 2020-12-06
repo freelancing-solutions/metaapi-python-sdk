@@ -2,19 +2,30 @@ from ..clients.httpClient import HttpClient
 from ..clients.copyFactory.configuration_client import ConfigurationClient
 from ..clients.copyFactory.history_client import HistoryClient
 from ..clients.copyFactory.trading_client import TradingClient
+from typing_extensions import TypedDict
+
+
+class CopyFactoryOpts(TypedDict):
+    """CopyFactory options"""
+    domain: str
+    """Domain to connect to."""
+    requestTimeout: float
+    """Timeout for http requests in seconds."""
 
 
 class CopyFactory:
     """MetaApi CopyFactory copy trading API SDK"""
 
-    def __init__(self, token: str, domain: str = 'agiliumtrade.agiliumtrade.ai', request_timeout: float = 60):
+    def __init__(self, token: str, opts: CopyFactoryOpts = None):
         """Inits CopyFactory class instance.
 
         Args:
             token: Authorization token.
-            domain: Domain to connect to.
-            request_timeout: Timeout for http requests in seconds.
+            opts: Connection options.
         """
+        opts: CopyFactoryOpts = opts or {}
+        domain = opts['domain'] if 'domain' in opts else 'agiliumtrade.agiliumtrade.ai'
+        request_timeout = opts['requestTimeout'] if 'requestTimeout' in opts else 60
         http_client = HttpClient(request_timeout)
         self._configurationClient = ConfigurationClient(http_client, token, domain)
         self._historyClient = HistoryClient(http_client, token, domain)

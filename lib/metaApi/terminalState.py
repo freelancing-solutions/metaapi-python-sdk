@@ -2,7 +2,7 @@ from ..clients.metaApi.synchronizationListener import SynchronizationListener
 from .models import MetatraderAccountInformation, MetatraderPosition, MetatraderOrder, \
     MetatraderSymbolSpecification, MetatraderSymbolPrice
 import functools
-from typing import List
+from typing import List, Dict
 import asyncio
 from threading import Timer
 
@@ -21,6 +21,8 @@ class TerminalState(SynchronizationListener):
         self._specifications = []
         self._specificationsBySymbol = {}
         self._pricesBySymbol = {}
+        self._ordersInitialized = False
+        self._positionsInitialized = False
 
     @property
     def connected(self) -> bool:
@@ -133,6 +135,8 @@ class TerminalState(SynchronizationListener):
         self._specifications = []
         self._specificationsBySymbol = {}
         self._pricesBySymbol = {}
+        self._ordersInitialized = False
+        self._positionsInitialized = False
 
     async def on_account_information_updated(self, account_information: MetatraderAccountInformation):
         """Invoked when MetaTrader account information is updated.
@@ -152,6 +156,7 @@ class TerminalState(SynchronizationListener):
             A coroutine which resolves when the asynchronous event is processed.
         """
         self._positions = positions
+        self._positionsInitialized = True
 
     async def on_position_updated(self, position: MetatraderPosition):
         """Invoked when MetaTrader position is updated.
@@ -184,6 +189,7 @@ class TerminalState(SynchronizationListener):
             A coroutine which resolves when the asynchronous event is processed.
         """
         self._orders = orders
+        self._ordersInitialized = True
 
     async def on_order_updated(self, order: MetatraderOrder):
         """Invoked when MetaTrader order is updated
@@ -220,38 +226,75 @@ class TerminalState(SynchronizationListener):
             self._specifications.append(specification)
         self._specificationsBySymbol[specification['symbol']] = specification
 
-    async def on_symbol_price_updated(self, price: MetatraderSymbolPrice):
-        """Invoked when a symbol price was updated.
+    async def on_symbol_prices_updated(self, prices: List[MetatraderSymbolPrice], equity: float = None,
+                                       margin: float = None, free_margin: float = None, margin_level: float = None):
+        """Invoked when prices for several symbols were updated.
 
         Args:
-            price: Updated MetaTrader symbol price.
+            prices: Updated MetaTrader symbol prices.
+            equity: Account liquidation value.
+            margin: Margin used.
+            free_margin: Free margin.
+            margin_level: Margin level calculated as % of equity/margin.
+
+        Returns:
+            A coroutine which resolves when the asynchronous event is processed.
         """
-        self._pricesBySymbol[price['symbol']] = price
-        positions = list(filter(lambda p: p['symbol'] == price['symbol'], self._positions))
-        orders = list(filter(lambda o: o['symbol'] == price['symbol'], self._orders))
-        specification = self.specification(price['symbol'])
-        if specification:
-            for position in positions:
-                if 'unrealizedProfit' not in position or 'realizedProfit' not in position:
-                    position['unrealizedProfit'] = (1 if (position['type'] == 'POSITION_TYPE_BUY') else -1) * \
-                                                   (position['currentPrice'] - position['openPrice']) * \
-                        position['currentTickValue'] * position['volume'] / specification['tickSize']
-                    position['realizedProfit'] = position['profit'] - position['unrealizedProfit']
-                new_position_price = price['bid'] if (position['type'] == 'POSITION_TYPE_BUY') else price['ask']
-                is_profitable = (1 if (position['type'] == 'POSITION_TYPE_BUY') else -1) * (new_position_price -
-                                                                                            position['openPrice'])
-                current_tick_value = price['profitTickValue'] if (is_profitable > 0) else price['lossTickValue']
-                unrealized_profit = (1 if (position['type'] == 'POSITION_TYPE_BUY') else -1) * \
-                    (new_position_price - position['openPrice']) * current_tick_value * position['volume'] / \
-                    specification['tickSize']
-                position['unrealizedProfit'] = unrealized_profit
-                position['profit'] = position['unrealizedProfit'] + position['realizedProfit']
-                position['currentPrice'] = new_position_price
-                position['currentTickValue'] = current_tick_value
-            for order in orders:
-                order['currentPrice'] = price['ask'] if (order['type'] == 'ORDER_TYPE_BUY_LIMIT' or
-                                                         order['type'] == 'ORDER_TYPE_BUY_STOP' or
-                                                         order['type'] == 'ORDER_TYPE_BUY_STOP_LIMIT') else price['bid']
-            if self._accountInformation:
+        prices_initialized = False
+        if prices:
+            for price in prices:
+                self._pricesBySymbol[price['symbol']] = price
+                positions = list(filter(lambda p: p['symbol'] == price['symbol'], self._positions))
+                other_positions = list(filter(lambda p: p['symbol'] != price['symbol'], self._positions))
+                orders = list(filter(lambda o: o['symbol'] == price['symbol'], self._orders))
+                prices_initialized = True
+                for position in other_positions:
+                    if position['symbol'] in self._pricesBySymbol:
+                        p = self._pricesBySymbol[position['symbol']]
+                        if 'unrealizedProfit' not in position:
+                            self._update_position_profits(position, p)
+                    else:
+                        prices_initialized = False
+                for position in positions:
+                    self._update_position_profits(position, price)
+                for order in orders:
+                    order['currentPrice'] = price['ask'] if (order['type'] == 'ORDER_TYPE_BUY' or
+                                                             order['type'] == 'ORDER_TYPE_BUY_LIMIT' or
+                                                             order['type'] == 'ORDER_TYPE_BUY_STOP' or
+                                                             order['type'] == 'ORDER_TYPE_BUY_STOP_LIMIT') else \
+                        price['bid']
+        if self._accountInformation:
+            if self._positionsInitialized and prices_initialized:
                 self._accountInformation['equity'] = self._accountInformation['balance'] + \
-                                                     functools.reduce(lambda a, b: a + b['profit'], self._positions, 0)
+                                                     functools.reduce(lambda a, b: a + b['unrealizedProfit'],
+                                                                      self._positions, 0)
+            else:
+                self._accountInformation['equity'] = equity if equity else (
+                    self._accountInformation['equity'] if 'equity' in self._accountInformation else None)
+            self._accountInformation['margin'] = margin if margin else (
+                self._accountInformation['margin'] if 'margin' in self._accountInformation else None)
+            self._accountInformation['freeMargin'] = free_margin if free_margin else (
+                self._accountInformation['freeMargin'] if 'freeMargin' in self._accountInformation else None)
+            self._accountInformation['marginLevel'] = margin_level if free_margin else (
+                self._accountInformation['marginLevel'] if 'marginLevel' in self._accountInformation else None)
+
+    def _update_position_profits(self, position: Dict, price: Dict):
+        specification = self.specification(position['symbol'])
+        if specification:
+            if 'unrealizedProfit' not in position or 'realizedProfit' not in position:
+                position['unrealizedProfit'] = (1 if (position['type'] == 'POSITION_TYPE_BUY') else -1) * \
+                                               (position['currentPrice'] - position['openPrice']) * \
+                                               position['currentTickValue'] * position['volume'] / \
+                                               specification['tickSize']
+                position['realizedProfit'] = position['profit'] - position['unrealizedProfit']
+            new_position_price = price['bid'] if (position['type'] == 'POSITION_TYPE_BUY') else price['ask']
+            is_profitable = (1 if (position['type'] == 'POSITION_TYPE_BUY') else -1) * (new_position_price -
+                                                                                        position['openPrice'])
+            current_tick_value = price['profitTickValue'] if (is_profitable > 0) else price['lossTickValue']
+            unrealized_profit = (1 if (position['type'] == 'POSITION_TYPE_BUY') else -1) * \
+                                (new_position_price - position['openPrice']) * current_tick_value * \
+                position['volume'] / specification['tickSize']
+            position['unrealizedProfit'] = unrealized_profit
+            position['profit'] = position['unrealizedProfit'] + position['realizedProfit']
+            position['currentPrice'] = new_position_price
+            position['currentTickValue'] = current_tick_value

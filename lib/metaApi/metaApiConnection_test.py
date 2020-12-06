@@ -718,6 +718,13 @@ class TestMetaApiConnection:
         client.get_symbol_price.assert_called_with('accountId', 'AUDNZD')
 
     @pytest.mark.asyncio
+    async def test_save_uptime_stats(self):
+        """Should save uptime stats to the server."""
+        client.save_uptime = AsyncMock()
+        await api.save_uptime({'1h': 100})
+        client.save_uptime.assert_called_with('accountId', {'1h': 100})
+
+    @pytest.mark.asyncio
     async def test_initialize(self):
         """Should initialize listeners, terminal state and history storage for accounts with user sync mode."""
         client.add_synchronization_listener = MagicMock()

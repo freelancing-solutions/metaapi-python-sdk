@@ -1,7 +1,18 @@
 from ...metaApi.models import MetatraderPosition, MetatraderAccountInformation, MetatraderOrder, \
     MetatraderDeal, MetatraderSymbolSpecification, MetatraderSymbolPrice
 from abc import ABC
-from typing import List
+from typing import List, Optional
+from typing_extensions import TypedDict
+
+
+class HealthStatus(TypedDict):
+    """Server-side application health status."""
+    restApiHealthy: Optional[bool]
+    """Flag indicating that REST API is healthy."""
+    copyFactorySubscriberHealthy: Optional[bool]
+    """Flag indicating that CopyFactory subscriber is healthy."""
+    copyFactoryProviderHealthy: Optional[bool]
+    """Flag indicating that CopyFactory provider is healthy."""
 
 
 class SynchronizationListener(ABC):
@@ -9,6 +20,17 @@ class SynchronizationListener(ABC):
 
     async def on_connected(self):
         """Invoked when connection to MetaTrader terminal established.
+
+        Returns:
+            A coroutine which resolves when the asynchronous event is processed.
+        """
+        pass
+
+    async def on_health_status(self, status: HealthStatus):
+        """Invoked when a server-side application health status is received from MetaApi.
+
+        Args:
+            status: Server-side application health status.
 
         Returns:
             A coroutine which resolves when the asynchronous event is processed.
@@ -179,6 +201,22 @@ class SynchronizationListener(ABC):
 
         Args:
             price: Updated MetaTrader symbol price.
+
+        Returns:
+            A coroutine which resolves when the asynchronous event is processed.
+        """
+        pass
+
+    async def on_symbol_prices_updated(self, prices: List[MetatraderSymbolPrice], equity: float = None,
+                                       margin: float = None, free_margin: float = None, margin_level: float = None):
+        """Invoked when prices for several symbols were updated.
+
+        Args:
+            prices: Updated MetaTrader symbol prices.
+            equity: Account liquidation value.
+            margin: Margin used.
+            free_margin: Free margin.
+            margin_level: Margin level calculated as % of equity/margin.
 
         Returns:
             A coroutine which resolves when the asynchronous event is processed.

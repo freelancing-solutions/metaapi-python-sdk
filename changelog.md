@@ -1,8 +1,19 @@
 11.0.0
   - breaking change: MetaApi options are now specified via an object
+  - breaking change: CopyFactory options are now specified via an object
   - added traffic logger
   - added close by order support
   - added stop limit order support
+  - bugfix MetatraderAccount.connect method to throw an error to avoid creating broken connections
+  - add marginMode, tradeAllowed, investorMode fields to account information
+  - breaking change: wait_synchronized to synchronize CopyFactory and RPC applications by default
+  - improvements to position profit and account equity tracking on client side
+  - real-time updates for margin fields in account information
+  - breaking change: uptime now returns uptime measurements over several timeframes (1h, 1d, 1w)
+  - do not retry synchronization after MetaApiConnection is closed
+  - added option for reverse copying in CopyFactory API
+  - added ConnectionHealthMonitor.server_health_status API to retrieve health status of server-side applications
+  - added option to specify account-wide stopout and risk limits in CopyFactory API
 
 10.1.0
   - added support for portfolio strategies (i.e. the strategies which include several other member strategies) to CopyFactory API

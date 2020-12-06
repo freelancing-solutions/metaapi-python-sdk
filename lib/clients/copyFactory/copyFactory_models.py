@@ -3,6 +3,29 @@ from typing import List, Optional
 from datetime import datetime
 
 
+class CopyFactoryStrategyIdAndName(TypedDict):
+    """CopyFactory strategy id and name."""
+    id: str
+    """Unique strategy id."""
+    name: str
+    """Human-readable strategy name."""
+
+
+class CopyFactoryStrategyStopout(TypedDict):
+    """CopyFactory strategy stopout."""
+    strategy: CopyFactoryStrategyIdAndName
+    """Strategy which was stopped out."""
+    reason: str
+    """Stopout reason. One of yearly-balance, monthly-balance, daily-balance, yearly-equity, monthly-equity,
+    daily-equity, max-drawdown"""
+    reasonDescription: str
+    """Human-readable description of the stopout reason."""
+    stoppedAt: datetime
+    """Time the strategy was stopped at."""
+    stoppedTill: datetime
+    """Time the strategy is stopped till."""
+
+
 class StrategyId(TypedDict):
     """Strategy id"""
     id: str
@@ -103,6 +126,8 @@ class CopyFactoryStrategySubscription(TypedDict):
     maxTradeRisk: Optional[float]
     """Optional max risk per trade, expressed as a fraction of 1. If trade has a SL, the trade size will be adjusted to
     match the risk limit. If not, the trade SL will be applied according to the risk limit."""
+    reverse: bool
+    """Flag indicating that the strategy should be copied in a reverse direction."""
     reduceCorrelations: Optional[str]
     """Optional setting indicating whether to enable automatic trade correlation reduction. Possible settings are not
     specified (disable correlation risk restrictions), by-strategy (limit correlations on strategy level) or by-symbol
@@ -145,6 +170,12 @@ class CopyFactoryAccountUpdate(TypedDict):
     allowed to open new positions with a symbol equal to the symbol of an existing strategy position (can be used to
     gracefully exit strategies trading in netting mode or placing a series of related trades per symbol). One of
     by-position, by-symbol or leave empty to disable this setting."""
+    stopOutRisk: Optional[CopyFactoryStrategyStopout]
+    """Optional stop out setting. All trading will be terminated and positions closed once equity drawdown reaches
+    this value."""
+    riskLimits: Optional[List[CopyFactoryStrategyRiskLimit]]
+    """Optional account risk limits. You can configure trading to be stopped once total drawdown generated during
+    specific period is exceeded. Can be specified either for balance or equity drawdown."""
     maxLeverage: Optional[float]
     """Optional setting indicating maxumum leverage allowed when opening a new positions. Any trade which results in a
     higher leverage will be discarded."""
@@ -217,6 +248,8 @@ class CopyFactoryStrategyUpdate(TypedDict):
     maxTradeRisk: Optional[float]
     """Optional max risk per trade, expressed as a fraction of 1. If trade has a SL, the trade size will be adjusted to
     match the risk limit. If not, the trade SL will be applied according to the risk limit."""
+    reverse: bool
+    """Flag indicating that the strategy should be copied in a reverse direction."""
     reduceCorrelations: Optional[str]
     """Optional setting indicating whether to enable automatic trade correlation reduction. Possible settings are not
     specified (disable correlation risk restrictions), by-strategy (limit correlations on strategy level) or by-symbol
@@ -241,14 +274,6 @@ class CopyFactoryStrategyUpdate(TypedDict):
     timeSettings: Optional[CopyFactoryStrategyTimeSettings]
     """Settings to manage copying timeframe and position lifetime. Default is to copy position within 1 minute from
     being opened at source and let the position to live for up to 90 days."""
-
-
-class CopyFactoryStrategyIdAndName(TypedDict):
-    """CopyFactory strategy id and name."""
-    id: str
-    """Unique strategy id."""
-    name: str
-    """Human-readable strategy name."""
 
 
 class CopyFactorySubscriberOrProvider(TypedDict):
@@ -333,21 +358,6 @@ class CopyFactoryTransaction(TypedDict):
     """trade copying metrics such as slippage and latencies. Measured selectively for copied trades"""
 
 
-class CopyFactoryStrategyStopout(TypedDict):
-    """CopyFactory strategy stopout."""
-    strategy: CopyFactoryStrategyIdAndName
-    """Strategy which was stopped out."""
-    reason: str
-    """Stopout reason. One of yearly-balance, monthly-balance, daily-balance, yearly-equity, monthly-equity,
-    daily-equity, max-drawdown"""
-    reasonDescription: str
-    """Human-readable description of the stopout reason."""
-    stoppedAt: datetime
-    """Time the strategy was stopped at."""
-    stoppedTill: datetime
-    """Time the strategy is stopped till."""
-
-
 class ResynchronizationTask(TypedDict):
     """Resynchronization task."""
     _id: str
@@ -371,6 +381,8 @@ class CopyFactoryPortfolioMember(TypedDict):
     maxTradeRisk: Optional[float]
     """Optional max risk per trade, expressed as a fraction of 1. If trade has a SL, the trade size will be adjusted
     to match the risk limit. If not, the trade SL will be applied according to the risk limit."""
+    reverse: bool
+    """Flag indicating that the strategy should be copied in a reverse direction."""
     reduceCorrelations: Optional[str]
     """Optional setting indicating whether to enable automatic trade correlation reduction. Possible settings are
     not specified (disable correlation risk restrictions), by-strategy (limit correlations on strategy level) or
@@ -408,6 +420,8 @@ class CopyFactoryPortfolioStrategyUpdate(TypedDict):
     maxTradeRisk: Optional[float]
     """Optional max risk per trade, expressed as a fraction of 1. If trade has a SL, the trade size will be adjusted
     to match the risk limit. If not, the trade SL will be applied according to the risk limit."""
+    reverse: bool
+    """Flag indicating that the strategy should be copied in a reverse direction."""
     reduceCorrelations: Optional[str]
     """Optional setting indicating whether to enable automatic trade correlation reduction. Possible settings are not
     specified (disable correlation risk restrictions), by-strategy (limit correlations on strategy level) or by-symbol
