@@ -68,7 +68,7 @@ class TestHttpClient:
                 raise Exception('ValidationException is expected')
             except Exception as err:
                 assert err.__class__.__name__ == 'ValidationException'
-                assert err.__str__() == 'test message'
+                assert err.__str__() == 'test message, check error.details for more information'
 
     @pytest.mark.asyncio
     async def test_validation_exception_details(self):
@@ -90,5 +90,5 @@ class TestHttpClient:
                 raise Exception('ValidationException is expected')
             except Exception as err:
                 assert err.__class__.__name__ == 'ValidationException'
-                assert err.__str__() == 'test'
-                assert err._details == error['details']
+                assert err.__str__() == 'test, check error.details for more information'
+                assert err.details == error['details']

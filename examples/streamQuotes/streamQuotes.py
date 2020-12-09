@@ -45,6 +45,6 @@ async def stream_quotes():
             await asyncio.sleep(1)
 
     except Exception as err:
-        print(err)
+        print(api.format_error(err))
 
 asyncio.run(stream_quotes())

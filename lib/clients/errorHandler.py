@@ -105,8 +105,17 @@ class ValidationException(ApiException):
             message: Exception message.
             details: Exception data.
         """
-        super().__init__(message, 400)
+        super().__init__(message + ', check error.details for more information', 400)
         self._details = details
+
+    @property
+    def details(self) -> List[dict]:
+        """Returns validation exception details.
+
+        Returns:
+            Validation exception details.
+        """
+        return self._details
 
 
 class InternalException(ApiException):

@@ -91,14 +91,15 @@ async def test_meta_api_synchronization():
             result = await connection.create_limit_buy_order('GBPUSD', 0.07, 1.0, 0.9, 2.0,
                                                              {'comment': 'comm', 'clientId': 'TE_GBPUSD_7hyINWqAlE'})
             print('Trade successful, result code is ' + result['stringCode'])
-        except TradeException as err:
-            print('Trade failed with result code ' + err.stringCode)
+        except Exception as err:
+            print('Trade failed with error:')
+            print(api.format_error(err))
 
         # finally, undeploy account after the test
         print('Undeploying MT4 account so that it does not consume any unwanted resources')
         await account.undeploy()
 
     except Exception as err:
-        print(err)
+        print(api.format_error(err))
 
 asyncio.run(test_meta_api_synchronization())
