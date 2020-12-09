@@ -46,7 +46,7 @@ Supply token to the MetaApi class constructor.
     from metaapi_cloud_sdk import MetaApi
 
     token = '...'
-    api = MetaApi(token)
+    api = MetaApi(token=token)
 
 Retrieving account access token
 ===============================
@@ -55,7 +55,7 @@ Account access token grants access to a single account. You can retrieve account
 .. code-block:: python
 
     account_id = '...'
-    account = await api.metatrader_account_api.get_account(account_id)
+    account = await api.metatrader_account_api.get_account(account_id=account_id)
     account_access_token = account.access_token
     print(account_access_token)
 
@@ -77,7 +77,7 @@ Creating a provisioning profile via API
 
     # if you do not have created a provisioning profile for your broker,
     # you should do it before creating an account
-    provisioningProfile = await api.provisioning_profile_api.create_provisioning_profile({
+    provisioningProfile = await api.provisioning_profile_api.create_provisioning_profile(profile={
         'name': 'My profile',
         'version': 5,
         'brokerTimezone': 'EET',
@@ -86,26 +86,26 @@ Creating a provisioning profile via API
     # servers.dat file is required for MT5 profile and can be found inside
     # config directory of your MetaTrader terminal data folder. It contains
     # information about available broker servers
-    await provisioningProfile.upload_file('servers.dat', '/path/to/servers.dat')
+    await provisioningProfile.upload_file(file_name='servers.dat', file='/path/to/servers.dat')
     # for MT4, you should upload an .srv file instead
-    await provisioningProfile.upload_file('broker.srv', '/path/to/broker.srv')
+    await provisioningProfile.upload_file(file_name='broker.srv', file='/path/to/broker.srv')
 
 Retrieving existing provisioning profiles via API
 -------------------------------------------------
 .. code-block:: python
 
     provisioningProfiles = await api.provisioning_profile_api.get_provisioning_profiles()
-    provisioningProfile = await api.provisioning_profile_api.get_provisioning_profile('profileId')
+    provisioningProfile = await api.provisioning_profile_api.get_provisioning_profile(provisioning_profile_id='profileId')
 
 Updating a provisioning profile via API
 ---------------------------------------
 .. code-block:: python
 
-    await provisioningProfile.update({'name': 'New name'})
+    await provisioningProfile.update(profile={'name': 'New name'})
     # for MT5, you should upload a servers.dat file
-    await provisioningProfile.upload_file('servers.dat', '/path/to/servers.dat')
+    await provisioningProfile.upload_file(file_name='servers.dat', file='/path/to/servers.dat')
     # for MT4, you should upload an .srv file instead
-    await provisioningProfile.upload_file('broker.srv', '/path/to/broker.srv')
+    await provisioningProfile.upload_file(file_name='broker.srv', file='/path/to/broker.srv')
 
 Removing a provisioning profile
 -------------------------------
@@ -121,7 +121,7 @@ Create a MetaTrader account (API server) via API
 ------------------------------------------------
 .. code-block:: python
 
-    account = await api.metatrader_account_api.create_account({
+    account = await api.metatrader_account_api.create_account(account={
       'name': 'Trading account #1',
       'type': 'cloud',
       'login': '1234567',
@@ -139,22 +139,22 @@ Retrieving existing accounts via API
 .. code-block:: python
 
     # filter and paginate accounts, see doc for full list of filter options available
-    accounts = await api.metatraderAccountApi.get_accounts({
+    accounts = await api.metatrader_account_api.get_accounts(accounts_filter={
         'limit': 10,
         'offset': 0,
         'query': 'ICMarketsSC-MT5',
         'state': ['DEPLOYED']
     })
     # get accounts without filter (returns 1000 accounts max)
-    accounts = await api.metatraderAccountApi.get_accounts();
+    accounts = await api.metatrader_account_api.get_accounts();
 
-    account = await api.metatraderAccountApi.get_account('accountId')
+    account = await api.metatrader_account_api.get_account(account_id='accountId')
 
 Updating an existing account via API
 ------------------------------------
 .. code-block:: python
 
-    await account.update({
+    await account.update(account={
         'name': 'Trading account #1',
         'login': '1234567',
         # password can be investor password for read-only access
@@ -196,23 +196,23 @@ Query account information, positions, orders and history via RPC API
     # retrieve open positions
     print(await connection.get_positions())
     # retrieve a position by id
-    print(await connection.get_position('1234567'))
+    print(await connection.get_position(position_id='1234567'))
     # retrieve pending orders
     print(await connection.get_orders())
     # retrieve a pending order by id
-    print(await connection.get_order('1234567'))
+    print(await connection.get_order(order_id='1234567'))
     # retrieve history orders by ticket
-    print(await connection.get_history_orders_by_ticket('1234567'))
+    print(await connection.get_history_orders_by_ticket(ticket='1234567'))
     # retrieve history orders by position id
-    print(await connection.get_history_orders_by_position('1234567'))
+    print(await connection.get_history_orders_by_position(position_id='1234567'))
     # retrieve history orders by time range
-    print(await connection.get_history_orders_by_time_range(start_time, end_time))
+    print(await connection.get_history_orders_by_time_range(start_time=start_time, end_time=end_time))
     # retrieve history deals by ticket
-    print(await connection.get_deals_by_ticket('1234567'))
+    print(await connection.get_deals_by_ticket(ticket='1234567'))
     # retrieve history deals by position id
-    print(await connection.get_deals_by_position('1234567'))
+    print(await connection.get_deals_by_position(position_id='1234567'))
     # retrieve history deals by time range
-    print(await connection.get_deals_by_time_range(start_time, end_time))
+    print(await connection.get_deals_by_time_range(start_time=start_time, end_time=end_time))
 
 Query contract specifications and quotes via RPC API
 ----------------------------------------------------
@@ -223,12 +223,12 @@ Query contract specifications and quotes via RPC API
     await connection.wait_synchronized()
 
     # first, subscribe to market data
-    await connection.subscribe_to_market_data('GBPUSD')
+    await connection.subscribe_to_market_data(symbol='GBPUSD')
 
     # read contract specification
-    print(await connection.get_symbol_specification('GBPUSD'))
+    print(await connection.get_symbol_specification(symbol='GBPUSD'))
     # read current price
-    print(await connection.get_symbol_price('GBPUSD'))
+    print(await connection.get_symbol_price(symbol='GBPUSD'))
 
 Use real-time streaming API
 ---------------------------
@@ -239,7 +239,7 @@ Synchronizing and reading terminal state
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 .. code-block:: python
 
-    account = await api.metatrader_account_api.get_account('accountId')
+    account = await api.metatrader_account_api.get_account(account_id='accountId')
 
 
     # access local copy of terminal state
@@ -255,8 +255,8 @@ Synchronizing and reading terminal state
     print(terminalState.orders)
     # symbol specifications
     print(terminalState.specifications)
-    print(terminalState.specification('EURUSD'))
-    print(terminalState.price('EURUSD'))
+    print(terminalState.specification(symbol='EURUSD'))
+    print(terminalState.price(symbol='EURUSD'))
 
     # access history storage
     historyStorage = connection.history_storage
@@ -282,7 +282,7 @@ By default history is stored in memory only. You can override history storage to
 
     # Note: if you will not specify history storage, then in-memory storage
     # will be used (instance of MemoryHistoryStorage)
-    connection = await account.connect(historyStorage)
+    connection = await account.connect(history_storage=historyStorage)
 
     # access history storage
     historyStorage = connection.history_storage;
@@ -305,10 +305,10 @@ You can override SynchronizationListener in order to receive synchronization eve
 
     # now add the listener
     listener = MySynchronizationListener()
-    connection.add_synchronization_listener(listener)
+    connection.add_synchronization_listener(listener=listener)
 
     # remove the listener when no longer needed
-    connection.remove_synchronization_listener(listener)
+    connection.remove_synchronization_listener(listener=listener)
 
 Retrieve contract specifications and quotes via streaming API
 -------------------------------------------------------------
@@ -319,13 +319,13 @@ Retrieve contract specifications and quotes via streaming API
     await connection.wait_synchronized()
 
     # first, subscribe to market data
-    await connection.subscribe_to_market_data('GBPUSD')
+    await connection.subscribe_to_market_data(symbol='GBPUSD')
 
-    # read constract specification
-    print(terminalState.specification('EURUSD'))
+    # read contract specification
+    print(terminalState.specification(symbol='EURUSD'))
 
     # read current price
-    print(terminalState.price('EURUSD'))
+    print(terminalState.price(symbol='EURUSD'))
 
 Execute trades (both RPC and streaming APIs)
 --------------------------------------------
@@ -336,38 +336,47 @@ Execute trades (both RPC and streaming APIs)
     await connection.wait_synchronized()
 
     # trade
-    print(await connection.create_market_buy_order('GBPUSD', 0.07, 0.9, 2.0, {'comment': 'comment',
-                                                                              'clientId': 'TE_GBPUSD_7hyINWqAl'}))
-    print(await connection.create_market_sell_order('GBPUSD', 0.07, 2.0, 0.9, {'comment': 'comment',
-                                                                               'clientId': 'TE_GBPUSD_7hyINWqAl'}))
-    print(await connection.create_limit_buy_order('GBPUSD', 0.07, 1.0, 0.9, 2.0, {'comment': 'comment',
-                                                                                  'clientId': 'TE_GBPUSD_7hyINWqAl'}))
-    print(await connection.create_limit_sell_order('GBPUSD', 0.07, 1.5, 2.0, 0.9, {'comment': 'comment',
-                                                                                   'clientId': 'TE_GBPUSD_7hyINWqAl'}))
-    print(await connection.create_stop_buy_order('GBPUSD', 0.07, 1.5, 0.9, 2.0, {'comment': 'comment',
-                                                                                 'clientId': 'TE_GBPUSD_7hyINWqAl'}))
-    print(await connection.create_stop_sell_order('GBPUSD', 0.07, 1.0, 2.0, 0.9, {'comment': 'comment',
-                                                                                  'clientId': 'TE_GBPUSD_7hyINWqAl'}))
-    print(await connection.create_stop_limit_buy_order('GBPUSD', 0.07, 1.5, 1.4, 0.9, 2.0, {
-        'comment': 'comment', 'clientId': 'TE_GBPUSD_7hyINWqAl'}))
-    print(await connection.create_stop_limit_sell_order('GBPUSD', 0.07, 1.0, 2.0, 0.9, {'comment': 'comment',
-                                                                                  'clientId': 'TE_GBPUSD_7hyINWqAl'}))
-    print(await connection.modify_position('46870472', 2.0, 0.9))
-    print(await connection.close_position_partially('46870472', 0.9))
-    print(await connection.close_position('46870472'))
-    print(await connection.close_by('46870472', '46870482'))
-    print(await connection.close_positions_by_symbol('EURUSD'))
-    print(await connection.modify_order('46870472', 1.0, 2.0, 0.9))
-    print(await connection.cancel_order('46870472'))
+    print(await connection.create_market_buy_order(symbol='GBPUSD', volume=0.07, stop_loss=0.9, take_profit=2.0,
+        options={'comment': 'comment', 'clientId': 'TE_GBPUSD_7hyINWqAl'}))
+    print(await connection.create_market_sell_order(symbol='GBPUSD', volume=0.07, stop_loss=2.0, take_profit=0.9,
+        options={'comment': 'comment', 'clientId': 'TE_GBPUSD_7hyINWqAl'}))
+    print(await connection.create_limit_buy_order(symbol='GBPUSD', volume=0.07, open_price=1.0, stop_loss=0.9,
+        take_profit=2.0, options={'comment': 'comment', 'clientId': 'TE_GBPUSD_7hyINWqAl'}))
+    print(await connection.create_limit_sell_order(symbol='GBPUSD', volume=0.07, open_price=1.5, stop_loss=2.0,
+        take_profit=0.9, options={'comment': 'comment', 'clientId': 'TE_GBPUSD_7hyINWqAl'}))
+    print(await connection.create_stop_buy_order(symbol='GBPUSD', volume=0.07, open_price=1.5, stop_loss=2.0,
+        take_profit=0.9, options={'comment': 'comment', 'clientId': 'TE_GBPUSD_7hyINWqAl'}))
+    print(await connection.create_stop_sell_order(symbol='GBPUSD', volume=0.07, open_price=1.0, stop_loss=2.0,
+        take_profit=0.9, options={'comment': 'comment', 'clientId': 'TE_GBPUSD_7hyINWqAl'}))
+    print(await connection.create_stop_limit_buy_order(symbol='GBPUSD', volume=0.07, open_price=1.5,
+        stop_limit_price=1.4, stop_loss=0.9, take_profit=2.0, options={'comment': 'comment',
+        'clientId': 'TE_GBPUSD_7hyINWqAl'}))
+    print(await connection.create_stop_limit_sell_order(symbol='GBPUSD', volume=0.07, open_price=1.0,
+        stop_limit_price=1.1, stop_loss=2.0, take_profit=0.9, options={'comment': 'comment',
+        'clientId': 'TE_GBPUSD_7hyINWqAl'}))
+    print(await connection.modify_position(position_id='46870472', stop_loss=2.0, take_profit=0.9))
+    print(await connection.close_position_partially(position_id='46870472', volume=0.9))
+    print(await connection.close_position(position_id='46870472'))
+    print(await connection.close_by(position_id='46870472', opposite_position_id='46870482'))
+    print(await connection.close_positions_by_symbol(symbol='EURUSD'))
+    print(await connection.modify_order(order_id='46870472', open_price=1.0, stop_loss=2.0, take_profit=0.9))
+    print(await connection.cancel_order(order_id='46870472'))
 
     # if you need to, check the extra result information in stringCode and numericCode properties of the response
-    result = await connection.create_market_buy_order('GBPUSD', 0.07, 0.9, 2.0, {'comment': 'comment',
-                                                                                 'clientId': 'TE_GBPUSD_7hyINWqAl'})
+    result = await connection.create_market_buy_order(symbol='GBPUSD', volume=0.07, stop_loss=0.9, take_profit=2.0,
+        options={'comment': 'comment', 'clientId': 'TE_GBPUSD_7hyINWqAl'}))
     print('Trade successful, result code is ' + result['stringCode'])
+
+    # catch and output exception
+    try:
+        await connection.create_market_buy_order(symbol='GBPUSD', volume=0.07, stop_loss=0.9, take_profit=2.0,
+            options={'comment': 'comment', 'clientId': 'TE_GBPUSD_7hyINWqAl'})
+    except Exception as err:
+        print(api.format_error(err))
 
 Monitoring account connection health and uptime
 ===========================================
-You can monitor account connection health using MetaApiConnection.healthMonitor API.
+You can monitor account connection health using MetaApiConnection.health_monitor API.
 
 .. code-block:: python
 
@@ -385,23 +394,25 @@ Create a MetaTrader 4 demo account
 ----------------------------------
 .. code-block:: python
 
-    demo_account = await api.metatrader_demo_account_api.create_mt4_demo_account(provisioningProfile.id, {
-        'balance': 100000,
-        'email': 'example@example.com',
-        'leverage': 100,
-        'serverName': 'Exness-Trial4'
-    })
+    demo_account = await api.metatrader_demo_account_api.create_mt4_demo_account(profile_id=provisioningProfile.id,
+        account={
+            'balance': 100000,
+            'email': 'example@example.com',
+            'leverage': 100,
+            'serverName': 'Exness-Trial4'
+        })
 
 Create a MetaTrader 5 demo account
 ----------------------------------
 .. code-block:: python
 
-    demo_account = await api.metatrader_demo_account_api.create_mt5_demo_account(provisioningProfile.id, {
-        'balance': 100000,
-        'email': 'example@example.com',
-        'leverage': 100,
-        'serverName': 'ICMarketsSC-Demo'
-    })
+    demo_account = await api.metatrader_demo_account_api.create_mt5_demo_account((profile_id=provisioningProfile.id,
+        account={
+            'balance': 100000,
+            'email': 'example@example.com',
+            'leverage': 100,
+            'serverName': 'ICMarketsSC-Demo'
+        })
 
 CopyFactory copy trading API (experimental)
 ===========================================
@@ -457,14 +468,14 @@ In order to configure trade copying you need to:
     from metaapi_cloud_sdk import MetaApi, CopyFactory
 
     token = '...'
-    metaapi = MetaApi(token)
-    copy_factory = CopyFactory(token)
+    metaapi = MetaApi(token=token)
+    copy_factory = CopyFactory(token=token)
 
     # retrieve MetaApi MetaTrader accounts with CopyFactory as application field value
-    master_metaapi_account = await metaapi.metatrader_account_api.get_account('masterMetaapiAccountId')
+    master_metaapi_account = await metaapi.metatrader_account_api.get_account(account_id='masterMetaapiAccountId')
     if master_metaapi_account.application != 'CopyFactory'
         raise Exception('Please specify CopyFactory application field value in your MetaApi account in order to use it in CopyFactory API')
-    slave_metaapi_account = await metaapi.metatrader_account_api.get_account('slaveMetaapiAccountId')
+    slave_metaapi_account = await metaapi.metatrader_account_api.get_account(account_id='slaveMetaapiAccountId')
     if slave_metaapi_account.application != 'CopyFactory'
         raise Exception('Please specify CopyFactory application field value in your MetaApi account in order to use it in CopyFactory API')
 
@@ -472,7 +483,7 @@ In order to configure trade copying you need to:
     configuration_api = copy_factory.configuration_api
     master_account_id = configuration_api.generate_account_id()
     slave_account_id = configuration_api.generate_account_id()
-    await configuration_api.update_account(master_account_id, {
+    await configuration_api.update_account(id=master_account_id, account={
         'name': 'Demo account',
         'connectionId': master_metaapi_account.id,
         'subscriptions': []
@@ -480,7 +491,7 @@ In order to configure trade copying you need to:
 
     # create a strategy being copied
     strategy_id = await configuration_api.generate_strategy_id()
-    await configuration_api.update_strategy(strategy_id['id'], {
+    await configuration_api.update_strategy(id=strategy_id['id'], strategy={
         'name': 'Test strategy',
         'description': 'Some useful description about your strategy',
         'positionLifecycle': 'hedging',
@@ -497,7 +508,7 @@ In order to configure trade copying you need to:
     })
 
     # subscribe slave CopyFactory accounts to the strategy
-    await configuration_api.update_account(slave_account_id, {
+    await configuration_api.update_account(id=slave_account_id, account={
         'name': 'Demo account',
         'connectionId': slave_metaapi_account.id,
         'subscriptions': [
@@ -529,7 +540,8 @@ Retrieving trading history on provider side
     print(await history_api.get_provided_strategies())
 
     # retrieve trading history, please note that this method support pagination and limits number of records
-    print(await history_api.get_provided_strategies_transactions(datetime.fromisoformat('2020-08-01'), datetime.fromisoformat('2020-09-01')))
+    print(await history_api.get_provided_strategies_transactions(time_from=datetime.fromisoformat('2020-08-01'),
+        time_till=datetime.fromisoformat('2020-09-01')))
 
 
 Retrieving trading history on subscriber side
@@ -546,7 +558,8 @@ Retrieving trading history on subscriber side
     print(await history_api.get_strategies_subscribed())
 
     # retrieve trading history, please note that this method support pagination and limits number of records
-    print(await history_api.get_strategies_subscribed_transactions(datetime.fromisoformat('2020-08-01'), datetime.fromisoformat('2020-09-01')))
+    print(await history_api.get_strategies_subscribed_transactions(time_from=datetime.fromisoformat('2020-08-01'),
+        time_till=datetime.fromisoformat('2020-09-01')))
 
 Resynchronizing slave accounts to masters
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -559,10 +572,10 @@ closed manually on a slave account will also be reopened during resynchronizatio
     account_id = '...' # CopyFactory account id
 
     # resynchronize all strategies
-    await copy_factory.trading_api.resynchronize(account_id)
+    await copy_factory.trading_api.resynchronize(account_id=account_id)
 
     # resynchronize specific strategy
-    await copy_factory.trading_api.resynchronize(account_id, ['ABCD'])
+    await copy_factory.trading_api.resynchronize(account_id=account_id, strategy_ids=['ABCD'])
 
 Managing stopouts
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -575,10 +588,10 @@ A subscription to a strategy can be stopped if the strategy have exceeded allowe
     strategy_id = '...' # CopyFactory strategy id
 
     # retrieve list of strategy stopouts
-    print(await trading_api.get_stopouts(account_id))
+    print(await trading_api.get_stopouts(account_id=account_id))
 
     # reset a stopout so that subscription can continue
-    await trading_api.reset_stopout(account_id, strategy_id, 'daily-equity)
+    await trading_api.reset_stopout(account_id=account_id, strategy_id=strategy_id, reason='daily-equity')
 
 Keywords: MetaTrader API, MetaTrader REST API, MetaTrader websocket API,
 MetaTrader 5 API, MetaTrader 5 REST API, MetaTrader 5 websocket API,

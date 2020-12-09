@@ -19,7 +19,7 @@ class TradingClient(MetaApiClient):
         super().__init__(http_client, token, domain)
         self._host = f'https://trading-api-v1.{domain}'
 
-    async def resynchronize(self, account_id: str, strategy_ids: List[str]) -> Response:
+    async def resynchronize(self, account_id: str, strategy_ids: List[str] = None) -> Response:
         """Resynchronizes the account. See
         https://trading-api-v1.agiliumtrade.agiliumtrade.ai/swagger/#!/default
         /post_users_current_accounts_accountId_resynchronize
@@ -33,15 +33,16 @@ class TradingClient(MetaApiClient):
         """
         if self._is_not_jwt_token():
             return self._handle_no_access_exception('resynchronize')
+        qs = {}
+        if strategy_ids:
+            qs['strategyId'] = strategy_ids
         opts = {
           'url': f'{self._host}/users/current/accounts/{account_id}/resynchronize',
           'method': 'POST',
           'headers': {
             'auth-token': self._token
           },
-          'params': {
-            'strategyId': strategy_ids
-          },
+          'params': qs,
         }
         return await self._httpClient.request(opts)
 

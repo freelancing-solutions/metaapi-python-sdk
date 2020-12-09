@@ -10,6 +10,7 @@ from ..metaApi.connectionRegistry import ConnectionRegistry
 from .metatraderDemoAccountApi import MetatraderDemoAccountApi
 from ..clients.metaApi.metatraderDemoAccount_client import MetatraderDemoAccountClient
 import re
+import traceback
 from typing import Optional
 from typing_extensions import TypedDict
 
@@ -88,6 +89,22 @@ class MetaApi:
             MetaTrader demo account API.
         """
         return self._metatraderDemoAccountApi
+
+    def format_error(self, err: Exception):
+        """Formats and outputs metaApi errors with additional information.
+
+        Args:
+            err: Exception to process.
+        """
+        error = {'name': err.__class__.__name__, 'message': err.args[0]}
+        if hasattr(err, 'status_code'):
+            error['status_code'] = err.status_code
+        if err.__class__.__name__ == 'ValidationException':
+            error['details'] = err.details
+        if err.__class__.__name__ == 'TradeException':
+            error['string_code'] = err.stringCode
+        error['trace'] = traceback.format_exc()
+        return error
 
     def close(self):
         """Closes all clients and connections"""
