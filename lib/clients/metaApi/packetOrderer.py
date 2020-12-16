@@ -110,6 +110,6 @@ class PacketOrderer:
                     self._isOutOfOrderEmitted[account_id] = True
                     # Do not emit onOutOfOrderPacket for packets that come before synchronizationStarted
                     if account_id in self._sequenceNumberByAccount:
-                        self._outOfOrderListener.on_out_of_order_packet(
+                        asyncio.create_task(self._outOfOrderListener.on_out_of_order_packet(
                             wait_list[0]['accountId'], self._sequenceNumberByAccount[account_id] + 1,
-                            wait_list[0]['sequenceNumber'], wait_list[0]['packet'], wait_list[0]['receivedAt'])
+                            wait_list[0]['sequenceNumber'], wait_list[0]['packet'], wait_list[0]['receivedAt']))

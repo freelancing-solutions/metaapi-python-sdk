@@ -8,6 +8,7 @@ from .reconnectListener import ReconnectListener
 from ...metaApi.models import MetatraderHistoryOrders, MetatraderDeals, date, random_id, \
     MetatraderSymbolSpecification, MetatraderTradeResponse, MetatraderSymbolPrice, MetatraderAccountInformation, \
     MetatraderPosition, MetatraderOrder, format_date
+from .latencyListener import LatencyListener
 from .packetOrderer import PacketOrderer
 from .packetLogger import PacketLogger
 import socketio
@@ -37,9 +38,12 @@ class MetaApiWebsocketClient:
         self._token = token
         self._requestResolves = {}
         self._synchronizationListeners = {}
+        self._latencyListeners = []
         self._connected = False
         self._socket = None
         self._reconnectListeners = []
+        self._connectedHosts = {}
+        self._resubscriptionTriggerTimes = {}
         self._packetOrderer = PacketOrderer(self, opts['packetOrderingTimeout'])
         if 'packetLogger' in opts and 'enabled' in opts['packetLogger'] and opts['packetLogger']['enabled']:
             self._packetLogger = PacketLogger(opts['packetLogger'])
@@ -47,8 +51,8 @@ class MetaApiWebsocketClient:
         else:
             self._packetLogger = None
 
-    def on_out_of_order_packet(self, account_id: str, expected_sequence_number: int, actual_sequence_number: int,
-                               packet: Dict, received_at: datetime):
+    async def on_out_of_order_packet(self, account_id: str, expected_sequence_number: int, actual_sequence_number: int,
+                                     packet: Dict, received_at: datetime):
         """Restarts the account synchronization process on an out of order packet.
 
         Args:
@@ -62,11 +66,11 @@ class MetaApiWebsocketClient:
               f'{packet["type"]} for account id {account_id}. Expected s/n {expected_sequence_number} does not ' +
               f'match the actual of {actual_sequence_number}')
         try:
-            self.subscribe(account_id)
+            await self.subscribe(account_id)
         except Exception as err:
             if err.__class__.__name__ != 'TimeoutException':
                 print((f'[{datetime.now().isoformat()}] MetaApi websocket client failed to receive ' +
-                       'subscribe response', err))
+                       'subscribe response for account id ' + account_id, err))
 
     def set_url(self, url: str):
         """Patch server URL for use in unit tests
@@ -135,7 +139,7 @@ class MetaApiWebsocketClient:
                 await self._reconnect()
 
             @self._socket.on('response')
-            def on_response(data):
+            async def on_response(data):
                 if data['requestId'] in self._requestResolves:
                     request_resolve = self._requestResolves[data['requestId']]
                     del self._requestResolves[data['requestId']]
@@ -143,6 +147,17 @@ class MetaApiWebsocketClient:
                     request_resolve = asyncio.Future()
                 self._convert_iso_time_to_date(data)
                 request_resolve.set_result(data)
+                if 'timestamps' in data and hasattr(request_resolve, 'type'):
+                    data['timestamps']['clientProcessingFinished'] = datetime.now()
+                    for listener in self._latencyListeners:
+                        try:
+                            if request_resolve.type == 'trade':
+                                await listener.on_trade(data['accountId'], data['timestamps'])
+                            else:
+                                await listener.on_response(data['accountId'], request_resolve.type, data['timestamps'])
+                        except Exception as error:
+                            print(f'[{datetime.now().isoformat()}] Failed to process on_response event for account ' +
+                                  data['accountId'] + ', request type ' + request_resolve.type, error)
 
             @self._socket.on('processingError')
             def on_processing_error(data):
@@ -153,6 +168,8 @@ class MetaApiWebsocketClient:
 
             @self._socket.on('synchronization')
             async def on_synchronization(data):
+                if self._packetLogger:
+                    self._packetLogger.log_packet(data)
                 self._convert_iso_time_to_date(data)
                 await self._process_synchronization_packet(data)
 
@@ -168,6 +185,7 @@ class MetaApiWebsocketClient:
                     self._requestResolves[request_resolve].set_exception(Exception('MetaApi connection closed'))
             self._requestResolves = {}
             self._synchronizationListeners = {}
+            self._latencyListeners = []
             self._reconnectListeners = []
             self._packetOrderer.stop()
 
@@ -181,7 +199,7 @@ class MetaApiWebsocketClient:
         Returns:
             A coroutine resolving with account information.
         """
-        response = await self._rpc_request(account_id, {'type': 'getAccountInformation'})
+        response = await self._rpc_request(account_id, {'application': 'RPC', 'type': 'getAccountInformation'})
         return response['accountInformation']
 
     async def get_positions(self, account_id: str) -> 'asyncio.Future[List[MetatraderPosition]]':
@@ -194,7 +212,7 @@ class MetaApiWebsocketClient:
         Returns:
             A coroutine resolving with array of open positions.
         """
-        response = await self._rpc_request(account_id, {'type': 'getPositions'})
+        response = await self._rpc_request(account_id, {'application': 'RPC', 'type': 'getPositions'})
         return response['positions']
 
     async def get_position(self, account_id: str, position_id: str) -> 'asyncio.Future[MetatraderPosition]':
@@ -208,7 +226,8 @@ class MetaApiWebsocketClient:
         Returns:
             A coroutine resolving with MetaTrader position found.
         """
-        response = await self._rpc_request(account_id, {'type': 'getPosition', 'positionId': position_id})
+        response = await self._rpc_request(account_id, {'application': 'RPC', 'type': 'getPosition',
+                                                        'positionId': position_id})
         return response['position']
 
     async def get_orders(self, account_id: str) -> 'asyncio.Future[List[MetatraderOrder]]':
@@ -221,7 +240,7 @@ class MetaApiWebsocketClient:
         Returns:
             A coroutine resolving with open MetaTrader orders.
         """
-        response = await self._rpc_request(account_id, {'type': 'getOrders'})
+        response = await self._rpc_request(account_id, {'application': 'RPC', 'type': 'getOrders'})
         return response['orders']
 
     async def get_order(self, account_id: str, order_id: str) -> 'asyncio.Future[MetatraderOrder]':
@@ -235,7 +254,7 @@ class MetaApiWebsocketClient:
         Returns:
             A coroutine resolving with metatrader order found.
         """
-        response = await self._rpc_request(account_id, {'type': 'getOrder', 'orderId': order_id})
+        response = await self._rpc_request(account_id, {'application': 'RPC', 'type': 'getOrder', 'orderId': order_id})
         return response['order']
 
     async def get_history_orders_by_ticket(self, account_id: str, ticket: str) -> MetatraderHistoryOrders:
@@ -249,7 +268,8 @@ class MetaApiWebsocketClient:
         Returns:
             A coroutine resolving with request results containing history orders found.
         """
-        response = await self._rpc_request(account_id, {'type': 'getHistoryOrdersByTicket', 'ticket': ticket})
+        response = await self._rpc_request(account_id, {'application': 'RPC', 'type': 'getHistoryOrdersByTicket',
+                                                        'ticket': ticket})
         return {
             'historyOrders': response['historyOrders'],
             'synchronizing': response['synchronizing']
@@ -266,7 +286,7 @@ class MetaApiWebsocketClient:
         Returns:
             A coroutine resolving with request results containing history orders found.
         """
-        response = await self._rpc_request(account_id, {'type': 'getHistoryOrdersByPosition',
+        response = await self._rpc_request(account_id, {'application': 'RPC', 'type': 'getHistoryOrdersByPosition',
                                                         'positionId': position_id})
         return {
             'historyOrders': response['historyOrders'],
@@ -288,7 +308,7 @@ class MetaApiWebsocketClient:
         Returns:
             A coroutine resolving with request results containing history orders found.
         """
-        response = await self._rpc_request(account_id, {'type': 'getHistoryOrdersByTimeRange',
+        response = await self._rpc_request(account_id, {'application': 'RPC', 'type': 'getHistoryOrdersByTimeRange',
                                                         'startTime': format_date(start_time),
                                                         'endTime': format_date(end_time),
                                                         'offset': offset, 'limit': limit})
@@ -308,7 +328,8 @@ class MetaApiWebsocketClient:
         Returns:
             A coroutine resolving with request results containing deals found.
         """
-        response = await self._rpc_request(account_id, {'type': 'getDealsByTicket', 'ticket': ticket})
+        response = await self._rpc_request(account_id, {'application': 'RPC', 'type': 'getDealsByTicket',
+                                                        'ticket': ticket})
         return {
             'deals': response['deals'],
             'synchronizing': response['synchronizing']
@@ -325,7 +346,8 @@ class MetaApiWebsocketClient:
         Returns:
             A coroutine resolving with request results containing deals found.
         """
-        response = await self._rpc_request(account_id, {'type': 'getDealsByPosition', 'positionId': position_id})
+        response = await self._rpc_request(account_id, {'application': 'RPC', 'type': 'getDealsByPosition',
+                                                        'positionId': position_id})
         return {
             'deals': response['deals'],
             'synchronizing': response['synchronizing']
@@ -346,7 +368,7 @@ class MetaApiWebsocketClient:
         Returns:
             A coroutine resolving with request results containing deals found.
         """
-        response = await self._rpc_request(account_id, {'type': 'getDealsByTimeRange',
+        response = await self._rpc_request(account_id, {'application': 'RPC', 'type': 'getDealsByTimeRange',
                                                         'startTime': format_date(start_time),
                                                         'endTime': format_date(end_time),
                                                         'offset': offset, 'limit': limit})
@@ -355,17 +377,21 @@ class MetaApiWebsocketClient:
             'synchronizing': response['synchronizing']
         }
 
-    def remove_history(self, account_id: str) -> Coroutine:
+    def remove_history(self, account_id: str, application: str = None) -> Coroutine:
         """Clears the order and transaction history of a specified application so that it can be synchronized from
         scratch (see https://metaapi.cloud/docs/client/websocket/api/removeHistory/).
 
         Args:
             account_id: Id of the MetaTrader account to remove history for.
+            application: Application to remove history for.
 
         Returns:
             A coroutine resolving when the history is cleared.
         """
-        return self._rpc_request(account_id, {'type': 'removeHistory'})
+        params = {'type': 'removeHistory'}
+        if application:
+            params['application'] = application
+        return self._rpc_request(account_id, params)
 
     def remove_application(self, account_id: str) -> Coroutine:
         """Clears the order and transaction history of a specified application and removes the application
@@ -487,7 +513,8 @@ class MetaApiWebsocketClient:
         Returns:
             A coroutine which resolves when specification is retrieved.
         """
-        response = await self._rpc_request(account_id, {'type': 'getSymbolSpecification', 'symbol': symbol})
+        response = await self._rpc_request(account_id, {'application': 'RPC', 'type': 'getSymbolSpecification',
+                                                        'symbol': symbol})
         return response['specification']
 
     async def get_symbol_price(self, account_id: str, symbol: str) -> 'asyncio.Future[MetatraderSymbolPrice]':
@@ -501,7 +528,8 @@ class MetaApiWebsocketClient:
         Returns:
             A coroutine which resolves when price is retrieved.
         """
-        response = await self._rpc_request(account_id, {'type': 'getSymbolPrice', 'symbol': symbol})
+        response = await self._rpc_request(account_id, {'application': 'RPC', 'type': 'getSymbolPrice',
+                                                        'symbol': symbol})
         return response['price']
 
     def save_uptime(self, account_id: str, uptime: Dict):
@@ -515,6 +543,16 @@ class MetaApiWebsocketClient:
             A coroutine which resolves when uptime statistics is submitted.
         """
         return self._rpc_request(account_id, {'type': 'saveUptime', 'uptime': uptime})
+
+    def unsubscribe(self, account_id: str):
+        """Unsubscribe from account (see https://metaapi.cloud/docs/client/websocket/api/synchronizing/unsubscribe).
+
+        Args:
+            account_id: Id of the MetaTrader account to retrieve symbol price for.
+
+        Returns:
+            A coroutine which resolves when socket is unsubscribed."""
+        return self._rpc_request(account_id, {'type': 'unsubscribe'})
 
     def add_synchronization_listener(self, account_id: str, listener):
         """Adds synchronization listener for specific account.
@@ -544,6 +582,20 @@ class MetaApiWebsocketClient:
         elif listeners.__contains__(listener):
             listeners.remove(listener)
         self._synchronizationListeners[account_id] = listeners
+
+    def add_latency_listener(self, listener: LatencyListener):
+        """Adds latency listener.
+
+        Args:
+            listener: Latency listener to add."""
+        self._latencyListeners.append(listener)
+
+    def remove_latency_listener(self, listener: LatencyListener):
+        """Removes latency listener.
+
+        Args:
+            listener: Latency listener to remove."""
+        self._latencyListeners = list(filter(lambda l: l != listener, self._latencyListeners))
 
     def add_reconnect_listener(self, listener: ReconnectListener):
         """Adds reconnect listener.
@@ -593,9 +645,11 @@ class MetaApiWebsocketClient:
             request_id = random_id()
             request['requestId'] = request_id
 
+        request['timestamps'] = {'clientProcessingStarted': format_date(datetime.now())}
         self._requestResolves[request_id] = asyncio.Future()
+        self._requestResolves[request_id].type = request['type']
         request['accountId'] = account_id
-        request['application'] = self._application
+        request['application'] = request['application'] if 'application' in request else self._application
         await self._socket.emit('request', request)
         try:
             resolve = await asyncio.wait_for(self._requestResolves[request_id], timeout=timeout_in_seconds or
@@ -637,21 +691,32 @@ class MetaApiWebsocketClient:
                         self._convert_iso_time_to_date(item)
                 if isinstance(value, dict):
                     self._convert_iso_time_to_date(value)
+            if packet and 'timestamps' in packet:
+                for field in packet['timestamps']:
+                    packet['timestamps'][field] = date(packet['timestamps'][field])
+            if packet and 'type' in packet and packet['type'] == 'prices':
+                if 'prices' in packet:
+                    for price in packet['prices']:
+                        if 'timestamps' in price:
+                            for field in price['timestamps']:
+                                if isinstance(price['timestamps'][field], str):
+                                    price['timestamps'][field] = date(price['timestamps'][field])
 
     async def _process_synchronization_packet(self, packet):
         try:
-            if self._packetLogger:
-                self._packetLogger.log_packet(packet)
             packets = self._packetOrderer.restore_order(packet)
             for data in packets:
                 if data['type'] == 'authenticated':
+                    if 'host' in data:
+                        self._connectedHosts[data['accountId']] = data['host']
+
                     on_connected_tasks: List[asyncio.Task] = []
 
                     async def run_on_connected(listener):
                         try:
                             await listener.on_connected()
                         except Exception as err:
-                            print('Failed to notify listener about connected event', err)
+                            print(f'{data["accountId"]}: Failed to notify listener about connected event', err)
 
                     if data['accountId'] in self._synchronizationListeners:
                         for listener in self._synchronizationListeners[data['accountId']]:
@@ -659,19 +724,21 @@ class MetaApiWebsocketClient:
                     if len(on_connected_tasks) > 0:
                         await asyncio.wait(on_connected_tasks)
                 elif data['type'] == 'disconnected':
-                    on_disconnected_tasks: List[asyncio.Task] = []
+                    if self._connectedHosts[data['accountId']] == data['host']:
+                        on_disconnected_tasks: List[asyncio.Task] = []
 
-                    async def run_on_disconnected(listener):
-                        try:
-                            await listener.on_disconnected()
-                        except Exception as err:
-                            print('Failed to notify listener about disconnected event', err)
+                        async def run_on_disconnected(listener):
+                            try:
+                                await listener.on_disconnected()
+                            except Exception as err:
+                                print(f'{data["accountId"]}: Failed to notify listener about disconnected event', err)
 
-                    if data['accountId'] in self._synchronizationListeners:
-                        for listener in self._synchronizationListeners[data['accountId']]:
-                            on_disconnected_tasks.append(asyncio.create_task(run_on_disconnected(listener)))
-                    if len(on_disconnected_tasks) > 0:
-                        await asyncio.wait(on_disconnected_tasks)
+                        if data['accountId'] in self._synchronizationListeners:
+                            for listener in self._synchronizationListeners[data['accountId']]:
+                                on_disconnected_tasks.append(asyncio.create_task(run_on_disconnected(listener)))
+                        if len(on_disconnected_tasks) > 0:
+                            await asyncio.wait(on_disconnected_tasks)
+                        del self._connectedHosts[data['accountId']]
                 elif data['type'] == 'synchronizationStarted':
                     on_sync_started_tasks: List[asyncio.Task] = []
 
@@ -679,7 +746,8 @@ class MetaApiWebsocketClient:
                         try:
                             await listener.on_synchronization_started()
                         except Exception as err:
-                            print('Failed to notify listener about synchronization started event', err)
+                            print(f'{data["accountId"]}: Failed to notify listener about synchronization started ' +
+                                  'event', err)
 
                     if data['accountId'] in self._synchronizationListeners:
                         for listener in self._synchronizationListeners[data['accountId']]:
@@ -694,7 +762,8 @@ class MetaApiWebsocketClient:
                             try:
                                 await listener.on_account_information_updated(data['accountInformation'])
                             except Exception as err:
-                                print('Failed to notify listener about accountInformation event', err)
+                                print(f'{data["accountId"]}: Failed to notify listener about ' +
+                                      'accountInformation event', err)
 
                         for listener in self._synchronizationListeners[data['accountId']]:
                             on_account_information_updated_tasks.append(asyncio
@@ -710,7 +779,7 @@ class MetaApiWebsocketClient:
                                 try:
                                     await listener.on_deal_added(deal)
                                 except Exception as err:
-                                    print('Failed to notify listener about deals event', err)
+                                    print(f'{data["accountId"]}: Failed to notify listener about deals event', err)
 
                             if data['accountId'] in self._synchronizationListeners:
                                 for listener in self._synchronizationListeners[data['accountId']]:
@@ -725,7 +794,7 @@ class MetaApiWebsocketClient:
                             if 'orders' in data:
                                 await listener.on_orders_replaced(data['orders'])
                         except Exception as err:
-                            print('Failed to notify listener about orders event', err)
+                            print(f'{data["accountId"]}: Failed to notify listener about orders event', err)
 
                     if data['accountId'] in self._synchronizationListeners:
                         for listener in self._synchronizationListeners[data['accountId']]:
@@ -741,7 +810,8 @@ class MetaApiWebsocketClient:
                                 try:
                                     await listener.on_history_order_added(historyOrder)
                                 except Exception as err:
-                                    print('Failed to notify listener about historyOrders event', err)
+                                    print(f'{data["accountId"]}: Failed to notify listener about historyOrders ' +
+                                          'event', err)
 
                             if data['accountId'] in self._synchronizationListeners:
                                 for listener in self._synchronizationListeners[data['accountId']]:
@@ -757,7 +827,7 @@ class MetaApiWebsocketClient:
                             if 'positions' in data:
                                 await listener.on_positions_replaced(data['positions'])
                         except Exception as err:
-                            print('Failed to notify listener about positions event', err)
+                            print(f'{data["accountId"]}: Failed to notify listener about positions event', err)
 
                     if data['accountId'] in self._synchronizationListeners:
                         for listener in self._synchronizationListeners[data['accountId']]:
@@ -773,7 +843,7 @@ class MetaApiWebsocketClient:
                             try:
                                 await listener.on_account_information_updated(data['accountInformation'])
                             except Exception as err:
-                                print('Failed to notify listener about update event', err)
+                                print(f'{data["accountId"]}: Failed to notify listener about update event', err)
 
                         for listener in self._synchronizationListeners[data['accountId']]:
                             on_account_information_updated_tasks.append(
@@ -788,7 +858,7 @@ class MetaApiWebsocketClient:
                                 try:
                                     await listener.on_position_updated(position)
                                 except Exception as err:
-                                    print('Failed to notify listener about update event', err)
+                                    print(f'{data["accountId"]}: Failed to notify listener about update event', err)
 
                             if data['accountId'] in self._synchronizationListeners:
                                 for listener in self._synchronizationListeners[data['accountId']]:
@@ -804,7 +874,7 @@ class MetaApiWebsocketClient:
                                 try:
                                     await listener.on_position_removed(positionId)
                                 except Exception as err:
-                                    print('Failed to notify listener about update event', err)
+                                    print(f'{data["accountId"]}: Failed to notify listener about update event', err)
 
                             if data['accountId'] in self._synchronizationListeners:
                                 for listener in self._synchronizationListeners[data['accountId']]:
@@ -820,7 +890,7 @@ class MetaApiWebsocketClient:
                                 try:
                                     await listener.on_order_updated(order)
                                 except Exception as err:
-                                    print('Failed to notify listener about update event', err)
+                                    print(f'{data["accountId"]}: Failed to notify listener about update event', err)
 
                             if data['accountId'] in self._synchronizationListeners:
                                 for listener in self._synchronizationListeners[data['accountId']]:
@@ -836,7 +906,7 @@ class MetaApiWebsocketClient:
                                 try:
                                     await listener.on_order_completed(orderId)
                                 except Exception as err:
-                                    print('Failed to notify listener about update event', err)
+                                    print(f'{data["accountId"]}: Failed to notify listener about update event', err)
 
                             if data['accountId'] in self._synchronizationListeners:
                                 for listener in self._synchronizationListeners[data['accountId']]:
@@ -852,7 +922,7 @@ class MetaApiWebsocketClient:
                                 try:
                                     await listener.on_history_order_added(historyOrder)
                                 except Exception as err:
-                                    print('Failed to notify listener about update event', err)
+                                    print(f'{data["accountId"]}: Failed to notify listener about update event', err)
 
                             if data['accountId'] in self._synchronizationListeners:
                                 for listener in self._synchronizationListeners[data['accountId']]:
@@ -868,7 +938,7 @@ class MetaApiWebsocketClient:
                                 try:
                                     await listener.on_deal_added(deal)
                                 except Exception as err:
-                                    print('Failed to notify listener about update event', err)
+                                    print(f'{data["accountId"]}: Failed to notify listener about update event', err)
 
                             if data['accountId'] in self._synchronizationListeners:
                                 for listener in self._synchronizationListeners[data['accountId']]:
@@ -876,6 +946,21 @@ class MetaApiWebsocketClient:
                                         asyncio.create_task(run_on_deal_added(listener)))
                             if len(on_deal_added_tasks) > 0:
                                 await asyncio.wait(on_deal_added_tasks)
+                    if 'timestamps' in data:
+                        data['timestamps']['clientProcessingFinished'] = datetime.now()
+                        on_update_tasks: List[asyncio.Task] = []
+
+                        async def run_on_update(listener):
+                            try:
+                                await listener.on_update(data['accountId'], data['timestamps'])
+                            except Exception as err:
+                                print(f'{data["accountId"]}: Failed to notify latency listener about update event', err)
+
+                        for listener in self._latencyListeners:
+                            on_update_tasks.append(asyncio.create_task(run_on_update(listener)))
+
+                        if len(on_update_tasks) > 0:
+                            await asyncio.wait(on_update_tasks)
                 elif data['type'] == 'dealSynchronizationFinished':
                     if data['accountId'] in self._synchronizationListeners:
                         on_deal_synchronization_finished_tasks: List[asyncio.Task] = []
@@ -884,7 +969,8 @@ class MetaApiWebsocketClient:
                             try:
                                 await listener.on_deal_synchronization_finished(data['synchronizationId'])
                             except Exception as err:
-                                print('Failed to notify listener about dealSynchronizationFinished event', err)
+                                print(f'{data["accountId"]}: Failed to notify listener about ' +
+                                      'dealSynchronizationFinished event', err)
 
                         for listener in self._synchronizationListeners[data['accountId']]:
                             on_deal_synchronization_finished_tasks.append(
@@ -899,7 +985,8 @@ class MetaApiWebsocketClient:
                             try:
                                 await listener.on_order_synchronization_finished(data['synchronizationId'])
                             except Exception as err:
-                                print('Failed to notify listener about orderSynchronizationFinished event', err)
+                                print(f'{data["accountId"]}: Failed to notify listener about ' +
+                                      'orderSynchronizationFinished event', err)
 
                         for listener in self._synchronizationListeners[data['accountId']]:
                             on_order_synchronization_finished_tasks.append(
@@ -907,14 +994,33 @@ class MetaApiWebsocketClient:
                         if len(on_order_synchronization_finished_tasks) > 0:
                             await asyncio.wait(on_order_synchronization_finished_tasks)
                 elif data['type'] == 'status':
-                    if data['accountId'] in self._synchronizationListeners:
+                    if not data['accountId'] in self._connectedHosts:
+                        if not data['accountId'] in self._resubscriptionTriggerTimes:
+                            self._resubscriptionTriggerTimes[data['accountId']] = datetime.now()
+                        elif self._resubscriptionTriggerTimes[data['accountId']].timestamp() + 2 * 60 < \
+                                datetime.now().timestamp():
+                            del self._resubscriptionTriggerTimes[data['accountId']]
+                            print(f'[{datetime.now().isoformat()}] it seems like we are not connected to a ' +
+                                  'running API server yet, retrying subscription for account ' + data['accountId'])
+
+                            async def run_subscribe():
+                                try:
+                                    await self.subscribe(data['accountId'])
+                                except Exception as error:
+                                    print(f'[{datetime.now().isoformat()}] MetaApi websocket client failed to ' +
+                                          'receive subscribe response for account id ' + data['accountId'], error)
+                            asyncio.create_task(run_subscribe())
+                    elif self._connectedHosts[data['accountId']] == data['host']:
+                        if data['accountId'] in self._resubscriptionTriggerTimes:
+                            del self._resubscriptionTriggerTimes[data['accountId']]
                         on_broker_connection_status_changed_tasks: List[asyncio.Task] = []
 
                         async def run_on_broker_connection_status_changed(listener):
                             try:
                                 await listener.on_broker_connection_status_changed(bool(data['connected']))
                             except Exception as err:
-                                print('Failed to notify listener about brokerConnectionStatusChanged event', err)
+                                print(f'{data["accountId"]}: Failed to notify listener about ' +
+                                      'brokerConnectionStatusChanged event', err)
 
                         for listener in self._synchronizationListeners[data['accountId']]:
                             on_broker_connection_status_changed_tasks.append(
@@ -928,7 +1034,8 @@ class MetaApiWebsocketClient:
                                 try:
                                     await listener.on_health_status(data['healthStatus'])
                                 except Exception as err:
-                                    print('Failed to notify listener about server-side healthStatus event', err)
+                                    print(f'{data["accountId"]}: Failed to notify listener about server-side ' +
+                                          'healthStatus event', err)
 
                             if data['accountId'] in self._synchronizationListeners:
                                 for listener in self._synchronizationListeners[data['accountId']]:
@@ -945,7 +1052,8 @@ class MetaApiWebsocketClient:
                                 try:
                                     await listener.on_symbol_specification_updated(specification)
                                 except Exception as err:
-                                    print('Failed to notify listener about specifications event', err)
+                                    print(f'{data["accountId"]}: Failed to notify listener about specifications ' +
+                                          'event', err)
 
                             if data['accountId'] in self._synchronizationListeners:
                                 for listener in self._synchronizationListeners[data['accountId']]:
@@ -967,7 +1075,7 @@ class MetaApiWebsocketClient:
                                 await listener.on_symbol_prices_updated(prices, equity, margin,
                                                                         free_margin, margin_level)
                             except Exception as err:
-                                print('Failed to notify listener about prices event', err)
+                                print(f'{data["accountId"]}: Failed to notify listener about prices event', err)
 
                         if data['accountId'] in self._synchronizationListeners:
                             for listener in self._synchronizationListeners[data['accountId']]:
@@ -989,6 +1097,24 @@ class MetaApiWebsocketClient:
                                         asyncio.create_task(run_on_symbol_price_updated(listener)))
                                 if len(on_symbol_price_updated_tasks) > 0:
                                     await asyncio.wait(on_symbol_price_updated_tasks)
+
+                        for price in data['prices']:
+                            if 'timestamps' in price:
+                                price['timestamps']['clientProcessingFinished'] = datetime.now()
+                                on_symbol_price_tasks: List[asyncio.Task] = []
+
+                                async def run_on_symbol_price(listener):
+                                    try:
+                                        await listener.on_symbol_price(data['accountId'], price['symbol'],
+                                                                       price['timestamps'])
+                                    except Exception as err:
+                                        print(f'{data["accountId"]}: Failed to notify latency listener about ' +
+                                              'update event', err)
+                                for listener in self._latencyListeners:
+                                    on_symbol_price_tasks.append(
+                                        asyncio.create_task(run_on_symbol_price(listener)))
+                                if len(on_symbol_price_tasks) > 0:
+                                    await asyncio.wait(on_symbol_price_tasks)
         except Exception as err:
             print('Failed to process incoming synchronization packet', err)
 

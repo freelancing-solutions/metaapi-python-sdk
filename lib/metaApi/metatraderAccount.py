@@ -1,5 +1,5 @@
 from ..clients.metaApi.metatraderAccount_client import MetatraderAccountClient, MetatraderAccountDto, \
-    MetatraderAccountUpdateDto
+    MetatraderAccountUpdateDto, Extension
 from ..clients.metaApi.metaApiWebsocket_client import MetaApiWebsocketClient
 from ..clients.timeoutException import TimeoutException
 from .metaApiConnection import MetaApiConnection
@@ -8,6 +8,7 @@ from ..metaApi.historyFileManager import HistoryFileManager
 from .historyStorage import HistoryStorage
 from .connectionRegistryModel import ConnectionRegistryModel
 from datetime import datetime, timedelta
+from typing import List, Dict
 import asyncio
 
 
@@ -137,6 +138,24 @@ class MetatraderAccount(MetatraderAccountModel):
             Flag indicating if trades should be placed as manual trades on this account.
         """
         return 'manualTrades' in self._data and self._data['manualTrades']
+
+    @property
+    def extensions(self) -> List[Extension]:
+        """Returns API extensions.
+
+        Returns:
+            API extensions.
+        """
+        return self._data['extensions']
+
+    @property
+    def metadata(self) -> Dict:
+        """Returns extra information which can be stored together with your account.
+
+        Returns:
+            Extra information which can be stored together with your account.
+        """
+        return self._data['metadata']
 
     async def reload(self):
         """Reloads MetaTrader account from API.

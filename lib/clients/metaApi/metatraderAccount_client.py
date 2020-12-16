@@ -1,9 +1,17 @@
 from ..httpClient import HttpClient
 from ..metaApi_client import MetaApiClient
 from typing_extensions import TypedDict
-from typing import List, Union, Optional
+from typing import List, Union, Optional, Dict
 from requests import Response
 from enum import Enum
+
+
+class Extension(TypedDict):
+    """Extension model."""
+    id: str
+    """Extension id."""
+    configuration: Dict
+    """Extension configuration."""
 
 
 class State(Enum):
@@ -86,6 +94,10 @@ class MetatraderAccountDto(TypedDict):
     2.5 seconds. Intervals less than 2.5 seconds are supported only for G2."""
     tags: Optional[List[str]]
     """MetaTrader account tags."""
+    extensions: List[Extension]
+    """API extensions."""
+    metadata: Dict
+    """Extra information which can be stored together with your account."""
 
 
 class NewMetatraderAccountDto(TypedDict):
@@ -117,6 +129,10 @@ class NewMetatraderAccountDto(TypedDict):
     2.5 seconds. Intervals less than 2.5 seconds are supported only for G2."""
     tags: Optional[List[str]]
     """MetaTrader account tags."""
+    extensions: List[Extension]
+    """API extensions."""
+    metadata: Dict
+    """Extra information which can be stored together with your account."""
 
 
 class MetatraderAccountUpdateDto(TypedDict):
@@ -136,6 +152,10 @@ class MetatraderAccountUpdateDto(TypedDict):
     2.5 seconds. Intervals less than 2.5 seconds are supported only for G2."""
     tags: Optional[List[str]]
     """MetaTrader account tags."""
+    extensions: List[Extension]
+    """API extensions."""
+    metadata: Dict
+    """Extra information which can be stored together with your account."""
 
 
 class MetatraderAccountClient(MetaApiClient):

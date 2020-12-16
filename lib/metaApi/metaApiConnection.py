@@ -199,15 +199,18 @@ class MetaApiConnection(SynchronizationListener, ReconnectListener):
         """
         return self._websocketClient.get_deals_by_time_range(self._account.id, start_time, end_time, offset, limit)
 
-    def remove_history(self) -> Coroutine:
+    def remove_history(self, application: str = None) -> Coroutine:
         """Clears the order and transaction history of a specified account so that it can be synchronized from scratch
         (see https://metaapi.cloud/docs/client/websocket/api/removeHistory/).
+
+        Args:
+            application: Application to remove history for.
 
         Returns:
             A coroutine resolving when the history is cleared.
         """
         self._historyStorage.reset()
-        return self._websocketClient.remove_history(self._account.id)
+        return self._websocketClient.remove_history(self._account.id, application)
 
     def remove_application(self):
         """Clears the order and transaction history of a specified application and removes application (see
@@ -804,10 +807,11 @@ class MetaApiConnection(SynchronizationListener, ReconnectListener):
         time_left_in_seconds = max(0, timeout_in_seconds - (datetime.now() - start_time).total_seconds())
         await self._websocketClient.wait_synchronized(self._account.id, application_pattern, time_left_in_seconds)
 
-    def close(self):
+    async def close(self):
         """Closes the connection. The instance of the class should no longer be used after this method is invoked."""
         if not self._closed:
             self._shouldSynchronize = None
+            await self._websocketClient.unsubscribe(self._account.id)
             self._websocketClient.remove_synchronization_listener(self._account.id, self)
             self._websocketClient.remove_synchronization_listener(self._account.id, self._terminalState)
             self._websocketClient.remove_synchronization_listener(self._account.id, self._historyStorage)
@@ -849,6 +853,7 @@ class MetaApiConnection(SynchronizationListener, ReconnectListener):
             for symbol in self.subscribed_symbols:
                 await self.subscribe_to_market_data(symbol)
             self._synchronized = True
+            self._synchronizationRetryIntervalInSeconds = 1
         except Exception as err:
             print(f'[{datetime.now().isoformat()}] MetaApi websocket client for account ' + self.account.id +
                   ' failed to synchronize', err)

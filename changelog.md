@@ -14,6 +14,11 @@
   - added option for reverse copying in CopyFactory API
   - added ConnectionHealthMonitor.server_health_status API to retrieve health status of server-side applications
   - added option to specify account-wide stopout and risk limits in CopyFactory API
+  - track MetaApi application latencies
+  - send RPC requests via RPC application
+  - increased synchronization stability
+  - added extensions for accounts
+  - added metadata field for accounts
 
 10.1.0
   - added support for portfolio strategies (i.e. the strategies which include several other member strategies) to CopyFactory API

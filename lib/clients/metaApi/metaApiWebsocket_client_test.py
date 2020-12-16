@@ -1,13 +1,15 @@
 from .metaApiWebsocket_client import MetaApiWebsocketClient
 from socketio import AsyncServer
 from aiohttp import web
-from ...metaApi.models import date
+from ...metaApi.models import date, format_date
 import pytest
 import asyncio
 import copy
 import re
 from urllib.parse import parse_qs
 from mock import MagicMock, AsyncMock, patch
+from copy import deepcopy
+from datetime import datetime
 sio = None
 client = MetaApiWebsocketClient('token')
 
@@ -91,7 +93,7 @@ class TestMetaApiWebsocketClient:
         @sio.on('request')
         async def on_request(sid, data):
             if data['type'] == 'getAccountInformation' and data['accountId'] == 'accountId' \
-                    and data['application'] == 'application':
+                    and data['application'] == 'RPC':
                 await sio.emit('response', {'type': 'response', 'accountId': data['accountId'],
                                             'requestId': data['requestId'], 'accountInformation': account_information})
 
@@ -125,7 +127,7 @@ class TestMetaApiWebsocketClient:
         @sio.on('request')
         async def on_request(sid, data):
             if data['type'] == 'getPositions' and data['accountId'] == 'accountId' \
-                    and data['application'] == 'application':
+                    and data['application'] == 'RPC':
                 await sio.emit('response', {'type': 'response', 'accountId': data['accountId'],
                                             'requestId': data['requestId'], 'positions': positions})
             else:
@@ -161,7 +163,7 @@ class TestMetaApiWebsocketClient:
         @sio.on('request')
         async def on_request(sid, data):
             if data['type'] == 'getPosition' and data['accountId'] == 'accountId' and data['positionId'] == '46214692' \
-                    and data['application'] == 'application':
+                    and data['application'] == 'RPC':
                 await sio.emit('response', {'type': 'response', 'accountId': data['accountId'],
                                             'requestId': data['requestId'], 'position': position})
 
@@ -190,7 +192,7 @@ class TestMetaApiWebsocketClient:
         @sio.on('request')
         async def on_request(sid, data):
             if data['type'] == 'getOrders' and data['accountId'] == 'accountId' \
-                    and data['application'] == 'application':
+                    and data['application'] == 'RPC':
                 await sio.emit('response', {'type': 'response', 'accountId': data['accountId'],
                                             'requestId': data['requestId'], 'orders': orders})
 
@@ -219,7 +221,7 @@ class TestMetaApiWebsocketClient:
         @sio.on('request')
         async def on_request(sid, data):
             if data['type'] == 'getOrder' and data['accountId'] == 'accountId' and data['orderId'] == '46871284' \
-                    and data['application'] == 'application':
+                    and data['application'] == 'RPC':
                 await sio.emit('response', {'type': 'response', 'accountId': data['accountId'],
                                             'requestId': data['requestId'], 'order': order})
 
@@ -249,7 +251,7 @@ class TestMetaApiWebsocketClient:
         @sio.on('request')
         async def on_request(sid, data):
             if data['type'] == 'getHistoryOrdersByTicket' and data['accountId'] == 'accountId' and \
-                    data['ticket'] == '46214692' and data['application'] == 'application':
+                    data['ticket'] == '46214692' and data['application'] == 'RPC':
                 await sio.emit('response', {'type': 'response', 'accountId': data['accountId'],
                                             'requestId': data['requestId'], 'historyOrders': history_orders,
                                             'synchronizing': False})
@@ -280,7 +282,7 @@ class TestMetaApiWebsocketClient:
         @sio.on('request')
         async def on_request(sid, data):
             if data['type'] == 'getHistoryOrdersByPosition' and data['accountId'] == 'accountId' and \
-                    data['positionId'] == '46214692' and data['application'] == 'application':
+                    data['positionId'] == '46214692' and data['application'] == 'RPC':
                 await sio.emit('response', {'type': 'response', 'accountId': data['accountId'],
                                             'requestId': data['requestId'], 'historyOrders': history_orders,
                                             'synchronizing': False})
@@ -311,7 +313,7 @@ class TestMetaApiWebsocketClient:
         @sio.on('request')
         async def on_request(sid, data):
             if data['type'] == 'getHistoryOrdersByTimeRange' and data['accountId'] == 'accountId' and \
-                    data['startTime'] == '2020-04-15T02:45:00.000Z' and data['application'] == 'application' and \
+                    data['startTime'] == '2020-04-15T02:45:00.000Z' and data['application'] == 'RPC' and \
                     data['endTime'] == '2020-04-15T02:46:00.000Z' and data['offset'] == 1 and data['limit'] == 100:
                 await sio.emit('response', {'type': 'response', 'accountId': data['accountId'],
                                             'requestId': data['requestId'], 'historyOrders': history_orders,
@@ -346,7 +348,7 @@ class TestMetaApiWebsocketClient:
         @sio.on('request')
         async def on_request(sid, data):
             if data['type'] == 'getDealsByTicket' and data['accountId'] == 'accountId' and \
-                    data['ticket'] == '46214692' and data['application'] == 'application':
+                    data['ticket'] == '46214692' and data['application'] == 'RPC':
                 await sio.emit('response', {'type': 'response', 'accountId': data['accountId'],
                                             'requestId': data['requestId'], 'deals': deals,
                                             'synchronizing': False})
@@ -379,7 +381,7 @@ class TestMetaApiWebsocketClient:
         @sio.on('request')
         async def on_request(sid, data):
             if data['type'] == 'getDealsByPosition' and data['accountId'] == 'accountId' and \
-                    data['positionId'] == '46214692' and data['application'] == 'application':
+                    data['positionId'] == '46214692' and data['application'] == 'RPC':
                 await sio.emit('response', {'type': 'response', 'accountId': data['accountId'],
                                             'requestId': data['requestId'], 'deals': deals,
                                             'synchronizing': False})
@@ -412,7 +414,7 @@ class TestMetaApiWebsocketClient:
         @sio.on('request')
         async def on_request(sid, data):
             if data['type'] == 'getDealsByTimeRange' and data['accountId'] == 'accountId' and \
-                    data['startTime'] == '2020-04-15T02:45:00.000Z' and data['application'] == 'application' and \
+                    data['startTime'] == '2020-04-15T02:45:00.000Z' and data['application'] == 'RPC' and \
                     data['endTime'] == '2020-04-15T02:46:00.000Z' and data['offset'] == 1 and data['limit'] == 100:
                 await sio.emit('response', {'type': 'response', 'accountId': data['accountId'],
                                             'requestId': data['requestId'], 'deals': deals,
@@ -431,13 +433,13 @@ class TestMetaApiWebsocketClient:
         @sio.on('request')
         async def on_request(sid, data):
             if data['type'] == 'removeHistory' and data['accountId'] == 'accountId' \
-                    and data['application'] == 'application':
+                    and data['application'] == 'app':
                 nonlocal request_received
                 request_received = True
                 await sio.emit('response', {'type': 'response', 'accountId': data['accountId'],
                                             'requestId': data['requestId']})
 
-        await client.remove_history('accountId')
+        await client.remove_history('accountId', 'app')
         assert request_received
 
     @pytest.mark.asyncio
@@ -591,7 +593,7 @@ class TestMetaApiWebsocketClient:
         @sio.on('request')
         async def on_request(sid, data):
             if data['type'] == 'getSymbolSpecification' and data['accountId'] == 'accountId' and \
-                    data['symbol'] == 'AUDNZD' and data['application'] == 'application':
+                    data['symbol'] == 'AUDNZD' and data['application'] == 'RPC':
                 await sio.emit('response', {'type': 'response', 'accountId': data['accountId'],
                                             'requestId': data['requestId'], 'specification': specification})
 
@@ -613,7 +615,7 @@ class TestMetaApiWebsocketClient:
         @sio.on('request')
         async def on_request(sid, data):
             if data['type'] == 'getSymbolPrice' and data['accountId'] == 'accountId' and \
-                    data['symbol'] == 'AUDNZD' and data['application'] == 'application':
+                    data['symbol'] == 'AUDNZD' and data['application'] == 'RPC':
                 await sio.emit('response', {'type': 'response', 'accountId': data['accountId'],
                                             'requestId': data['requestId'], 'price': price})
 
@@ -631,6 +633,21 @@ class TestMetaApiWebsocketClient:
                 await sio.emit('response', {'type': 'response', 'accountId': data['accountId'],
                                             'requestId': data['requestId']})
         await client.save_uptime('accountId', {'1h': 100})
+
+    @pytest.mark.asyncio
+    async def test_unsubscribe(self):
+        """Should unsubscribe from account data."""
+
+        response = {'type': 'response', 'accountId': 'accountId'}
+
+        @sio.on('request')
+        async def on_request(sid, data):
+            if data['type'] == 'unsubscribe' and data['accountId'] == 'accountId':
+                await sio.emit('response', {'requestId': data['requestId'], **response})
+
+        actual = await client.unsubscribe('accountId')
+        assert actual['type'] == response['type']
+        assert actual['accountId'] == response['accountId']
 
     @pytest.mark.asyncio
     async def test_handle_validation_exception(self):
@@ -732,7 +749,9 @@ class TestMetaApiWebsocketClient:
         listener.on_broker_connection_status_changed = FinalMock()
 
         client.add_synchronization_listener('accountId', listener)
-        await sio.emit('synchronization', {'type': 'status', 'accountId': 'accountId', 'connected': True})
+        await sio.emit('synchronization', {'type': 'authenticated', 'accountId': 'accountId', 'host': 'ps-mpa-1'})
+        await sio.emit('synchronization', {'type': 'status', 'accountId': 'accountId', 'host': 'ps-mpa-1',
+                                           'connected': True})
         await client._socket.wait()
         listener.on_broker_connection_status_changed.assert_called_with(True)
 
@@ -743,8 +762,9 @@ class TestMetaApiWebsocketClient:
         listener.on_broker_connection_status_changed = AsyncMock()
         listener.on_health_status = FinalMock()
         client.add_synchronization_listener('accountId', listener)
-        await sio.emit('synchronization', {'type': 'status', 'accountId': 'accountId', 'connected': True,
-                                           'healthStatus': {'restApiHealthy': True}})
+        await sio.emit('synchronization', {'type': 'authenticated', 'accountId': 'accountId', 'host': 'ps-mpa-1'})
+        await sio.emit('synchronization', {'type': 'status', 'accountId': 'accountId', 'host': 'ps-mpa-1',
+                                           'connected': True, 'healthStatus': {'restApiHealthy': True}})
         await client._socket.wait()
         listener.on_health_status.assert_called_with({'restApiHealthy': True})
 
@@ -755,7 +775,8 @@ class TestMetaApiWebsocketClient:
         listener = MagicMock()
         listener.on_disconnected = FinalMock()
         client.add_synchronization_listener('accountId', listener)
-        await sio.emit('synchronization', {'type': 'disconnected', 'accountId': 'accountId'})
+        await sio.emit('synchronization', {'type': 'authenticated', 'accountId': 'accountId', 'host': 'ps-mpa-1'})
+        await sio.emit('synchronization', {'type': 'disconnected', 'accountId': 'accountId', 'host': 'ps-mpa-1'})
         await client._socket.wait()
         listener.on_disconnected.assert_called_with()
 
@@ -1129,3 +1150,169 @@ class TestMetaApiWebsocketClient:
 
         await client.wait_synchronized('accountId', 'app.*', 10)
         assert request_received
+
+    @pytest.mark.asyncio
+    async def test_invoke_latency_listener(self):
+        """Should invoke latency listener on response."""
+
+        account_id = None
+        request_type = None
+        actual_timestamps = None
+
+        def on_response(aid, type, ts):
+            nonlocal account_id
+            account_id = aid
+            nonlocal request_type
+            request_type = type
+            nonlocal actual_timestamps
+            actual_timestamps = ts
+
+        listener = MagicMock()
+        listener.on_response = on_response
+        client.add_latency_listener(listener)
+        price = {}
+        timestamps = None
+
+        @sio.on('request')
+        async def on_request(sid, data):
+            if data['type'] == 'getSymbolPrice' and data['accountId'] == 'accountId' and data['symbol'] == 'AUDNZD' \
+                    and data['application'] == 'RPC' and 'clientProcessingStarted' in data['timestamps']:
+                nonlocal timestamps
+                timestamps = deepcopy(data['timestamps'])
+                timestamps['serverProcessingStarted'] = format_date(datetime.now())
+                timestamps['serverProcessingFinished'] = format_date(datetime.now())
+                timestamps['clientProcessingStarted'] = format_date(date(timestamps['clientProcessingStarted']))
+                await sio.emit('response', {'type': 'response', 'accountId': data['accountId'],
+                                            'requestId': data['requestId'], 'price': price, 'timestamps': timestamps})
+
+        await client.get_symbol_price('accountId', 'AUDNZD')
+        await asyncio.sleep(0.05)
+        assert account_id == 'accountId'
+        assert request_type == 'getSymbolPrice'
+        assert actual_timestamps['clientProcessingStarted'] == date(timestamps['clientProcessingStarted'])
+        assert actual_timestamps['serverProcessingStarted'] == date(timestamps['serverProcessingStarted'])
+        assert actual_timestamps['serverProcessingFinished'] == date(timestamps['serverProcessingFinished'])
+        assert 'clientProcessingFinished' in actual_timestamps
+
+    @pytest.mark.asyncio
+    async def test_measure_price_latencies(self):
+        """Should measure price streaming latencies."""
+        prices = [{
+            'symbol': 'AUDNZD',
+            'timestamps': {
+                'eventGenerated': format_date(datetime.now()),
+                'serverProcessingStarted': format_date(datetime.now()),
+                'serverProcessingFinished': format_date(datetime.now())
+            }
+        }]
+        account_id = None
+        symbol = None
+        actual_timestamps = None
+        listener = MagicMock()
+
+        async def on_symbol_price(aid, sym, ts):
+            nonlocal account_id
+            account_id = aid
+            nonlocal symbol
+            symbol = sym
+            nonlocal actual_timestamps
+            actual_timestamps = ts
+            await client.close()
+
+        listener.on_symbol_price = on_symbol_price
+        client.add_latency_listener(listener)
+        await sio.emit('synchronization', {'type': 'prices', 'accountId': 'accountId', 'prices': prices,
+                                           'equity': 100, 'margin': 200, 'freeMargin': 400, 'marginLevel': 40000})
+        await client._socket.wait()
+        assert account_id == 'accountId'
+        assert symbol == 'AUDNZD'
+        assert actual_timestamps['serverProcessingFinished'] == \
+            date(prices[0]['timestamps']['serverProcessingFinished'])
+        assert actual_timestamps['serverProcessingStarted'] == \
+               date(prices[0]['timestamps']['serverProcessingStarted'])
+        assert actual_timestamps['eventGenerated'] == \
+               date(prices[0]['timestamps']['eventGenerated'])
+        assert 'clientProcessingFinished' in actual_timestamps
+
+    @pytest.mark.asyncio
+    async def test_measure_update_latencies(self):
+        """Should measure update latencies."""
+        update = {
+            'timestamps': {
+                'eventGenerated': format_date(datetime.now()),
+                'serverProcessingStarted': format_date(datetime.now()),
+                'serverProcessingFinished': format_date(datetime.now())
+            }
+        }
+        account_id = None
+        actual_timestamps = None
+        listener = MagicMock()
+
+        async def on_update(aid, ts):
+            nonlocal account_id
+            account_id = aid
+            nonlocal actual_timestamps
+            actual_timestamps = ts
+            await client.close()
+
+        listener.on_update = on_update
+        client.add_latency_listener(listener)
+        await sio.emit('synchronization', {'type': 'update', 'accountId': 'accountId', **update})
+        await client._socket.wait()
+        assert account_id == 'accountId'
+        assert actual_timestamps['serverProcessingFinished'] == \
+               date(update['timestamps']['serverProcessingFinished'])
+        assert actual_timestamps['serverProcessingStarted'] == \
+               date(update['timestamps']['serverProcessingStarted'])
+        assert actual_timestamps['eventGenerated'] == \
+               date(update['timestamps']['eventGenerated'])
+        assert 'clientProcessingFinished' in actual_timestamps
+
+    @pytest.mark.asyncio
+    async def test_process_trade_latency(self):
+        """Should proces trade latency."""
+        trade = {}
+        response = {
+            'numericCode': 10009,
+            'stringCode': 'TRADE_RETCODE_DONE',
+            'message': 'Request completed',
+            'orderId': '46870472'
+        }
+        timestamps = {
+            'clientExecutionStarted': format_date(datetime.now()),
+            'serverExecutionStarted': format_date(datetime.now()),
+            'serverExecutionFinished': format_date(datetime.now()),
+            'tradeExecuted': format_date(datetime.now())
+        }
+        account_id = None
+        actual_timestamps = None
+        listener = MagicMock()
+
+        def on_trade(aid, ts):
+            nonlocal account_id
+            account_id = aid
+            nonlocal actual_timestamps
+            actual_timestamps = ts
+
+        listener.on_trade = on_trade
+        client.add_latency_listener(listener)
+
+        @sio.on('request')
+        async def on_request(sid, data):
+            assert data['trade'] == trade
+            if data['type'] == 'trade' and data['accountId'] == 'accountId' and data['application'] == 'application':
+                await sio.emit('response', {'type': 'response', 'accountId': data['accountId'],
+                                            'requestId': data['requestId'], 'response': response,
+                                            'timestamps': timestamps})
+
+        await client.trade('accountId', trade)
+        assert account_id == 'accountId'
+        assert actual_timestamps['clientExecutionStarted'] == \
+               date(timestamps['clientExecutionStarted'])
+        assert actual_timestamps['serverExecutionStarted'] == \
+               date(timestamps['serverExecutionStarted'])
+        assert actual_timestamps['serverExecutionFinished'] == \
+               date(timestamps['serverExecutionFinished'])
+        assert actual_timestamps['tradeExecuted'] == \
+               date(timestamps['tradeExecuted'])
+        assert 'clientProcessingFinished' in actual_timestamps

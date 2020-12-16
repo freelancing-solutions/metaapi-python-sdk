@@ -9,6 +9,7 @@ from ..clients.errorHandler import ValidationException
 from ..metaApi.connectionRegistry import ConnectionRegistry
 from .metatraderDemoAccountApi import MetatraderDemoAccountApi
 from ..clients.metaApi.metatraderDemoAccount_client import MetatraderDemoAccountClient
+from .latencyMonitor import LatencyMonitor
 import re
 import traceback
 from typing import Optional
@@ -62,6 +63,8 @@ class MetaApi:
                                                           self._metaApiWebsocketClient, self._connectionRegistry)
         self._metatraderDemoAccountApi = MetatraderDemoAccountApi(MetatraderDemoAccountClient(http_client, token,
                                                                                               domain))
+        self._latencyMonitor = LatencyMonitor()
+        self._metaApiWebsocketClient.add_latency_listener(self._latencyMonitor)
 
     @property
     def provisioning_profile_api(self) -> ProvisioningProfileApi:
@@ -90,6 +93,15 @@ class MetaApi:
         """
         return self._metatraderDemoAccountApi
 
+    @property
+    def latency_monitor(self) -> LatencyMonitor:
+        """Returns MetaApi application latency monitor.
+
+        Returns:
+            Latency monitor.
+        """
+        return self._latencyMonitor
+
     def format_error(self, err: Exception):
         """Formats and outputs metaApi errors with additional information.
 
@@ -108,4 +120,5 @@ class MetaApi:
 
     def close(self):
         """Closes all clients and connections"""
+        self._metaApiWebsocketClient.remove_latency_listener(self._latencyMonitor)
         self._metaApiWebsocketClient.close()

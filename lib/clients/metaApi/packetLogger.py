@@ -7,6 +7,7 @@ from datetime import datetime
 import asyncio
 import functools
 import shutil
+from copy import deepcopy
 from ...metaApi.models import date
 
 
@@ -54,6 +55,7 @@ class PacketLogger:
         Args:
             packet: Packet to log.
         """
+        packet = deepcopy(packet)
         if packet['accountId'] not in self._writeQueue:
             self._writeQueue[packet['accountId']] = {'isWriting': False, 'queue': []}
         if packet['type'] == 'status':
@@ -65,7 +67,8 @@ class PacketLogger:
                 self._record_prices(packet['accountId'])
             if packet['type'] == 'specifications' and self._compressSpecifications:
                 queue.append(json.dumps({'type': packet['type'], 'sequenceNumber': packet['sequenceNumber'] if
-                                         'sequenceNumber' in packet else None}))
+                                         'sequenceNumber' in packet else None, 'sequenceTimestamp':
+                                         packet['sequenceTimestamp'] if 'sequenceTimestamp' in packet else None}))
             else:
                 queue.append(json.dumps(packet))
         else:
