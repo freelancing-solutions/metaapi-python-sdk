@@ -407,8 +407,8 @@ class TestMetaApiConnection:
     async def test_remove_history(self):
         """Should remove history."""
         client.remove_history = AsyncMock()
-        await api.remove_history()
-        client.remove_history.assert_called_with('accountId')
+        await api.remove_history('app')
+        client.remove_history.assert_called_with('accountId', 'app')
 
     @pytest.mark.asyncio
     async def test_create_market_buy_order(self):
@@ -797,8 +797,10 @@ class TestMetaApiConnection:
         """Should unsubscribe from events on close."""
         client.add_synchronization_listener = MagicMock()
         client.remove_synchronization_listener = MagicMock()
+        client.unsubscribe = AsyncMock()
         api = MetaApiConnection(client, account, MagicMock(), MagicMock())
-        api.close()
+        await api.close()
+        client.unsubscribe.assert_any_call('accountId')
         client.remove_synchronization_listener.assert_any_call('accountId', api)
         client.remove_synchronization_listener.assert_any_call('accountId', api.terminal_state)
         client.remove_synchronization_listener.assert_any_call('accountId', api.history_storage)

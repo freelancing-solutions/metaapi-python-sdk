@@ -38,7 +38,8 @@ async def run_around_tests():
                     'balance': 20000,
                     'equity': 25000
                 },
-                'accountId': 'accountId'
+                'accountId': 'accountId',
+                'sequenceTimestamp': 100000,
             },
             'prices': {
                 'type': 'prices',
@@ -53,17 +54,20 @@ async def run_around_tests():
                         'ask': 103.25
                     }],
                 'accountId': 'accountId',
-                'sequenceNumber': 1
+                'sequenceNumber': 1,
+                'sequenceTimestamp': 100000,
             },
             'status': {
                 'status': 'connected',
                 'type': 'status',
-                'accountId': 'accountId'
+                'accountId': 'accountId',
+                'sequenceTimestamp': 100000,
             },
             'specifications': {
                 'specifications': [],
                 'type': 'specifications',
                 'accountId': 'accountId',
+                'sequenceTimestamp': 100000,
                 'sequenceNumber': 1
             }
         }
@@ -107,7 +111,8 @@ class TestPacketLogger:
         packet_logger.log_packet(packets['specifications'])
         await sleep(0.04)
         result = await packet_logger.read_logs('accountId')
-        assert json.loads(result[0]['message']) == {'type': 'specifications', 'sequenceNumber': 1}
+        assert json.loads(result[0]['message']) == {'type': 'specifications', 'sequenceNumber': 1,
+                                                    'sequenceTimestamp': 100000}
 
     @pytest.mark.asyncio
     async def test_record_full_specifications(self):
