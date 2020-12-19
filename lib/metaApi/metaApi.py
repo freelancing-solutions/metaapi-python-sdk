@@ -30,6 +30,8 @@ class MetaApiOpts(TypedDict):
     """Packet ordering timeout in seconds."""
     packetLogger: Optional[PacketLoggerOpts]
     """Packet logger options."""
+    enableLatencyMonitor: Optional[bool]
+    """An option to enable latency tracking."""
 
 
 class MetaApi:
@@ -63,8 +65,9 @@ class MetaApi:
                                                           self._metaApiWebsocketClient, self._connectionRegistry)
         self._metatraderDemoAccountApi = MetatraderDemoAccountApi(MetatraderDemoAccountClient(http_client, token,
                                                                                               domain))
-        self._latencyMonitor = LatencyMonitor()
-        self._metaApiWebsocketClient.add_latency_listener(self._latencyMonitor)
+        if 'enableLatencyMonitor' in opts and opts['enableLatencyMonitor']:
+            self._latencyMonitor = LatencyMonitor()
+            self._metaApiWebsocketClient.add_latency_listener(self._latencyMonitor)
 
     @property
     def provisioning_profile_api(self) -> ProvisioningProfileApi:

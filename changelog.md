@@ -18,7 +18,7 @@
   - send RPC requests via RPC application
   - increased synchronization stability
   - added extensions for accounts
-  - added metadata field for accounts
+  - added metadata field for accounts to store extra information together with account
 
 10.1.0
   - added support for portfolio strategies (i.e. the strategies which include several other member strategies) to CopyFactory API
