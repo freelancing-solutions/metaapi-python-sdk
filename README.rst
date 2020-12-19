@@ -381,10 +381,29 @@ You can monitor account connection health using MetaApiConnection.health_monitor
 .. code-block:: python
 
     monitor = connection.health_monitor
+    # retrieve server-side app health status
+    print(monitor.server_health_status)
     # retrieve detailed connection health status
     print(monitor.health_status)
     # retrieve account connection update measured over last 7 days
     print(monitor.uptime)
+
+Tracking latencies
+===================
+You can track latencies using MetaApi.latency_monitor API. Client-side latencies include network communication delays, thus the lowest client-side latencies are achieved if you host your app in AWS Ohio region.
+
+.. code-block:: python
+
+    api = MetaApi('token', {'enableLatencyMonitor': True})
+    monitor = api.latency_monitor
+    # retrieve trade latency stats
+    print(monitor.trade_latencies)
+    # retrieve update streaming latency stats
+    print(monitor.update_latencies)
+    # retrieve quote streaming latency stats
+    print(monitor.price_latencies)
+    # retrieve request latency stats
+    print(monitor.request_latencies)
 
 Managing MetaTrader demo accounts via API
 ===========================================

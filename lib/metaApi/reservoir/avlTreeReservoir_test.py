@@ -1,8 +1,7 @@
 from .avlTreeReservoir import reservoir
 import pytest
-from asyncio import sleep
-from mock import MagicMock, patch
 from freezegun import freeze_time
+from random import random
 
 
 class TestReservoir:
@@ -57,3 +56,30 @@ class TestReservoir:
                 frozen_datetime.tick(10.001)
             pers50 = res['getPercentile'](50)
             assert pers50 == 35
+
+    @pytest.mark.asyncio
+    async def test_run_x_algorithm(self):
+        """Should run X algorithm."""
+        with freeze_time() as frozen_datetime:
+            res = reservoir(15, 60000)
+            for i in range(1000):
+                item = random()
+                res['pushSome'](item)
+                frozen_datetime.tick(1.001)
+            assert res['size']() == 15
+            max_item = res['max']()
+            assert max_item['index'] == 999
+            frozen_datetime.tick(60)
+            res['getPercentile'](50)
+            assert res['size']() == 0
+
+    @pytest.mark.asyncio
+    async def test_run_z_algorithm(self):
+        """Should run Z algorithm."""
+        with freeze_time() as frozen_datetime:
+            res = reservoir(10, 60000)
+            for i in range(3000):
+                item = random()
+                res['pushSome'](item)
+                frozen_datetime.tick(0.1)
+            assert res['size']() == 10

@@ -12,6 +12,7 @@ def reservoir(reservoir_size, storage_period_in_milliseconds=60000, random_numbe
     rng = random_number_gen or random.random
     reservoir_size = max(1, (math.floor(reservoir_size) >> 0) or 1)
     total_item_count = 0
+    last_deleted_index = -1
     num_to_skip = -1
 
     def algorithm_r():
@@ -62,7 +63,7 @@ def reservoir(reservoir_size, storage_period_in_milliseconds=60000, random_numbe
             return to_skip
         else:
             current_algorithm = algorithm_z
-            return current_algorithm
+            return current_algorithm()
 
     def algorithm_z():
         """"Algorithm Z"
@@ -132,7 +133,8 @@ def reservoir(reservoir_size, storage_period_in_milliseconds=60000, random_numbe
             return 1
         return 0
 
-    index_tree = avl_tree(lambda a, b: comparator(a['index'], b['index']))
+    index_tree = avl_tree(lambda a, b: comparator(a['index'] if (a and 'index' in a) else 0,
+                                                  b['index'] if (b and 'index' in b) else 0))
     value_tree = avl_tree(lambda a, b: comparator(a, b))
     initial_index = 0
 
@@ -141,11 +143,14 @@ def reservoir(reservoir_size, storage_period_in_milliseconds=60000, random_numbe
             element = index_tree['at'](0)
             if element is not None and datetime.now().timestamp() > element['time'] + interval:
                 index_tree['removeAt'](0)
+                nonlocal last_deleted_index
+                delete_index_diff = element['index'] - last_deleted_index
+                last_deleted_index = element['index']
                 value_tree['remove'](element['data'])
                 nonlocal total_item_count
-                total_item_count -= 1
+                total_item_count -= delete_index_diff
                 nonlocal algorithm_x_count
-                algorithm_x_count = max(0, algorithm_x_count - 1)
+                algorithm_x_count = max(0, algorithm_x_count - delete_index_diff)
             else:
                 break
 
@@ -156,9 +161,9 @@ def reservoir(reservoir_size, storage_period_in_milliseconds=60000, random_numbe
         index = (index_tree['size']() - 1) * percent / 100
         lower = math.floor(index)
         fraction_part = index - lower
-        percentile = value_tree['at'](lower)
+        percentile = value_tree['at'](lower) or 0
         if fraction_part > 0:
-            percentile += fraction_part * (value_tree['at'](lower + 1) - value_tree['at'](lower))
+            percentile += fraction_part * ((value_tree['at'](lower + 1) or 0) - (value_tree['at'](lower) or 0))
         return float(percentile)
 
     index_tree['getPercentile'] = get_percentile
@@ -190,7 +195,7 @@ def reservoir(reservoir_size, storage_period_in_milliseconds=60000, random_numbe
 
     def add_sample(tree: avl_tree, sample):
         nonlocal total_item_count
-        if total_item_count < reservoir_size:
+        if index_tree['size']() < reservoir_size:
             tree['insert'](sample)
             value_tree['insert'](sample['data'])
         else:
