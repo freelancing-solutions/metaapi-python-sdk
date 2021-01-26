@@ -445,7 +445,10 @@ class MetaApiWebsocketClient:
         Returns:
             A coroutine which resolves when subscription started.
         """
-        return self._rpc_request(account_id, {'type': 'subscribe', 'instanceIndex': instance_index})
+        packet = {'type': 'subscribe'}
+        if instance_index:
+            packet['instanceIndex'] = instance_index
+        return self._rpc_request(account_id, packet)
 
     def reconnect(self, account_id: str) -> Coroutine:
         """Reconnects to the Metatrader terminal (see https://metaapi.cloud/docs/client/websocket/api/reconnect/).
