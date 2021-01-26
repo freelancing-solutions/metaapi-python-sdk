@@ -640,7 +640,7 @@ class MetaApiConnection(SynchronizationListener, ReconnectListener):
             if err.__class__.__name__ != 'TimeoutException':
                 raise err
 
-    def subscribe_to_market_data(self, symbol: str, instance_index: int) -> Coroutine:
+    def subscribe_to_market_data(self, symbol: str, instance_index: int = None) -> Coroutine:
         """Subscribes on market data of specified symbol (see
         https://metaapi.cloud/docs/client/websocket/marketDataStreaming/subscribeToMarketData/).
 

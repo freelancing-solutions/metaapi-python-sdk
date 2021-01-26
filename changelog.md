@@ -1,4 +1,7 @@
-12.0.0
+12.0.2
+  - fix subscribe_to_market_data API contract
+
+12.0.1
   - added API to retrieve CopyFactory slave trading log
   - fixed race condition when orders are being added and completed fast
   - breaking change: changed signatures of SynchronizationListener methods
