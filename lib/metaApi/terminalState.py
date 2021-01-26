@@ -366,9 +366,10 @@ class TerminalState(SynchronizationListener):
                         price['bid']
         if state['accountInformation']:
             if state['positionsInitialized'] and prices_initialized:
-                state['accountInformation']['equity'] = state['accountInformation']['balance'] + \
-                                                     functools.reduce(lambda a, b: a + b['unrealizedProfit'],
-                                                                      state['positions'], 0)
+                state['accountInformation']['equity'] = \
+                    state['accountInformation']['balance'] + functools.reduce(
+                        lambda a, b: a + (b['unrealizedProfit'] if 'unrealizedProfit' in b else 0),
+                        state['positions'], 0)
             else:
                 state['accountInformation']['equity'] = equity if equity else (
                     state['accountInformation']['equity'] if 'equity' in state['accountInformation'] else None)

@@ -1,8 +1,10 @@
-import responses
 import pytest
 from ..httpClient import HttpClient
 from .metatraderAccount_client import MetatraderAccountClient
 import json
+import respx
+from httpx import Response
+
 
 PROVISIONING_API_URL = 'https://mt-provisioning-api-v1.agiliumtrade.agiliumtrade.ai'
 http_client = HttpClient()
@@ -10,7 +12,7 @@ account_client = MetatraderAccountClient(http_client, 'header.payload.sign')
 
 
 class TestMetatraderAccountClient:
-    @responses.activate
+    @respx.mock
     @pytest.mark.asyncio
     async def test_retrieve_many(self):
         """Should retrieve MetaTrader accounts from API."""
@@ -27,18 +29,15 @@ class TestMetatraderAccountClient:
             'type': 'cloud',
             'tags': ['tag1', 'tag2']
         }]
-
-        with responses.RequestsMock() as rsps:
-            rsps.add(responses.GET, f'{PROVISIONING_API_URL}/users/current/accounts',
-                     json=expected, status=200)
-
-            accounts = await account_client.get_accounts({'provisioningProfileId':
-                                                          'f9ce1f12-e720-4b9a-9477-c2d4cb25f076'})
-            assert rsps.calls[0].request.url == f'{PROVISIONING_API_URL}/users/current/accounts' + \
-                '?provisioningProfileId=f9ce1f12-e720-4b9a-9477-c2d4cb25f076'
-            assert rsps.calls[0].request.method == 'GET'
-            assert rsps.calls[0].request.headers['auth-token'] == 'header.payload.sign'
-            assert accounts == expected
+        rsps = respx.get(f'{PROVISIONING_API_URL}/users/current/accounts')\
+            .mock(return_value=Response(200, json=expected))
+        accounts = await account_client.get_accounts({'provisioningProfileId':
+                                                      'f9ce1f12-e720-4b9a-9477-c2d4cb25f076'})
+        assert rsps.calls[0].request.url == f'{PROVISIONING_API_URL}/users/current/accounts' + \
+            '?provisioningProfileId=f9ce1f12-e720-4b9a-9477-c2d4cb25f076'
+        assert rsps.calls[0].request.method == 'GET'
+        assert rsps.calls[0].request.headers['auth-token'] == 'header.payload.sign'
+        assert accounts == expected
 
     @pytest.mark.asyncio
     async def test_not_retrieve_mt_accounts_with_account_token(self):
@@ -51,7 +50,7 @@ class TestMetatraderAccountClient:
                                     'account access token. Please use API access token from ' + \
                                     'https://app.metaapi.cloud/token page to invoke this method.'
 
-    @responses.activate
+    @respx.mock
     @pytest.mark.asyncio
     async def test_retrieve_one(self):
         """Should retrieve MetaTrader account from API."""
@@ -68,18 +67,15 @@ class TestMetatraderAccountClient:
             'type': 'cloud',
             'tags': ['tag1', 'tag2']
         }
+        rsps = respx.get(f'{PROVISIONING_API_URL}/users/current/accounts/id') \
+            .mock(return_value=Response(200, json=expected))
+        accounts = await account_client.get_account('id')
+        assert rsps.calls[0].request.url == f'{PROVISIONING_API_URL}/users/current/accounts/id'
+        assert rsps.calls[0].request.method == 'GET'
+        assert rsps.calls[0].request.headers['auth-token'] == 'header.payload.sign'
+        assert accounts == expected
 
-        with responses.RequestsMock() as rsps:
-            rsps.add(responses.GET, f'{PROVISIONING_API_URL}/users/current/accounts/id',
-                     json=expected, status=200)
-
-            accounts = await account_client.get_account('id')
-            assert rsps.calls[0].request.url == f'{PROVISIONING_API_URL}/users/current/accounts/id'
-            assert rsps.calls[0].request.method == 'GET'
-            assert rsps.calls[0].request.headers['auth-token'] == 'header.payload.sign'
-            assert accounts == expected
-
-    @responses.activate
+    @respx.mock
     @pytest.mark.asyncio
     async def test_retrieve_by_token(self):
         """Should retrieve MetaTrader account by token from API."""
@@ -95,16 +91,13 @@ class TestMetatraderAccountClient:
             'state': 'DEPLOYED',
             'type': 'cloud'
         }
-
-        with responses.RequestsMock() as rsps:
-            rsps.add(responses.GET, f'{PROVISIONING_API_URL}/users/current/accounts/accessToken/token',
-                     json=expected, status=200)
-
-            account_client = MetatraderAccountClient(http_client, 'token')
-            accounts = await account_client.get_account_by_token()
-            assert rsps.calls[0].request.url == f'{PROVISIONING_API_URL}/users/current/accounts/accessToken/token'
-            assert rsps.calls[0].request.method == 'GET'
-            assert accounts == expected
+        rsps = respx.get(f'{PROVISIONING_API_URL}/users/current/accounts/accessToken/token') \
+            .mock(return_value=Response(200, json=expected))
+        account_client = MetatraderAccountClient(http_client, 'token')
+        accounts = await account_client.get_account_by_token()
+        assert rsps.calls[0].request.url == f'{PROVISIONING_API_URL}/users/current/accounts/accessToken/token'
+        assert rsps.calls[0].request.method == 'GET'
+        assert accounts == expected
 
     @pytest.mark.asyncio
     async def test_not_retrieve_account_by_token_with_api_token(self):
@@ -116,7 +109,7 @@ class TestMetatraderAccountClient:
             assert err.__str__() == 'You can not invoke get_account_by_token method, because you have connected ' + \
                    'with API access token. Please use account access token to invoke this method.'
 
-    @responses.activate
+    @respx.mock
     @pytest.mark.asyncio
     async def test_create(self):
         """Should create MetaTrader account via API."""
@@ -134,15 +127,13 @@ class TestMetatraderAccountClient:
             'type': 'cloud',
             'tags': ['tag1']
         }
-        with responses.RequestsMock() as rsps:
-            rsps.add(responses.POST, f'{PROVISIONING_API_URL}/users/current/accounts',
-                     json=expected, status=201)
-
-            accounts = await account_client.create_account(account)
-            assert rsps.calls[0].request.url == f'{PROVISIONING_API_URL}/users/current/accounts'
-            assert rsps.calls[0].request.method == 'POST'
-            assert rsps.calls[0].request.headers['auth-token'] == 'header.payload.sign'
-            assert accounts == expected
+        rsps = respx.post(f'{PROVISIONING_API_URL}/users/current/accounts') \
+            .mock(return_value=Response(201, json=expected))
+        accounts = await account_client.create_account(account)
+        assert rsps.calls[0].request.url == f'{PROVISIONING_API_URL}/users/current/accounts'
+        assert rsps.calls[0].request.method == 'POST'
+        assert rsps.calls[0].request.headers['auth-token'] == 'header.payload.sign'
+        assert accounts == expected
 
     @pytest.mark.asyncio
     async def test_not_create_mt_account_with_account_token(self):
@@ -155,17 +146,16 @@ class TestMetatraderAccountClient:
                                     'account access token. Please use API access token from ' + \
                                     'https://app.metaapi.cloud/token page to invoke this method.'
 
-    @responses.activate
+    @respx.mock
     @pytest.mark.asyncio
     async def test_deploy(self):
         """Should deploy MetaTrader account via API."""
-        with responses.RequestsMock() as rsps:
-            rsps.add(responses.POST, f'{PROVISIONING_API_URL}/users/current/accounts/id/deploy', status=204)
-
-            await account_client.deploy_account('id')
-            assert rsps.calls[0].request.url == f'{PROVISIONING_API_URL}/users/current/accounts/id/deploy'
-            assert rsps.calls[0].request.method == 'POST'
-            assert rsps.calls[0].request.headers['auth-token'] == 'header.payload.sign'
+        rsps = respx.post(f'{PROVISIONING_API_URL}/users/current/accounts/id/deploy') \
+            .mock(return_value=Response(204))
+        await account_client.deploy_account('id')
+        assert rsps.calls[0].request.url == f'{PROVISIONING_API_URL}/users/current/accounts/id/deploy'
+        assert rsps.calls[0].request.method == 'POST'
+        assert rsps.calls[0].request.headers['auth-token'] == 'header.payload.sign'
 
     @pytest.mark.asyncio
     async def test_not_deploy_mt_account_with_account_token(self):
@@ -178,17 +168,16 @@ class TestMetatraderAccountClient:
                                     'account access token. Please use API access token from ' + \
                                     'https://app.metaapi.cloud/token page to invoke this method.'
 
-    @responses.activate
+    @respx.mock
     @pytest.mark.asyncio
     async def test_undeploy(self):
         """Should undeploy MetaTrader account via API."""
-        with responses.RequestsMock() as rsps:
-            rsps.add(responses.POST, f'{PROVISIONING_API_URL}/users/current/accounts/id/undeploy', status=204)
-
-            await account_client.undeploy_account('id')
-            assert rsps.calls[0].request.url == f'{PROVISIONING_API_URL}/users/current/accounts/id/undeploy'
-            assert rsps.calls[0].request.method == 'POST'
-            assert rsps.calls[0].request.headers['auth-token'] == 'header.payload.sign'
+        rsps = respx.post(f'{PROVISIONING_API_URL}/users/current/accounts/id/undeploy') \
+            .mock(return_value=Response(204))
+        await account_client.undeploy_account('id')
+        assert rsps.calls[0].request.url == f'{PROVISIONING_API_URL}/users/current/accounts/id/undeploy'
+        assert rsps.calls[0].request.method == 'POST'
+        assert rsps.calls[0].request.headers['auth-token'] == 'header.payload.sign'
 
     @pytest.mark.asyncio
     async def test_not_undeploy_mt_account_with_account_token(self):
@@ -201,17 +190,16 @@ class TestMetatraderAccountClient:
                                     'account access token. Please use API access token from ' + \
                                     'https://app.metaapi.cloud/token page to invoke this method.'
 
-    @responses.activate
+    @respx.mock
     @pytest.mark.asyncio
     async def test_redeploy(self):
         """Should redeploy MetaTrader account via API."""
-        with responses.RequestsMock() as rsps:
-            rsps.add(responses.POST, f'{PROVISIONING_API_URL}/users/current/accounts/id/redeploy', status=204)
-
-            await account_client.redeploy_account('id')
-            assert rsps.calls[0].request.url == f'{PROVISIONING_API_URL}/users/current/accounts/id/redeploy'
-            assert rsps.calls[0].request.method == 'POST'
-            assert rsps.calls[0].request.headers['auth-token'] == 'header.payload.sign'
+        rsps = respx.post(f'{PROVISIONING_API_URL}/users/current/accounts/id/redeploy') \
+            .mock(return_value=Response(204))
+        await account_client.redeploy_account('id')
+        assert rsps.calls[0].request.url == f'{PROVISIONING_API_URL}/users/current/accounts/id/redeploy'
+        assert rsps.calls[0].request.method == 'POST'
+        assert rsps.calls[0].request.headers['auth-token'] == 'header.payload.sign'
 
     @pytest.mark.asyncio
     async def test_not_redeploy_mt_account_with_account_token(self):
@@ -224,17 +212,16 @@ class TestMetatraderAccountClient:
                                     'account access token. Please use API access token from ' + \
                                     'https://app.metaapi.cloud/token page to invoke this method.'
 
-    @responses.activate
+    @respx.mock
     @pytest.mark.asyncio
     async def test_delete(self):
         """Should delete MetaTrader account via API."""
-        with responses.RequestsMock() as rsps:
-            rsps.add(responses.DELETE, f'{PROVISIONING_API_URL}/users/current/accounts/id', status=204)
-
-            await account_client.delete_account('id')
-            assert rsps.calls[0].request.url == f'{PROVISIONING_API_URL}/users/current/accounts/id'
-            assert rsps.calls[0].request.method == 'DELETE'
-            assert rsps.calls[0].request.headers['auth-token'] == 'header.payload.sign'
+        rsps = respx.delete(f'{PROVISIONING_API_URL}/users/current/accounts/id') \
+            .mock(return_value=Response(204))
+        await account_client.delete_account('id')
+        assert rsps.calls[0].request.url == f'{PROVISIONING_API_URL}/users/current/accounts/id'
+        assert rsps.calls[0].request.method == 'DELETE'
+        assert rsps.calls[0].request.headers['auth-token'] == 'header.payload.sign'
 
     @pytest.mark.asyncio
     async def test_not_delete_mt_account_with_account_token(self):
@@ -247,7 +234,7 @@ class TestMetatraderAccountClient:
                                     'account access token. Please use API access token from ' + \
                                     'https://app.metaapi.cloud/token page to invoke this method.'
 
-    @responses.activate
+    @respx.mock
     @pytest.mark.asyncio
     async def test_update(self):
         """Should update MetaTrader account via API."""
@@ -257,14 +244,13 @@ class TestMetatraderAccountClient:
               'server': 'ICMarketsSC2-Demo',
               'tags': ['tag1']
             }
-        with responses.RequestsMock() as rsps:
-            rsps.add(responses.PUT, f'{PROVISIONING_API_URL}/users/current/accounts/id', status=204)
-
-            await account_client.update_account('id', update_account)
-            assert rsps.calls[0].request.url == f'{PROVISIONING_API_URL}/users/current/accounts/id'
-            assert rsps.calls[0].request.method == 'PUT'
-            assert rsps.calls[0].request.headers['auth-token'] == 'header.payload.sign'
-            assert rsps.calls[0].request.body == json.dumps(update_account).encode('utf-8')
+        rsps = respx.put(f'{PROVISIONING_API_URL}/users/current/accounts/id', json=update_account) \
+            .mock(return_value=Response(204))
+        await account_client.update_account('id', update_account)
+        assert rsps.calls[0].request.url == f'{PROVISIONING_API_URL}/users/current/accounts/id'
+        assert rsps.calls[0].request.method == 'PUT'
+        assert rsps.calls[0].request.headers['auth-token'] == 'header.payload.sign'
+        assert rsps.calls[0].request.content == json.dumps(update_account).encode('utf-8')
 
     @pytest.mark.asyncio
     async def test_not_update_mt_account_with_account_token(self):

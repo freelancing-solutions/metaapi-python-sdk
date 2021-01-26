@@ -4,6 +4,16 @@ from datetime import datetime
 from enum import Enum
 
 
+CopyFactoryStrategySymbolMapping = TypedDict(
+    "CopyFactoryStrategySymbolMapping",
+    {
+        "from": str,  # Symbol name to convert from.
+        "to": str  # Symbol name to convert to.
+    }
+)
+"""CopyFactory strategy symbol mapping."""
+
+
 class CopyFactoryStrategyIdAndName(TypedDict):
     """CopyFactory strategy id and name."""
     id: str
@@ -148,6 +158,9 @@ class CopyFactoryStrategySubscription(TypedDict):
     maxLeverage: Optional[float]
     """Optional setting indicating maximum leverage allowed when opening a new positions. Any trade which results in a
     higher leverage will be discarded."""
+    symbolMapping: List[CopyFactoryStrategySymbolMapping]
+    """Defines how symbol name should be changed when trading (e.g. when broker uses symbol names with unusual
+    suffixes). By default this setting is disabled and the trades are copied using signal source symbol name."""
 
 
 class CopyFactoryAccountUpdate(TypedDict):
@@ -275,6 +288,9 @@ class CopyFactoryStrategyUpdate(TypedDict):
     timeSettings: Optional[CopyFactoryStrategyTimeSettings]
     """Settings to manage copying timeframe and position lifetime. Default is to copy position within 1 minute from
     being opened at source and let the position to live for up to 90 days."""
+    symbolMapping: List[CopyFactoryStrategySymbolMapping]
+    """Defines how symbol name should be changed when trading (e.g. when broker uses symbol names with unusual
+    suffixes). By default this setting is disabled and the trades are copied using signal source symbol name."""
 
 
 class CopyFactorySubscriberOrProvider(TypedDict):
@@ -403,6 +419,9 @@ class CopyFactoryPortfolioMember(TypedDict):
     maxLeverage: Optional[float]
     """Optional max leverage risk restriction. All trades resulting in a leverage value higher than specified will be
     skipped."""
+    symbolMapping: List[CopyFactoryStrategySymbolMapping]
+    """Defines how symbol name should be changed when trading (e.g. when broker uses symbol names with unusual
+    suffixes). By default this setting is disabled and the trades are copied using signal source symbol name."""
 
 
 class CopyFactoryPortfolioStrategyUpdate(TypedDict):
@@ -442,6 +461,9 @@ class CopyFactoryPortfolioStrategyUpdate(TypedDict):
     maxLeverage: Optional[float]
     """Optional max leverage risk restriction. All trades resulting in a leverage value higher than specified will be
     skipped."""
+    symbolMapping: List[CopyFactoryStrategySymbolMapping]
+    """Defines how symbol name should be changed when trading (e.g. when broker uses symbol names with unusual
+    suffixes). By default this setting is disabled and the trades are copied using signal source symbol name."""
 
 
 class CopyFactoryPortfolioStrategy(CopyFactoryPortfolioStrategyUpdate):

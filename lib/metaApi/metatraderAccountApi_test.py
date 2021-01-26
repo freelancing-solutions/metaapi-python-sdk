@@ -10,7 +10,7 @@ from .memoryHistoryStorage import MemoryHistoryStorage
 from .historyStorage import HistoryStorage
 from mock import AsyncMock, MagicMock, patch
 from .metatraderAccountModel import MetatraderAccountModel
-from requests import Response
+from httpx import Response
 from datetime import datetime
 from .models import date
 import pytest

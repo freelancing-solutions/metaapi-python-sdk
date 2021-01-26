@@ -2,10 +2,11 @@ from ..httpClient import HttpClient
 from .configuration_client import ConfigurationClient
 from ...metaApi.models import date
 import pytest
-import responses
 import json
 from mock import AsyncMock
 from copy import deepcopy
+import respx
+from httpx import Response
 
 copy_factory_api_url = 'https://trading-api-v1.agiliumtrade.agiliumtrade.ai'
 http_client = HttpClient()
@@ -26,6 +27,7 @@ class TestConfigurationClient:
         """Should generate account id."""
         assert len(copy_factory_client.generate_account_id()) == 64
 
+    @respx.mock
     @pytest.mark.asyncio
     async def test_update_copyfactory_account(self):
         """Should update CopyFactory account via API."""
@@ -40,18 +42,16 @@ class TestConfigurationClient:
                 }
             ]
         }
-        with responses.RequestsMock() as rsps:
-            rsps.add(responses.PUT, f'{copy_factory_api_url}/users/current/configuration/accounts/' +
-                                    '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
-                     json=account, status=200)
-
-            await copy_factory_client.update_account('0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
-                                                     account)
-            assert rsps.calls[0].request.url == f'{copy_factory_api_url}/users/current/configuration/accounts/' + \
-                                                '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef'
-            assert rsps.calls[0].request.method == 'PUT'
-            assert rsps.calls[0].request.headers['auth-token'] == 'header.payload.sign'
-            assert rsps.calls[0].request.body == json.dumps(account).encode('utf-8')
+        rsps = respx.put(f'{copy_factory_api_url}/users/current/configuration/accounts/' +
+                         '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
+                         json=account).mock(return_value=Response(200))
+        await copy_factory_client.update_account('0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
+                                                 account)
+        assert rsps.calls[0].request.url == f'{copy_factory_api_url}/users/current/configuration/accounts/' + \
+                                            '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef'
+        assert rsps.calls[0].request.method == 'PUT'
+        assert rsps.calls[0].request.headers['auth-token'] == 'header.payload.sign'
+        assert rsps.calls[0].request.read() == json.dumps(account).encode('utf-8')
 
     @pytest.mark.asyncio
     async def test_not_update_copyfactory_account_with_account_token(self):
@@ -64,6 +64,7 @@ class TestConfigurationClient:
                                     'account access token. Please use API access token from ' + \
                                     'https://app.metaapi.cloud/token page to invoke this method.'
 
+    @respx.mock
     @pytest.mark.asyncio
     async def test_retrieve_copyfactory_accounts_from_api(self):
         """Should retrieve CopyFactory accounts from API."""
@@ -80,14 +81,13 @@ class TestConfigurationClient:
             }
           ]
         }]
-        with responses.RequestsMock() as rsps:
-            rsps.add(responses.GET, f'{copy_factory_api_url}/users/current/configuration/accounts',
-                     json=expected, status=200)
-            accounts = await copy_factory_client.get_accounts()
-            assert rsps.calls[0].request.url == f'{copy_factory_api_url}/users/current/configuration/accounts'
-            assert rsps.calls[0].request.method == 'GET'
-            assert rsps.calls[0].request.headers['auth-token'] == 'header.payload.sign'
-            assert accounts == expected
+        rsps = respx.get(f'{copy_factory_api_url}/users/current/configuration/accounts')\
+            .mock(return_value=Response(200, json=expected))
+        accounts = await copy_factory_client.get_accounts()
+        assert rsps.calls[0].request.url == f'{copy_factory_api_url}/users/current/configuration/accounts'
+        assert rsps.calls[0].request.method == 'GET'
+        assert rsps.calls[0].request.headers['auth-token'] == 'header.payload.sign'
+        assert accounts == expected
 
     @pytest.mark.asyncio
     async def test_not_retrieve_copyfactory_accounts_with_account_token(self):
@@ -100,18 +100,19 @@ class TestConfigurationClient:
                                     'account access token. Please use API access token from ' + \
                                     'https://app.metaapi.cloud/token page to invoke this method.'
 
+    @respx.mock
     @pytest.mark.asyncio
     async def test_remove_copyfactory_account(self):
         """Should remove CopyFactory account via API."""
-        with responses.RequestsMock() as rsps:
-            rsps.add(responses.DELETE, f'{copy_factory_api_url}/users/current/configuration/accounts/' +
-                     '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef', status=204)
-            await copy_factory_client\
-                .remove_account('0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef')
-            assert rsps.calls[0].request.url == f'{copy_factory_api_url}/users/current/configuration/accounts/' + \
-                   '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef'
-            assert rsps.calls[0].request.method == 'DELETE'
-            assert rsps.calls[0].request.headers['auth-token'] == 'header.payload.sign'
+        rsps = respx.delete(f'{copy_factory_api_url}/users/current/configuration/accounts/' +
+                            '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef')\
+            .mock(return_value=Response(204))
+        await copy_factory_client\
+            .remove_account('0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef')
+        assert rsps.calls[0].request.url == f'{copy_factory_api_url}/users/current/configuration/accounts/' + \
+               '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef'
+        assert rsps.calls[0].request.method == 'DELETE'
+        assert rsps.calls[0].request.headers['auth-token'] == 'header.payload.sign'
 
     @pytest.mark.asyncio
     async def test_not_remove_copyfactory_account_with_account_token(self):
@@ -124,20 +125,20 @@ class TestConfigurationClient:
                                     'account access token. Please use API access token from ' + \
                                     'https://app.metaapi.cloud/token page to invoke this method.'
 
+    @respx.mock
     @pytest.mark.asyncio
     async def test_generate_strategy_id(self):
         """Should retrieve CopyFactory accounts from API."""
         expected = {
             'id': 'ABCD'
         }
-        with responses.RequestsMock() as rsps:
-            rsps.add(responses.GET, f'{copy_factory_api_url}/users/current/configuration/unused-strategy-id',
-                     json=expected, status=200)
-            id = await copy_factory_client.generate_strategy_id()
-            assert rsps.calls[0].request.url == f'{copy_factory_api_url}/users/current/configuration/unused-strategy-id'
-            assert rsps.calls[0].request.method == 'GET'
-            assert rsps.calls[0].request.headers['auth-token'] == 'header.payload.sign'
-            assert id == expected
+        rsps = respx.get(f'{copy_factory_api_url}/users/current/configuration/unused-strategy-id')\
+            .mock(return_value=Response(200, json=expected))
+        id = await copy_factory_client.generate_strategy_id()
+        assert rsps.calls[0].request.url == f'{copy_factory_api_url}/users/current/configuration/unused-strategy-id'
+        assert rsps.calls[0].request.method == 'GET'
+        assert rsps.calls[0].request.headers['auth-token'] == 'header.payload.sign'
+        assert id == expected
 
     @pytest.mark.asyncio
     async def test_not_generate_strategy_id_with_account_token(self):
@@ -150,6 +151,7 @@ class TestConfigurationClient:
                    'with account access token. Please use API access token from ' + \
                    'https://app.metaapi.cloud/token page to invoke this method.'
 
+    @respx.mock
     @pytest.mark.asyncio
     async def test_update_strategy(self):
         """Should update strategy via API."""
@@ -167,15 +169,13 @@ class TestConfigurationClient:
                 'openingIntervalInMinutes': 5
             }
         }
-        with responses.RequestsMock() as rsps:
-            rsps.add(responses.PUT, f'{copy_factory_api_url}/users/current/configuration/strategies/ABCD',
-                     json=strategy, status=200)
-
-            await copy_factory_client.update_strategy('ABCD', strategy)
-            assert rsps.calls[0].request.url == f'{copy_factory_api_url}/users/current/configuration/strategies/ABCD'
-            assert rsps.calls[0].request.method == 'PUT'
-            assert rsps.calls[0].request.headers['auth-token'] == 'header.payload.sign'
-            assert rsps.calls[0].request.body == json.dumps(strategy).encode('utf-8')
+        rsps = respx.put(f'{copy_factory_api_url}/users/current/configuration/strategies/ABCD', json=strategy)\
+            .mock(return_value=Response(200))
+        await copy_factory_client.update_strategy('ABCD', strategy)
+        assert rsps.calls[0].request.url == f'{copy_factory_api_url}/users/current/configuration/strategies/ABCD'
+        assert rsps.calls[0].request.method == 'PUT'
+        assert rsps.calls[0].request.headers['auth-token'] == 'header.payload.sign'
+        assert rsps.calls[0].request.content == json.dumps(strategy).encode('utf-8')
 
     @pytest.mark.asyncio
     async def test_not_update_strategy_with_account_token(self):
@@ -188,6 +188,7 @@ class TestConfigurationClient:
                                     'account access token. Please use API access token from ' + \
                                     'https://app.metaapi.cloud/token page to invoke this method.'
 
+    @respx.mock
     @pytest.mark.asyncio
     async def test_retrieve_strategies_from_api(self):
         """Should retrieve strategies from API."""
@@ -208,14 +209,13 @@ class TestConfigurationClient:
             'openingIntervalInMinutes': 5
           }
         }]
-        with responses.RequestsMock() as rsps:
-            rsps.add(responses.GET, f'{copy_factory_api_url}/users/current/configuration/strategies',
-                     json=expected, status=200)
-            strategies = await copy_factory_client.get_strategies()
-            assert rsps.calls[0].request.url == f'{copy_factory_api_url}/users/current/configuration/strategies'
-            assert rsps.calls[0].request.method == 'GET'
-            assert rsps.calls[0].request.headers['auth-token'] == 'header.payload.sign'
-            assert strategies == expected
+        rsps = respx.get(f'{copy_factory_api_url}/users/current/configuration/strategies') \
+            .mock(return_value=Response(200, json=expected))
+        strategies = await copy_factory_client.get_strategies()
+        assert rsps.calls[0].request.url == f'{copy_factory_api_url}/users/current/configuration/strategies'
+        assert rsps.calls[0].request.method == 'GET'
+        assert rsps.calls[0].request.headers['auth-token'] == 'header.payload.sign'
+        assert strategies == expected
 
     @pytest.mark.asyncio
     async def test_not_retrieve_strategies_with_account_token(self):
@@ -228,16 +228,16 @@ class TestConfigurationClient:
                                     'account access token. Please use API access token from ' + \
                                     'https://app.metaapi.cloud/token page to invoke this method.'
 
+    @respx.mock
     @pytest.mark.asyncio
     async def test_remove_strategy(self):
         """Should remove strategy via API."""
-        with responses.RequestsMock() as rsps:
-            rsps.add(responses.DELETE, f'{copy_factory_api_url}/users/current/configuration/strategies/ABCD',
-                     status=204)
-            await copy_factory_client.remove_strategy('ABCD')
-            assert rsps.calls[0].request.url == f'{copy_factory_api_url}/users/current/configuration/strategies/ABCD'
-            assert rsps.calls[0].request.method == 'DELETE'
-            assert rsps.calls[0].request.headers['auth-token'] == 'header.payload.sign'
+        rsps = respx.delete(f'{copy_factory_api_url}/users/current/configuration/strategies/ABCD') \
+            .mock(return_value=Response(204))
+        await copy_factory_client.remove_strategy('ABCD')
+        assert rsps.calls[0].request.url == f'{copy_factory_api_url}/users/current/configuration/strategies/ABCD'
+        assert rsps.calls[0].request.method == 'DELETE'
+        assert rsps.calls[0].request.headers['auth-token'] == 'header.payload.sign'
 
     @pytest.mark.asyncio
     async def test_not_remove_strategy_with_account_token(self):
@@ -250,6 +250,7 @@ class TestConfigurationClient:
                                     'account access token. Please use API access token from ' + \
                                     'https://app.metaapi.cloud/token page to invoke this method.'
 
+    @respx.mock
     @pytest.mark.asyncio
     async def test_retrieve_portfolio_strategies(self):
         """Should retrieve portfolio strategies from API."""
@@ -267,15 +268,14 @@ class TestConfigurationClient:
                 'startTime': '2020-08-24T00:00:00.000Z'
             }
         }]
-        with responses.RequestsMock() as rsps:
-            rsps.add(responses.GET, f'{copy_factory_api_url}/users/current/configuration/portfolio-strategies',
-                     json=expected, status=200)
-            strategies = await copy_factory_client.get_portfolio_strategies()
-            assert rsps.calls[0].request.url == f'{copy_factory_api_url}/users/current/configuration/' \
-                                                f'portfolio-strategies'
-            assert rsps.calls[0].request.method == 'GET'
-            assert rsps.calls[0].request.headers['auth-token'] == 'header.payload.sign'
-            assert strategies == expected
+        rsps = respx.get(f'{copy_factory_api_url}/users/current/configuration/portfolio-strategies') \
+            .mock(return_value=Response(200, json=expected))
+        strategies = await copy_factory_client.get_portfolio_strategies()
+        assert rsps.calls[0].request.url == f'{copy_factory_api_url}/users/current/configuration/' \
+                                            f'portfolio-strategies'
+        assert rsps.calls[0].request.method == 'GET'
+        assert rsps.calls[0].request.headers['auth-token'] == 'header.payload.sign'
+        assert strategies == expected
 
     @pytest.mark.asyncio
     async def test_not_retrieve_portfolio_strategies_with_account_token(self):
@@ -288,6 +288,7 @@ class TestConfigurationClient:
                                     'with account access token. Please use API access token from '\
                                     'https://app.metaapi.cloud/token page to invoke this method.'
 
+    @respx.mock
     @pytest.mark.asyncio
     async def test_update_portfolio_strategy(self):
         """Should update portfolio strategy via API."""
@@ -302,16 +303,14 @@ class TestConfigurationClient:
                 'startTime': '2020-08-24T00:00:00.000Z'
             }
         }
-        with responses.RequestsMock() as rsps:
-            rsps.add(responses.PUT, f'{copy_factory_api_url}/users/current/configuration/portfolio-strategies/ABCD',
-                     json=strategy, status=200)
-
-            await copy_factory_client.update_portfolio_strategy('ABCD', strategy)
-            assert rsps.calls[0].request.url == f'{copy_factory_api_url}/users/current/configuration/' \
-                                                f'portfolio-strategies/ABCD'
-            assert rsps.calls[0].request.method == 'PUT'
-            assert rsps.calls[0].request.headers['auth-token'] == 'header.payload.sign'
-            assert rsps.calls[0].request.body == json.dumps(strategy).encode('utf-8')
+        rsps = respx.put(f'{copy_factory_api_url}/users/current/configuration/portfolio-strategies/ABCD',
+                         json=strategy).mock(return_value=Response(200))
+        await copy_factory_client.update_portfolio_strategy('ABCD', strategy)
+        assert rsps.calls[0].request.url == f'{copy_factory_api_url}/users/current/configuration/' \
+                                            f'portfolio-strategies/ABCD'
+        assert rsps.calls[0].request.method == 'PUT'
+        assert rsps.calls[0].request.headers['auth-token'] == 'header.payload.sign'
+        assert rsps.calls[0].request.content == json.dumps(strategy).encode('utf-8')
 
     @pytest.mark.asyncio
     async def test_not_update_portfolio_strategy_with_account_token(self):
@@ -324,17 +323,17 @@ class TestConfigurationClient:
                                     'with account access token. Please use API access token from ' \
                                     'https://app.metaapi.cloud/token page to invoke this method.'
 
+    @respx.mock
     @pytest.mark.asyncio
     async def test_remove_portfolio_strategy(self):
         """Should remove portfolio strategy via API."""
-        with responses.RequestsMock() as rsps:
-            rsps.add(responses.DELETE, f'{copy_factory_api_url}/users/current/configuration/portfolio-strategies/ABCD',
-                     status=204)
-            await copy_factory_client.remove_portfolio_strategy('ABCD')
-            assert rsps.calls[0].request.url == f'{copy_factory_api_url}/users/current/configuration/' \
-                                                f'portfolio-strategies/ABCD'
-            assert rsps.calls[0].request.method == 'DELETE'
-            assert rsps.calls[0].request.headers['auth-token'] == 'header.payload.sign'
+        rsps = respx.delete(f'{copy_factory_api_url}/users/current/configuration/portfolio-strategies/ABCD')\
+            .mock(return_value=Response(204))
+        await copy_factory_client.remove_portfolio_strategy('ABCD')
+        assert rsps.calls[0].request.url == f'{copy_factory_api_url}/users/current/configuration/' \
+                                            f'portfolio-strategies/ABCD'
+        assert rsps.calls[0].request.method == 'DELETE'
+        assert rsps.calls[0].request.headers['auth-token'] == 'header.payload.sign'
 
     @pytest.mark.asyncio
     async def test_not_remove_portfolio_strategy_with_account_token(self):
@@ -347,6 +346,7 @@ class TestConfigurationClient:
                                     'connected with account access token. Please use API access token from ' + \
                                     'https://app.metaapi.cloud/token page to invoke this method.'
 
+    @respx.mock
     @pytest.mark.asyncio
     async def test_retrieve_active_resync_tasks_from_api(self):
         """Should retrieve active resynchronization tasks via API."""
@@ -362,15 +362,15 @@ class TestConfigurationClient:
             'createdAt': date('2020-08-25T00:00:00.000Z'),
             'status': 'EXECUTING'
         }]
-        with responses.RequestsMock() as rsps:
-            rsps.add(responses.GET, f'{copy_factory_api_url}/users/current/configuration/connections/' +
-                     'accountId/active-resynchronization-tasks', json=result, status=200)
-            strategies = await copy_factory_client.get_active_resynchronization_tasks('accountId')
-            assert rsps.calls[0].request.url == f'{copy_factory_api_url}/users/current/configuration/connections/' + \
-                'accountId/active-resynchronization-tasks'
-            assert rsps.calls[0].request.method == 'GET'
-            assert rsps.calls[0].request.headers['auth-token'] == 'header.payload.sign'
-            assert strategies == expected
+        rsps = respx.get(f'{copy_factory_api_url}/users/current/configuration/connections/' +
+                         'accountId/active-resynchronization-tasks') \
+            .mock(return_value=Response(200, json=result))
+        strategies = await copy_factory_client.get_active_resynchronization_tasks('accountId')
+        assert rsps.calls[0].request.url == f'{copy_factory_api_url}/users/current/configuration/connections/' + \
+            'accountId/active-resynchronization-tasks'
+        assert rsps.calls[0].request.method == 'GET'
+        assert rsps.calls[0].request.headers['auth-token'] == 'header.payload.sign'
+        assert strategies == expected
 
     @pytest.mark.asyncio
     async def test_not_retrieve_resync_tasks_with_account_token(self):

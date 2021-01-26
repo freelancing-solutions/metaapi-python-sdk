@@ -460,6 +460,7 @@ Features supported:
 - connect arbitrary number of strategy providers and subscribers
 - subscribe accounts to multiple strategies at once
 - select arbitrary copy ratio for each subscription
+- configure symbol mapping between strategy providers and subscribers
 - apply advanced risk filters on strategy provider side
 - override risk filters on subscriber side
 - provide multiple strategies from a single account based on magic or symbol filters

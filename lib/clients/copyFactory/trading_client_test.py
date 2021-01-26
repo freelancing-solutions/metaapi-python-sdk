@@ -1,8 +1,9 @@
 from ..httpClient import HttpClient
 from .trading_client import TradingClient
 import pytest
-import responses
 from ...metaApi.models import date
+import respx
+from httpx import Response
 copy_factory_api_url = 'https://trading-api-v1.agiliumtrade.agiliumtrade.ai'
 http_client = HttpClient()
 trading_client = TradingClient(http_client, 'header.payload.sign')
@@ -17,16 +18,16 @@ async def run_around_tests():
 
 
 class TestTradingClient:
+    @respx.mock
     @pytest.mark.asyncio
     async def test_resynchronize_copyfactory_account(self):
-        with responses.RequestsMock() as rsps:
-            rsps.add(responses.POST, f'{copy_factory_api_url}/users/current/accounts/' +
-                     '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef/resynchronize?strategyId=ABCD',
-                     status=200)
-            await trading_client.resynchronize('0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
-                                               ['ABCD'])
-            assert rsps.calls[0].request.method == 'POST'
-            assert rsps.calls[0].request.headers['auth-token'] == 'header.payload.sign'
+        rsps = respx.post(f'{copy_factory_api_url}/users/current/accounts/' +
+                          '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef/' +
+                          'resynchronize?strategyId=ABCD').mock(return_value=Response(200))
+        await trading_client.resynchronize('0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
+                                           ['ABCD'])
+        assert rsps.calls[0].request.method == 'POST'
+        assert rsps.calls[0].request.headers['auth-token'] == 'header.payload.sign'
 
     @pytest.mark.asyncio
     async def test_not_resynchronize_account_with_account_token(self):
@@ -40,6 +41,7 @@ class TestTradingClient:
                    'because you have connected with account access token. Please use API access token from ' + \
                    'https://app.metaapi.cloud/token page to invoke this method.'
 
+    @respx.mock
     @pytest.mark.asyncio
     async def test_retrieve_stopouts(self):
         """Should retrieve stopouts."""
@@ -52,17 +54,16 @@ class TestTradingClient:
           },
           'reasonDescription': 'total strategy equity drawdown exceeded limit'
         }]
-        with responses.RequestsMock() as rsps:
-            rsps.add(responses.GET, f'{copy_factory_api_url}/users/current/accounts/' +
-                     '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef/stopouts',
-                     json=expected, status=200)
-            stopouts = await trading_client.get_stopouts('0123456789abcdef0123456789abcdef0123456789abcdef' +
-                                                         '0123456789abcdef')
-            assert rsps.calls[0].request.url == f'{copy_factory_api_url}/users/current/accounts/' + \
-                '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef/stopouts'
-            assert rsps.calls[0].request.method == 'GET'
-            assert rsps.calls[0].request.headers['auth-token'] == 'header.payload.sign'
-            assert stopouts == expected
+        rsps = respx.get(f'{copy_factory_api_url}/users/current/accounts/' +
+                         '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef/' +
+                         'stopouts').mock(return_value=Response(200, json=expected))
+        stopouts = await trading_client.get_stopouts('0123456789abcdef0123456789abcdef0123456789abcdef' +
+                                                     '0123456789abcdef')
+        assert rsps.calls[0].request.url == f'{copy_factory_api_url}/users/current/accounts/' + \
+            '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef/stopouts'
+        assert rsps.calls[0].request.method == 'GET'
+        assert rsps.calls[0].request.headers['auth-token'] == 'header.payload.sign'
+        assert stopouts == expected
 
     @pytest.mark.asyncio
     async def test_not_retrieve_stopouts_with_account_token(self):
@@ -75,17 +76,16 @@ class TestTradingClient:
                    'because you have connected with account access token. Please use API access token from ' + \
                    'https://app.metaapi.cloud/token page to invoke this method.'
 
+    @respx.mock
     @pytest.mark.asyncio
     async def test_reset_stopouts(self):
-        with responses.RequestsMock() as rsps:
-            rsps.add(responses.POST, f'{copy_factory_api_url}/users/current/accounts/' +
-                     '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef/strategies-subscribed/ABCD' +
-                     '/stopouts/daily-equity/reset',
-                     status=200)
-            await trading_client.reset_stopouts('0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
-                                                'ABCD', 'daily-equity')
-            assert rsps.calls[0].request.method == 'POST'
-            assert rsps.calls[0].request.headers['auth-token'] == 'header.payload.sign'
+        rsps = respx.post(f'{copy_factory_api_url}/users/current/accounts/' +
+                          '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef/' +
+                          'strategies-subscribed/ABCD/stopouts/daily-equity/reset').mock(return_value=Response(200))
+        await trading_client.reset_stopouts('0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
+                                            'ABCD', 'daily-equity')
+        assert rsps.calls[0].request.method == 'POST'
+        assert rsps.calls[0].request.headers['auth-token'] == 'header.payload.sign'
 
     @pytest.mark.asyncio
     async def test_not_reset_stopouts_with_account_token(self):
@@ -99,6 +99,7 @@ class TestTradingClient:
                    'because you have connected with account access token. Please use API access token from ' + \
                    'https://app.metaapi.cloud/token page to invoke this method.'
 
+    @respx.mock
     @pytest.mark.asyncio
     async def test_retrieve_copy_trading_log(self):
         """Should retrieve copy trading user log."""
@@ -107,21 +108,20 @@ class TestTradingClient:
           'level': 'INFO',
           'message': 'message'
         }]
-        with responses.RequestsMock() as rsps:
-            rsps.add(responses.GET, f'{copy_factory_api_url}/users/current/accounts/' +
-                     '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef/user-log' +
-                     '?offset=10&limit=100&startTime=2020-08-01T00%3A00%3A00.000Z&endTime=2020-08-10T00%3A00%3A00.000Z',
-                     json=expected, status=200)
-            records = await trading_client.get_user_log('0123456789abcdef0123456789abcdef0123456789abcdef' +
-                                                        '0123456789abcdef', date('2020-08-01T00:00:00.000Z'),
-                                                        date('2020-08-10T00:00:00.000Z'), 10, 100)
-            assert rsps.calls[0].request.url == f'{copy_factory_api_url}/users/current/accounts/' + \
-                   '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef/user-log' + \
-                   '?offset=10&limit=100&startTime=2020-08-01T00%3A00%3A00.000Z&endTime=2020-08-10T00%3A00%3A00.000Z'
-            assert rsps.calls[0].request.method == 'GET'
-            assert rsps.calls[0].request.headers['auth-token'] == 'header.payload.sign'
-            expected[0]['time'] = date(expected[0]['time'])
-            assert records == expected
+        rsps = respx.get(f'{copy_factory_api_url}/users/current/accounts/' +
+                         '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef/user-log' +
+                         '?offset=10&limit=100&startTime=2020-08-01T00%3A00%3A00.000Z&endTime=2020-0' +
+                         '8-10T00%3A00%3A00.000Z').mock(return_value=Response(200, json=expected))
+        records = await trading_client.get_user_log('0123456789abcdef0123456789abcdef0123456789abcdef' +
+                                                    '0123456789abcdef', date('2020-08-01T00:00:00.000Z'),
+                                                    date('2020-08-10T00:00:00.000Z'), 10, 100)
+        assert rsps.calls[0].request.url == f'{copy_factory_api_url}/users/current/accounts/' + \
+               '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef/user-log' + \
+               '?offset=10&limit=100&startTime=2020-08-01T00%3A00%3A00.000Z&endTime=2020-08-10T00%3A00%3A00.000Z'
+        assert rsps.calls[0].request.method == 'GET'
+        assert rsps.calls[0].request.headers['auth-token'] == 'header.payload.sign'
+        expected[0]['time'] = date(expected[0]['time'])
+        assert records == expected
 
     @pytest.mark.asyncio
     async def test_not_retrieve_copy_trading_log_with_account_token(self):

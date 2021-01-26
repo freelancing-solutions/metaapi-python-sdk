@@ -3,7 +3,7 @@ from ...metaApi.models import date, format_date
 from .copyFactory_models import CopyFactoryTransaction, CopyFactoryStrategyIdAndName, CopyFactorySubscriberOrProvider
 from datetime import datetime
 from typing import List
-from requests import Response
+from httpx import Response
 
 
 class HistoryClient(MetaApiClient):

@@ -52,6 +52,7 @@ async def run_around_tests():
                                               'requestTimeout': 3})
     client.set_url('http://localhost:8080')
     await client.connect()
+    client._resolved = True
     yield
     await client.close()
     await fake_server.stop()

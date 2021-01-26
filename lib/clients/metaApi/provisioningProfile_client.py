@@ -1,6 +1,5 @@
 from typing_extensions import TypedDict
-from ..httpClient import HttpClient
-from requests import Response
+from httpx import Response
 from ..metaApi_client import MetaApiClient
 from typing import List
 

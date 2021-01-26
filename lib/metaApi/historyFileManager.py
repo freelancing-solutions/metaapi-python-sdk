@@ -2,8 +2,10 @@ from .memoryHistoryStorageModel import MemoryHistoryStorageModel
 import json
 import os
 import asyncio
+from .models import format_date, convert_iso_time_to_date
 from typing import List
 from datetime import datetime
+from copy import deepcopy
 
 
 def stringify(obj: dict or List) -> str:
@@ -100,6 +102,8 @@ class HistoryFileManager:
             if os.path.isfile(f'.metaapi/{self._accountId}-{self._application}-deals.bin'):
                 deals = json.loads(open(f'.metaapi/{self._accountId}-{self._application}-deals.bin').read())
                 self._dealsSize = list(map(self.get_item_size, deals))
+                for deal in deals:
+                    convert_iso_time_to_date(deal)
                 history['deals'] = deals
         except Exception as err:
             print(f'[{datetime.now().isoformat()}] Failed to read deals history storage of '
@@ -111,6 +115,8 @@ class HistoryFileManager:
                 history_orders = json.loads(open(f'.metaapi/{self._accountId}-{self._application}-historyOrders.bin')
                                             .read())
                 self._historyOrdersSize = list(map(self.get_item_size, history_orders))
+                for history_order in history_orders:
+                    convert_iso_time_to_date(history_order)
                 history['historyOrders'] = history_orders
         except Exception as err:
             print(f'[{datetime.now().isoformat()}] Failed to read historyOrders history storage of '
@@ -130,6 +136,7 @@ class HistoryFileManager:
             os.mkdir('.metaapi')
 
         async def replace_records(history_type, start_index: int, replace_items: List, size_array: List) -> List[int]:
+            replace_items = self._prepare_save_data(replace_items)
             file_path = f'.metaapi/{account_id}-{application}-{history_type}.bin'
             file_size = os.path.getsize(file_path)
             if start_index == 0:
@@ -156,12 +163,13 @@ class HistoryFileManager:
                     if not os.path.isfile(f'.metaapi/{account_id}-{application}-deals.bin'):
                         try:
                             f = open(f'.metaapi/{account_id}-{application}-deals.bin', "w+")
-                            f.write(stringify(self._historyStorage.deals))
+                            f.write(stringify(self._prepare_save_data(self._historyStorage.deals)))
                             f.close()
                         except Exception as err:
                             print(f'[{datetime.now().isoformat()}] Error saving deals on disk for account '
                                   f'{self._accountId}', err)
-                        self._dealsSize = list(map(self.get_item_size, self._historyStorage.deals))
+                        self._dealsSize = list(map(self.get_item_size,
+                                                   self._prepare_save_data(self._historyStorage.deals)))
                     else:
                         replace_deals = self._historyStorage.deals[self._startNewDealIndex:]
                         self._dealsSize = await replace_records('deals', self._startNewDealIndex, replace_deals,
@@ -172,12 +180,13 @@ class HistoryFileManager:
                     if not os.path.isfile(f'.metaapi/{account_id}-{application}-historyOrders.bin'):
                         try:
                             f = open(f'.metaapi/{account_id}-{application}-historyOrders.bin', "w+")
-                            f.write(stringify(self._historyStorage.history_orders))
+                            f.write(stringify(self._prepare_save_data(self._historyStorage.history_orders)))
                             f.close()
                         except Exception as err:
                             print(f'[{datetime.now().isoformat()}] Error saving historyOrders on disk for '
                                   f'account {account_id}', err)
-                        self._historyOrdersSize = list(map(self.get_item_size, self._historyStorage.history_orders))
+                        self._historyOrdersSize = list(map(
+                            self.get_item_size, self._prepare_save_data(self._historyStorage.history_orders)))
                     else:
                         replace_orders = self._historyStorage.history_orders[self._startNewOrderIndex:]
                         self._historyOrdersSize = await replace_records('historyOrders', self._startNewOrderIndex,
@@ -217,3 +226,17 @@ class HistoryFileManager:
             os.remove(f'.metaapi/{self._accountId}-{self._application}-deals.bin')
         if os.path.isfile(f'.metaapi/{self._accountId}-{self._application}-historyOrders.bin'):
             os.remove(f'.metaapi/{self._accountId}-{self._application}-historyOrders.bin')
+
+    def _prepare_save_data(self, arr: List[dict]):
+        arr = deepcopy(arr)
+
+        def convert_dates(item):
+            for key in item:
+                if isinstance(item[key], datetime):
+                    item[key] = format_date(item[key])
+                elif isinstance(item[key], dict):
+                    convert_dates(item[key])
+
+        for item in arr:
+            convert_dates(item)
+        return arr
