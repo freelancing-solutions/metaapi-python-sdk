@@ -1,4 +1,4 @@
-12.0.2
+12.0.3
   - fix subscribe_to_market_data API contract
 
 12.0.1

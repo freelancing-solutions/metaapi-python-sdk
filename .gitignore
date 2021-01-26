@@ -10,3 +10,4 @@ test.log
 dist
 .metaapi
 *.egg-info
+synchronizeManyAccounts

@@ -510,8 +510,10 @@ class MetaApiWebsocketClient:
         Returns:
             A coroutine which resolves when subscription request was processed.
         """
-        return self._rpc_request(account_id, {'type': 'subscribeToMarketData', 'symbol': symbol,
-                                              'instanceIndex': instance_index})
+        packet = {'type': 'subscribeToMarketData', 'symbol': symbol}
+        if instance_index:
+            packet['instanceIndex'] = instance_index
+        return self._rpc_request(account_id, packet)
 
     async def get_symbol_specification(self, account_id: str, symbol: str) -> \
             'asyncio.Future[MetatraderSymbolSpecification]':
