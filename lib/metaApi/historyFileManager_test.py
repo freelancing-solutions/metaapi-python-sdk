@@ -15,6 +15,7 @@ test_deal3 = None
 test_order = None
 test_order2 = None
 test_order3 = None
+test_config = None
 
 
 class MockStorage(MemoryHistoryStorageModel):
@@ -23,6 +24,8 @@ class MockStorage(MemoryHistoryStorageModel):
         super().__init__()
         self._deals = []
         self._historyOrders = []
+        self._lastDealTimeByInstanceIndex = {}
+        self._lastHistoryOrderTimeByInstanceIndex = {}
 
     @property
     def deals(self):
@@ -31,6 +34,14 @@ class MockStorage(MemoryHistoryStorageModel):
     @property
     def history_orders(self):
         return self._historyOrders
+
+    @property
+    def last_deal_time_by_instance_index(self) -> dict:
+        return self._lastDealTimeByInstanceIndex
+
+    @property
+    def last_history_order_time_by_instance_index(self) -> dict:
+        return self._lastHistoryOrderTimeByInstanceIndex
 
     def last_deal_time(self):
         pass
@@ -47,7 +58,16 @@ class MockStorage(MemoryHistoryStorageModel):
 
 async def read_history_storage_file():
     """Helper function to read saved history storage."""
-    history = {'deals': [], 'historyOrders': []}
+    history = {
+        'deals': [],
+        'historyOrders': [],
+        'lastDealTimeByInstanceIndex': {},
+        'lastHistoryOrderTimeByInstanceIndex': {}
+    }
+    if os.path.isfile('.metaapi/accountId-application-config.bin'):
+        config = json.loads(open('.metaapi/accountId-application-config.bin').read())
+        history['lastDealTimeByInstanceIndex'] = config['lastDealTimeByInstanceIndex']
+        history['lastHistoryOrderTimeByInstanceIndex'] = config['lastHistoryOrderTimeByInstanceIndex']
     if os.path.isfile('.metaapi/accountId-application-deals.bin'):
         history['deals'] = json.loads(open('.metaapi/accountId-application-deals.bin').read())
     if os.path.isfile('.metaapi/accountId-application-historyOrders.bin'):
@@ -96,6 +116,11 @@ async def run_around_tests():
                    'magic': 2, 'time': datetime.fromtimestamp(100).isoformat(), 'doneTime':
                    datetime.fromtimestamp(300).isoformat(), 'currentPrice': 1, 'volume': 0.01, 'currentVolume': 0,
                    'positionId': '61206632', 'platform': 'mt5', 'comment': 'AS_AUDNZD_5YyM6KS7Fv:'}
+    global test_config
+    test_config = {
+        'lastDealTimeByInstanceIndex': {'0': 1000000000000},
+        'lastHistoryOrderTimeByInstanceIndex': {'0': 1000000000010}
+    }
     yield
     if os.path.isfile('.metaapi/accountId-application-deals.bin'):
         os.remove('.metaapi/accountId-application-deals.bin')
@@ -137,9 +162,15 @@ class TestHistoryFileManager:
         f.write(json.dumps([test_order]))
         f.close()
 
+        f = open('.metaapi/accountId-application-config.bin', "w+")
+        f.write(json.dumps(test_config))
+        f.close()
+
         history = await file_manager.get_history_from_disk()
         assert history['deals'] == [test_deal]
         assert history['historyOrders'] == [test_order]
+        assert history['lastDealTimeByInstanceIndex'] == test_config['lastDealTimeByInstanceIndex']
+        assert history['lastHistoryOrderTimeByInstanceIndex'] == test_config['lastHistoryOrderTimeByInstanceIndex']
 
     @pytest.mark.asyncio
     async def test_save_items(self):
@@ -147,12 +178,16 @@ class TestHistoryFileManager:
 
         storage._deals = [test_deal]
         storage._historyOrders = [test_order]
+        storage._lastDealTimeByInstanceIndex = {'0': 1000000000000}
+        storage._lastHistoryOrderTimeByInstanceIndex = {'0': 1000000000010}
         file_manager.set_start_new_deal_index(0)
         file_manager.set_start_new_order_index(0)
         await file_manager.update_disk_storage()
         saved_data = await read_history_storage_file()
         assert saved_data['deals'] == [test_deal]
         assert saved_data['historyOrders'] == [test_order]
+        assert saved_data['lastDealTimeByInstanceIndex'] == {'0': 1000000000000}
+        assert saved_data['lastHistoryOrderTimeByInstanceIndex'] == {'0': 1000000000010}
 
     @pytest.mark.asyncio
     async def test_replace_nth_item(self):
@@ -215,11 +250,15 @@ class TestHistoryFileManager:
         """Should not corrupt the disk storage if update called multiple times."""
         storage._deals = [test_deal, test_deal2]
         storage._historyOrders = [test_order, test_order2]
+        storage._lastDealTimeByInstanceIndex = {'0': 1000000000000}
+        storage._lastHistoryOrderTimeByInstanceIndex = {'0': 1000000000010}
         file_manager.set_start_new_deal_index(0)
         file_manager.set_start_new_order_index(0)
         await file_manager.update_disk_storage()
         storage._deals = [test_deal, test_deal2, test_deal3]
         storage._historyOrders = [test_order, test_order2, test_order3]
+        storage._lastDealTimeByInstanceIndex = {'0': 1000000000000}
+        storage._lastHistoryOrderTimeByInstanceIndex = {'0': 1000000000010}
         file_manager.set_start_new_deal_index(2)
         file_manager.set_start_new_order_index(2)
         await gather(*[
@@ -230,6 +269,8 @@ class TestHistoryFileManager:
             file_manager.update_disk_storage()
         ])
         json.loads(open('.metaapi/accountId-application-historyOrders.bin').read())
+        json.loads(open('.metaapi/accountId-application-deals.bin').read())
+        json.loads(open('.metaapi/accountId-application-config.bin').read())
 
     @pytest.mark.asyncio
     async def test_remove_history(self):
@@ -237,11 +278,14 @@ class TestHistoryFileManager:
 
         open('.metaapi/accountId-application-deals.bin', "w+").close()
         open('.metaapi/accountId-application-historyOrders.bin', "w+").close()
+        open('.metaapi/accountId-application-config.bin', "w+").close()
         assert os.path.isfile('.metaapi/accountId-application-deals.bin')
         assert os.path.isfile('.metaapi/accountId-application-historyOrders.bin')
+        assert os.path.isfile('.metaapi/accountId-application-config.bin')
         await file_manager.delete_storage_from_disk()
         assert not os.path.isfile('.metaapi/accountId-application-deals.bin')
         assert not os.path.isfile('.metaapi/accountId-application-historyOrders.bin')
+        assert not os.path.isfile('.metaapi/accountId-application-config.bin')
 
     @pytest.mark.asyncio
     async def test_remove_history_if_not_exists(self):
@@ -249,4 +293,5 @@ class TestHistoryFileManager:
 
         assert not os.path.isfile('.metaapi/accountId-application-deals.bin')
         assert not os.path.isfile('.metaapi/accountId-application-historyOrders.bin')
+        assert not os.path.isfile('.metaapi/accountId-application-config.bin')
         await file_manager.delete_storage_from_disk()

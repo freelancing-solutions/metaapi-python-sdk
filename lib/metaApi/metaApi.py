@@ -32,6 +32,8 @@ class MetaApiOpts(TypedDict):
     """Packet logger options."""
     enableLatencyMonitor: Optional[bool]
     """An option to enable latency tracking."""
+    enableLatencyTracking: Optional[bool]
+    """An option to enable latency tracking."""
 
 
 class MetaApi:
@@ -65,7 +67,8 @@ class MetaApi:
                                                           self._metaApiWebsocketClient, self._connectionRegistry)
         self._metatraderDemoAccountApi = MetatraderDemoAccountApi(MetatraderDemoAccountClient(http_client, token,
                                                                                               domain))
-        if 'enableLatencyMonitor' in opts and opts['enableLatencyMonitor']:
+        if ('enableLatencyTracking' in opts and opts['enableLatencyTracking']) or ('enableLatencyMonitor' in opts and
+                                                                                   opts['enableLatencyMonitor']):
             self._latencyMonitor = LatencyMonitor()
             self._metaApiWebsocketClient.add_latency_listener(self._latencyMonitor)
 

@@ -39,6 +39,7 @@ class PacketLogger:
         self._compressSpecifications = opts['compressSpecifications'] if 'compressSpecifications' in opts else True
         self._compressPrices = opts['compressPrices'] if 'compressPrices' in opts else True
         self._previousPrices = {}
+        self._lastKeepAlive = {}
         self._writeQueue = {}
         self._root = './.metaapi/logs'
         self._recordInterval: asyncio.Task or None = None
@@ -49,26 +50,40 @@ class PacketLogger:
         if not os.path.exists(self._root):
             os.mkdir(self._root)
 
+    def _ensure_previous_price_object(self, account_id: str):
+        if account_id not in self._previousPrices:
+            self._previousPrices[account_id] = {}
+
     def log_packet(self, packet: Dict):
         """Processes packets and pushes them into save queue.
 
         Args:
             packet: Packet to log.
         """
+        instance_index = packet['instanceIndex'] if 'instanceIndex' in packet else 0
         packet = deepcopy(packet)
         if packet['accountId'] not in self._writeQueue:
             self._writeQueue[packet['accountId']] = {'isWriting': False, 'queue': []}
         if packet['type'] == 'status':
             return
+        if packet['accountId'] not in self._lastKeepAlive:
+            self._lastKeepAlive[packet['accountId']] = {}
+        if packet['type'] == 'keepalive':
+            self._lastKeepAlive[packet['accountId']][instance_index] = packet
+            return
         queue: List = self._writeQueue[packet['accountId']]['queue']
-        prev_price = self._previousPrices[packet['accountId']] if packet['accountId'] in self._previousPrices else None
+        if packet['accountId'] not in self._previousPrices:
+            self._previousPrices[packet['accountId']] = {}
+        prev_price = self._previousPrices[packet['accountId']][instance_index] if \
+            instance_index in self._previousPrices[packet['accountId']] else None
         if packet['type'] != 'prices':
             if prev_price is not None:
-                self._record_prices(packet['accountId'])
+                self._record_prices(packet['accountId'], instance_index)
             if packet['type'] == 'specifications' and self._compressSpecifications:
                 queue.append(json.dumps({'type': packet['type'], 'sequenceNumber': packet['sequenceNumber'] if
                                          'sequenceNumber' in packet else None, 'sequenceTimestamp':
-                                         packet['sequenceTimestamp'] if 'sequenceTimestamp' in packet else None}))
+                                         packet['sequenceTimestamp'] if 'sequenceTimestamp' in packet else None,
+                                         'instanceIndex': instance_index}))
             else:
                 queue.append(json.dumps(packet))
         else:
@@ -76,16 +91,22 @@ class PacketLogger:
                 queue.append(json.dumps(packet))
             else:
                 if prev_price is not None:
-                    if packet['sequenceNumber'] not in [prev_price['last']['sequenceNumber'],
-                                                        prev_price['last']['sequenceNumber'] + 1]:
-                        self._record_prices(packet['accountId'])
-                        self._previousPrices[packet['accountId']] = {'first': packet, 'last': packet}
+                    valid_sequence_numbers = [prev_price['last']['sequenceNumber'],
+                                              prev_price['last']['sequenceNumber'] + 1]
+                    if instance_index in self._lastKeepAlive[packet['accountId']]:
+                        valid_sequence_numbers.append(
+                            self._lastKeepAlive[packet['accountId']][instance_index]['sequenceNumber'] + 1)
+                    if packet['sequenceNumber'] not in valid_sequence_numbers:
+                        self._record_prices(packet['accountId'], instance_index)
+                        self._ensure_previous_price_object(packet['accountId'])
+                        self._previousPrices[packet['accountId']][instance_index] = {'first': packet, 'last': packet}
                         queue.append(json.dumps(packet))
                     else:
-                        self._previousPrices[packet['accountId']]['last'] = packet
+                        self._previousPrices[packet['accountId']][instance_index]['last'] = packet
                 else:
                     if 'sequenceNumber' in packet:
-                        self._previousPrices[packet['accountId']] = {'first': packet, 'last': packet}
+                        self._ensure_previous_price_object(packet['accountId'])
+                        self._previousPrices[packet['accountId']][instance_index] = {'first': packet, 'last': packet}
                     queue.append(json.dumps(packet))
 
     async def read_logs(self, account_id: str, date_after: datetime = None, date_before: datetime = None):
@@ -152,19 +173,22 @@ class PacketLogger:
         self._deleteOldLogsInterval.cancel()
         self._deleteOldLogsInterval = None
 
-    def _record_prices(self, account_id: str):
+    def _record_prices(self, account_id: str, instance_index: int):
         """Records price packet messages to log files.
 
         Args:
             account_id: Account id.
         """
-        prev_price = self._previousPrices[account_id]
+        prev_price = self._previousPrices[account_id][instance_index] if instance_index \
+            in self._previousPrices[account_id] else {'first': {}, 'last': {}}
         queue = self._writeQueue[account_id]['queue']
-        del self._previousPrices[account_id]
+        del self._previousPrices[account_id][instance_index]
+        if not len(self._previousPrices[account_id].keys()):
+            del self._previousPrices[account_id]
         if prev_price['first']['sequenceNumber'] != prev_price['last']['sequenceNumber']:
             queue.append(json.dumps(prev_price['last']))
             queue.append(f'Recorded price packets {prev_price["first"]["sequenceNumber"]}'
-                         f'-{prev_price["last"]["sequenceNumber"]}')
+                         f'-{prev_price["last"]["sequenceNumber"]}, instanceIndex: {instance_index}')
 
     async def _append_logs(self):
         """Writes logs to files."""

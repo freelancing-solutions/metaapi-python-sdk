@@ -15,9 +15,10 @@ packet_logger: PacketLogger = None
 folder = './.metaapi/logs/'
 
 
-def change_sn(obj: Dict, sequence_number: int):
+def change_sn(obj: Dict, sequence_number: int, instance_index: int = 7):
     new_obj = deepcopy(obj)
     new_obj['sequenceNumber'] = sequence_number
+    new_obj['instanceIndex'] = instance_index
     return new_obj
 
 
@@ -31,6 +32,7 @@ async def run_around_tests():
         packets = {
             'accountInformation': {
                 'type': 'accountInformation',
+                'instanceIndex': 7,
                 'accountInformation': {
                     'broker': 'Broker',
                     'currency': 'USD',
@@ -43,6 +45,7 @@ async def run_around_tests():
             },
             'prices': {
                 'type': 'prices',
+                'instanceIndex': 7,
                 'prices': [{
                     'symbol': 'EURUSD',
                     'bid': 1.18,
@@ -59,12 +62,20 @@ async def run_around_tests():
             },
             'status': {
                 'status': 'connected',
+                'instanceIndex': 7,
                 'type': 'status',
                 'accountId': 'accountId',
                 'sequenceTimestamp': 100000,
             },
+            'keepalive': {
+                'instanceIndex': 7,
+                'type': 'keepalive',
+                'accountId': 'accountId',
+                'sequenceTimestamp': 100000
+            },
             'specifications': {
                 'specifications': [],
+                'instanceIndex': 7,
                 'type': 'specifications',
                 'accountId': 'accountId',
                 'sequenceTimestamp': 100000,
@@ -99,8 +110,9 @@ class TestPacketLogger:
 
     @pytest.mark.asyncio
     async def test_not_record_status(self):
-        """Should not record status."""
+        """Should not record status and keepalive packets."""
         packet_logger.log_packet(packets['status'])
+        packet_logger.log_packet(packets['keepalive'])
         await sleep(0.04)
         result = await packet_logger.read_logs('accountId')
         assert len(result) == 0
@@ -112,7 +124,7 @@ class TestPacketLogger:
         await sleep(0.04)
         result = await packet_logger.read_logs('accountId')
         assert json.loads(result[0]['message']) == {'type': 'specifications', 'sequenceNumber': 1,
-                                                    'sequenceTimestamp': 100000}
+                                                    'sequenceTimestamp': 100000, 'instanceIndex': 7}
 
     @pytest.mark.asyncio
     async def test_record_full_specifications(self):
@@ -143,14 +155,43 @@ class TestPacketLogger:
         packet_logger.log_packet(change_sn(packets['prices'], 2))
         packet_logger.log_packet(change_sn(packets['prices'], 3))
         packet_logger.log_packet(change_sn(packets['prices'], 4))
+        packet_logger.log_packet(change_sn(packets['keepalive'], 5))
+        packet_logger.log_packet(change_sn(packets['prices'], 6))
+        packet_logger.log_packet(packets['accountInformation'])
+        await sleep(0.04)
+        result = await packet_logger.read_logs('accountId')
+        assert json.loads(result[0]['message']) == packets['prices']
+        assert json.loads(result[1]['message']) == change_sn(packets['prices'], 6)
+        assert result[2]['message'] == 'Recorded price packets 1-6, instanceIndex: 7'
+        assert json.loads(result[3]['message']) == packets['accountInformation']
+
+    @pytest.mark.asyncio
+    async def test_record_range_of_price_packets_different_instances(self):
+        """Should record range of price packets of different instances."""
+        packet_logger.log_packet(packets['prices'])
+        packet_logger.log_packet(change_sn(packets['prices'], 2))
+        packet_logger.log_packet(change_sn(packets['prices'], 3))
+        packet_logger.log_packet(change_sn(packets['prices'], 1, 8))
+        packet_logger.log_packet(change_sn(packets['prices'], 2, 8))
+        packet_logger.log_packet(change_sn(packets['prices'], 3, 8))
+        packet_logger.log_packet(change_sn(packets['prices'], 4, 8))
+        packet_logger.log_packet(change_sn(packets['prices'], 4))
+        packet_logger.log_packet(change_sn(packets['prices'], 5, 8))
+        account_info = deepcopy(packets['accountInformation'])
+        account_info['instanceIndex'] = 8
+        packet_logger.log_packet(account_info)
         packet_logger.log_packet(change_sn(packets['prices'], 5))
         packet_logger.log_packet(packets['accountInformation'])
         await sleep(0.04)
         result = await packet_logger.read_logs('accountId')
         assert json.loads(result[0]['message']) == packets['prices']
-        assert json.loads(result[1]['message']) == change_sn(packets['prices'], 5)
-        assert result[2]['message'] == 'Recorded price packets 1-5'
-        assert json.loads(result[3]['message']) == packets['accountInformation']
+        assert json.loads(result[1]['message']) == change_sn(packets['prices'], 1, 8)
+        assert json.loads(result[2]['message']) == change_sn(packets['prices'], 5, 8)
+        assert result[3]['message'] == 'Recorded price packets 1-5, instanceIndex: 8'
+        assert json.loads(result[4]['message']) == account_info
+        assert json.loads(result[5]['message']) == change_sn(packets['prices'], 5)
+        assert result[6]['message'] == 'Recorded price packets 1-5, instanceIndex: 7'
+        assert json.loads(result[7]['message']) == packets['accountInformation']
 
     @pytest.mark.asyncio
     async def test_record_all_price_packets(self):
@@ -186,7 +227,7 @@ class TestPacketLogger:
         result = await packet_logger.read_logs('accountId')
         assert json.loads(result[0]['message']) == packets['prices']
         assert json.loads(result[1]['message']) == change_sn(packets['prices'], 4)
-        assert result[2]['message'] == 'Recorded price packets 1-4'
+        assert result[2]['message'] == 'Recorded price packets 1-4, instanceIndex: 7'
         assert json.loads(result[3]['message']) == change_sn(packets['prices'], 6)
 
     @pytest.mark.asyncio

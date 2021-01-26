@@ -2,6 +2,7 @@ from ..httpClient import HttpClient
 from .trading_client import TradingClient
 import pytest
 import responses
+from ...metaApi.models import date
 copy_factory_api_url = 'https://trading-api-v1.agiliumtrade.agiliumtrade.ai'
 http_client = HttpClient()
 trading_client = TradingClient(http_client, 'header.payload.sign')
@@ -95,5 +96,40 @@ class TestTradingClient:
                                                 'ABCD', 'daily-equity')
         except Exception as err:
             assert err.__str__() == 'You can not invoke reset_stopouts method, ' + \
+                   'because you have connected with account access token. Please use API access token from ' + \
+                   'https://app.metaapi.cloud/token page to invoke this method.'
+
+    @pytest.mark.asyncio
+    async def test_retrieve_copy_trading_log(self):
+        """Should retrieve copy trading user log."""
+        expected = [{
+          'time': '2020-08-08T07:57:30.328Z',
+          'level': 'INFO',
+          'message': 'message'
+        }]
+        with responses.RequestsMock() as rsps:
+            rsps.add(responses.GET, f'{copy_factory_api_url}/users/current/accounts/' +
+                     '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef/user-log' +
+                     '?offset=10&limit=100&startTime=2020-08-01T00%3A00%3A00.000Z&endTime=2020-08-10T00%3A00%3A00.000Z',
+                     json=expected, status=200)
+            records = await trading_client.get_user_log('0123456789abcdef0123456789abcdef0123456789abcdef' +
+                                                        '0123456789abcdef', date('2020-08-01T00:00:00.000Z'),
+                                                        date('2020-08-10T00:00:00.000Z'), 10, 100)
+            assert rsps.calls[0].request.url == f'{copy_factory_api_url}/users/current/accounts/' + \
+                   '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef/user-log' + \
+                   '?offset=10&limit=100&startTime=2020-08-01T00%3A00%3A00.000Z&endTime=2020-08-10T00%3A00%3A00.000Z'
+            assert rsps.calls[0].request.method == 'GET'
+            assert rsps.calls[0].request.headers['auth-token'] == 'header.payload.sign'
+            expected[0]['time'] = date(expected[0]['time'])
+            assert records == expected
+
+    @pytest.mark.asyncio
+    async def test_not_retrieve_copy_trading_log_with_account_token(self):
+        """Should not retrieve copy trading user log from API with account token."""
+        trading_client = TradingClient(http_client, 'token')
+        try:
+            await trading_client.get_user_log('0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef')
+        except Exception as err:
+            assert err.__str__() == 'You can not invoke get_user_log method, ' + \
                    'because you have connected with account access token. Please use API access token from ' + \
                    'https://app.metaapi.cloud/token page to invoke this method.'

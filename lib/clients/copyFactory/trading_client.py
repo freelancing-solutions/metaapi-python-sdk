@@ -1,7 +1,9 @@
 from ..metaApi_client import MetaApiClient
-from .copyFactory_models import CopyFactoryStrategyStopout
+from .copyFactory_models import CopyFactoryStrategyStopout, CopyFactoryUserLogRecord
 from typing import List
 from requests import Response
+from datetime import datetime
+from ...metaApi.models import date, format_date
 
 
 class TradingClient(MetaApiClient):
@@ -94,3 +96,44 @@ class TradingClient(MetaApiClient):
             }
         }
         return await self._httpClient.request(opts)
+
+    async def get_user_log(self, account_id: str, start_time: datetime = None, end_time: datetime = None,
+                           offset: int = 0, limit: int = 1000) -> 'Response[List[CopyFactoryUserLogRecord]]':
+        """Returns copy trading user log for an account and time range. See
+        https://trading-api-v1.project-stock.v2.agiliumlabs.cloud/swagger/#!/default
+        /get_users_current_accounts_accountId_user_log
+
+
+        Args:
+            account_id: Account id.
+            start_time: Time to start loading data from.
+            end_time: Time to stop loading data at.
+            offset: Pagination offset. Default is 0.
+            limit: Pagination limit. Default is 1000.
+
+        Returns:
+            A coroutine which resolves with log records found.
+        """
+        if self._is_not_jwt_token():
+            return self._handle_no_access_exception('get_user_log')
+        qs = {
+            'offset': offset,
+            'limit': limit
+        }
+        if start_time:
+            qs['startTime'] = format_date(start_time)
+        if end_time:
+            qs['endTime'] = format_date(end_time)
+        opts = {
+            'url': f'{self._host}/users/current/accounts/{account_id}/user-log',
+            'method': 'GET',
+            'headers': {
+                'auth-token': self._token
+            },
+            'params': qs
+        }
+        result = await self._httpClient.request(opts)
+        if result and isinstance(result, List):
+            for r in result:
+                r['time'] = date(r['time'])
+        return result

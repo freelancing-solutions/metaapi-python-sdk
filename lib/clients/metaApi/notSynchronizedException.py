@@ -8,5 +8,4 @@ class NotSynchronizedException(Exception):
         Args:
             message: Exception message.
         """
-        super().__init__(message +
-                         '. See https://metaapi.cloud/docs/client/websocket/synchronizationMode/ for more details')
+        super().__init__(message)

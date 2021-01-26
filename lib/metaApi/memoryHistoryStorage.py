@@ -17,6 +17,8 @@ class MemoryHistoryStorage(MemoryHistoryStorageModel):
         self._fileManager = HistoryFileManager(account_id, application, self)
         self._deals = []
         self._historyOrders = []
+        self._lastDealTimeByInstanceIndex = {}
+        self._lastHistoryOrderTimeByInstanceIndex = {}
         self._fileManager.start_update_job()
 
     @property
@@ -37,11 +39,29 @@ class MemoryHistoryStorage(MemoryHistoryStorageModel):
         """
         return self._historyOrders
 
+    @property
+    def last_deal_time_by_instance_index(self) -> dict:
+        """Returns times of last deals by instance indices.
+
+        Returns:
+            Dictionary of last deal times by instance indices."""
+        return self._lastDealTimeByInstanceIndex
+
+    @property
+    def last_history_order_time_by_instance_index(self) -> dict:
+        """Returns times of last history orders by instance indices.
+
+        Returns:
+            Dictionary of last history orders times by instance indices."""
+        return self._lastHistoryOrderTimeByInstanceIndex
+
     def reset(self):
         """Resets the storage. Intended for use in tests."""
 
         self._deals = []
         self._historyOrders = []
+        self._lastDealTimeByInstanceIndex = {}
+        self._lastHistoryOrderTimeByInstanceIndex = {}
         self._fileManager.delete_storage_from_disk()
 
     async def load_data_from_disk(self):
@@ -53,6 +73,10 @@ class MemoryHistoryStorage(MemoryHistoryStorageModel):
         history = await self._fileManager.get_history_from_disk()
         self._deals = history['deals']
         self._historyOrders = history['historyOrders']
+        self._lastDealTimeByInstanceIndex = history['lastDealTimeByInstanceIndex'] if 'lastDealTimeByInstanceIndex' \
+                                                                                      in history else {}
+        self._lastHistoryOrderTimeByInstanceIndex = history['lastHistoryOrderTimeByInstanceIndex'] if \
+            'lastHistoryOrderTimeByInstanceIndex' in history else {}
 
     async def update_disk_storage(self):
         """Saves unsaved history items to disk storage.
@@ -62,31 +86,45 @@ class MemoryHistoryStorage(MemoryHistoryStorageModel):
         """
         await self._fileManager.update_disk_storage()
 
-    async def last_history_order_time(self) -> datetime:
+    async def last_history_order_time(self, instance_index: int = None) -> datetime:
         """Returns the time of the last history order record stored in the history storage.
 
-        Returns:
-            The time of the last history order record stored in the history storage
-        """
-        filtered_orders = list(filter(lambda order: 'doneTime' in order, self._historyOrders))
-        return max(order['doneTime'] if isinstance(order['doneTime'], datetime) else date(order['doneTime']) for order
-                   in (filtered_orders + [{'doneTime': datetime.fromtimestamp(0).replace(tzinfo=pytz.UTC)}]))
+        Args:
+            instance_index: Index of an account instance connected.
 
-    async def last_deal_time(self) -> datetime:
+        Returns:
+            The time of the last history order record stored in the history storage.
+        """
+        if instance_index is not None:
+            return date(self._lastHistoryOrderTimeByInstanceIndex[str(instance_index)] if str(instance_index) in
+                        self._lastHistoryOrderTimeByInstanceIndex else 0)
+        else:
+            return date(max(list(self._lastHistoryOrderTimeByInstanceIndex.values())))
+
+    async def last_deal_time(self, instance_index: int = None) -> datetime:
         """Returns the time of the last history deal record stored in the history storage.
+
+        Args:
+            instance_index: Index of an account instance connected.
 
         Returns:
             The time of the last history deal record stored in the history storage.
         """
-        filtered_deals = list(filter(lambda order: 'time' in order, self._deals))
-        return max(deal['time'] if isinstance(deal['time'], datetime) else date(deal['time']) for deal in
-                   (filtered_deals + [{'time': datetime.fromtimestamp(0).replace(tzinfo=pytz.UTC)}]))
+        if instance_index is not None:
+            return date(self._lastDealTimeByInstanceIndex[str(instance_index)] if str(instance_index) in
+                        self._lastDealTimeByInstanceIndex else 0)
+        else:
+            return date(max(list(self._lastDealTimeByInstanceIndex.values())))
 
-    async def on_history_order_added(self, history_order: MetatraderOrder):
+    async def on_history_order_added(self, instance_index: int, history_order: MetatraderOrder):
         """Invoked when a new MetaTrader history order is added.
 
         Args:
+            instance_index: Index of an account instance connected.
             history_order: New MetaTrader history order.
+
+        Returns:
+            A coroutine which resolves when the asynchronous event is processed.
         """
         insert_index = 0
         replacement_index = -1
@@ -98,15 +136,18 @@ class MemoryHistoryStorage(MemoryHistoryStorageModel):
             else:
                 return 0
 
-        history_order_time = get_done_time(history_order)
+        new_history_order_time = get_done_time(history_order)
+        if str(instance_index) not in self._lastHistoryOrderTimeByInstanceIndex or \
+                self._lastHistoryOrderTimeByInstanceIndex[str(instance_index)] < new_history_order_time:
+            self._lastHistoryOrderTimeByInstanceIndex[str(instance_index)] = new_history_order_time
 
         for i in range(len(self._historyOrders)):
             index = len(self._historyOrders) - 1 - i
             order = self._historyOrders[index]
             order_time = get_done_time(order)
-            if (order_time < history_order_time) or \
-               (order_time == history_order_time and order['id'] <= history_order['id']):
-                if (order_time == history_order_time and order['id'] == history_order['id'] and
+            if (order_time < new_history_order_time) or \
+               (order_time == new_history_order_time and order['id'] <= history_order['id']):
+                if (order_time == new_history_order_time and order['id'] == history_order['id'] and
                    order['type'] == history_order['type']):
                     replacement_index = index
                 else:
@@ -119,11 +160,15 @@ class MemoryHistoryStorage(MemoryHistoryStorageModel):
             self._historyOrders.insert(insert_index, history_order)
             self._fileManager.set_start_new_order_index(insert_index)
 
-    async def on_deal_added(self, new_deal: MetatraderDeal):
+    async def on_deal_added(self, instance_index: int, new_deal: MetatraderDeal):
         """Invoked when a new MetaTrader history deal is added.
 
         Args:
+            instance_index: Index of an account instance connected.
             new_deal: New MetaTrader history deal.
+
+        Returns:
+            A coroutine which resolves when the asynchronous event is processed.
         """
         insert_index = 0
         replacement_index = -1
@@ -136,6 +181,9 @@ class MemoryHistoryStorage(MemoryHistoryStorageModel):
                 return 0
 
         new_deal_time = get_time(new_deal)
+        if str(instance_index) not in self._lastDealTimeByInstanceIndex or \
+                self._lastDealTimeByInstanceIndex[str(instance_index)] < new_deal_time:
+            self._lastDealTimeByInstanceIndex[str(instance_index)] = new_deal_time
         for i in range(len(self._deals)):
             index = len(self._deals) - 1 - i
             deal = self._deals[index]
