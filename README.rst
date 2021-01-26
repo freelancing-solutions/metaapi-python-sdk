@@ -375,7 +375,7 @@ Execute trades (both RPC and streaming APIs)
         print(api.format_error(err))
 
 Monitoring account connection health and uptime
-===========================================
+===============================================
 You can monitor account connection health using MetaApiConnection.health_monitor API.
 
 .. code-block:: python
@@ -389,7 +389,7 @@ You can monitor account connection health using MetaApiConnection.health_monitor
     print(monitor.uptime)
 
 Tracking latencies
-===================
+==================
 You can track latencies using MetaApi.latency_monitor API. Client-side latencies include network communication delays, thus the lowest client-side latencies are achieved if you host your app in AWS Ohio region.
 
 .. code-block:: python
@@ -406,7 +406,7 @@ You can track latencies using MetaApi.latency_monitor API. Client-side latencies
     print(monitor.request_latencies)
 
 Managing MetaTrader demo accounts via API
-===========================================
+=========================================
 Please note that not all MT4/MT5 servers allows you to create demo accounts using the method below.
 
 Create a MetaTrader 4 demo account
@@ -442,7 +442,7 @@ trade copying applications as easy as writing few lines of code.
 At this point this feature is experimental and we have not yet defined a final price for it.
 
 Why do we offer CopyFactory API
--------------------------------------
+-------------------------------
 
 We found that developing reliable and flexible trade copier is a task
 which requires lots of effort, because developers have to solve a series
@@ -453,7 +453,7 @@ powerful solution in almost no time, save on development and
 infrastructure maintenance costs.
 
 CopyFactory features
--------------------------------------
+--------------------
 Features supported:
 
 - low latency trade copying
@@ -474,7 +474,7 @@ Features supported:
 Please note that trade copying to MT5 netting accounts is not supported in the current API version
 
 Configuring trade copying
--------------------------------------
+-------------------------
 
 In order to configure trade copying you need to:
 
@@ -542,7 +542,7 @@ In order to configure trade copying you need to:
 See in-code documentation for full definition of possible configuration options.
 
 Retrieving trade copying history
--------------------------------------
+--------------------------------
 
 CopyFactory allows you to monitor transactions conducted on trading accounts in real time.
 
@@ -582,7 +582,7 @@ Retrieving trading history on subscriber side
         time_till=datetime.fromisoformat('2020-09-01')))
 
 Resynchronizing slave accounts to masters
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 There is a configurable time limit during which the trades can be opened. Sometimes trades can not open in time due to broker errors or trading session time discrepancy.
 You can resynchronize a slave account to place such late trades. Please note that positions which were
 closed manually on a slave account will also be reopened during resynchronization.
@@ -598,7 +598,7 @@ closed manually on a slave account will also be reopened during resynchronizatio
     await copy_factory.trading_api.resynchronize(account_id=account_id, strategy_ids=['ABCD'])
 
 Managing stopouts
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+^^^^^^^^^^^^^^^^^
 A subscription to a strategy can be stopped if the strategy have exceeded allowed risk limit.
 
 .. code-block:: python
@@ -614,7 +614,7 @@ A subscription to a strategy can be stopped if the strategy have exceeded allowe
     await trading_api.reset_stopout(account_id=account_id, strategy_id=strategy_id, reason='daily-equity')
 
 Retrieving slave trading logs
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 .. code-block:: python
 
