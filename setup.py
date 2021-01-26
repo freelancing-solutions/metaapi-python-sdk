@@ -5,11 +5,11 @@ with open("README.rst", "r") as fh:
 
 install_requires = [
    'aiohttp==3.6.2', 'python-engineio==3.13.0', 'typing-extensions==3.7.4.3', 'iso8601', 'pytz',
-   'python-socketio[asyncio_client]==4.6.0', 'requests==2.24.0', 'websockets==8.1'
+   'python-socketio[asyncio_client]==4.6.0', 'requests==2.24.0', 'websockets==8.1', 'httpx==0.16.1'
 ]
 
 tests_require = [
-      'pytest', 'pytest-mock', 'pytest-asyncio', 'asynctest', 'aiohttp', 'responses', 'mock', 'freezegun==1.0.0'
+      'pytest', 'pytest-mock', 'pytest-asyncio', 'asynctest', 'aiohttp', 'mock', 'freezegun==1.0.0', 'respx'
 ]
 
 setuptools.setup(

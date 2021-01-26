@@ -34,6 +34,7 @@ class ConnectionHealthMonitor(SynchronizationListener):
         """
         super().__init__()
         self._connection = connection
+        self._priceUpdatedAt = None
 
         async def update_quote_health_job():
             while True:
@@ -189,6 +190,10 @@ class ConnectionHealthMonitor(SynchronizationListener):
                 '7': 'SUNDAY'
             }
             in_quote_session = False
+            if not self._priceUpdatedAt:
+                self._priceUpdatedAt = datetime.now()
+            if (not self._connection.subscribed_symbols) or (not len(self._connection.subscribed_symbols)):
+                self._priceUpdatedAt = datetime.now()
             for symbol in self._connection.subscribed_symbols:
                 specification = self._connection.terminal_state.specification(symbol) or {}
                 quote_sessions_list = (specification['quoteSessions'] if 'quoteSessions' in specification else [])

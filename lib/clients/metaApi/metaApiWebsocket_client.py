@@ -15,7 +15,7 @@ import socketio
 import asyncio
 import re
 from random import random
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Coroutine, List, Dict
 
 
@@ -71,7 +71,7 @@ class MetaApiWebsocketClient:
         except Exception as err:
             if err.__class__.__name__ != 'TimeoutException':
                 print((f'[{datetime.now().isoformat()}] MetaApi websocket client failed to receive ' +
-                       'subscribe response for account id ' + account_id + ':' + instance_index, err))
+                       'subscribe response for account id ' + account_id + ':' + str(instance_index), err))
 
     def set_url(self, url: str):
         """Patch server URL for use in unit tests
@@ -647,7 +647,12 @@ class MetaApiWebsocketClient:
     async def _rpc_request(self, account_id: str, request: dict, timeout_in_seconds: float = None) -> Coroutine:
         if not self._connected:
             await self.connect()
-
+        start_time = datetime.now()
+        while not self._resolved and (start_time + timedelta(seconds=self._connect_timeout) > datetime.now()):
+            await asyncio.sleep(1)
+        if not self._resolved:
+            raise TimeoutException(f"MetaApi websocket client request of account {account_id} timed because socket "
+                                   f"client failed to connect to the server.")
         if 'requestId' in request:
             request_id = request['requestId']
         else:
@@ -735,7 +740,7 @@ class MetaApiWebsocketClient:
                     if len(on_connected_tasks) > 0:
                         await asyncio.wait(on_connected_tasks)
                 elif data['type'] == 'disconnected':
-                    if self._connectedHosts[instance_id] == data['host']:
+                    if instance_id in self._connectedHosts and self._connectedHosts[instance_id] == data['host']:
                         on_disconnected_tasks: List[asyncio.Task] = []
 
                         async def run_on_disconnected(listener):
@@ -1025,7 +1030,7 @@ class MetaApiWebsocketClient:
                                     print(f'[{datetime.now().isoformat()}] MetaApi websocket client failed to ' +
                                           'receive subscribe response for account id ' + instance_id, error)
                             asyncio.create_task(run_subscribe())
-                    elif self._connectedHosts[instance_id] == data['host']:
+                    elif instance_id in self._connectedHosts and self._connectedHosts[instance_id] == data['host']:
                         if instance_id in self._resubscriptionTriggerTimes:
                             del self._resubscriptionTriggerTimes[instance_id]
                         on_broker_connection_status_changed_tasks: List[asyncio.Task] = []

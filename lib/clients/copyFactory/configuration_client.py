@@ -4,7 +4,7 @@ from .copyFactory_models import StrategyId, CopyFactoryAccountUpdate, CopyFactor
     ResynchronizationTask, CopyFactoryAccount, CopyFactoryStrategy, CopyFactoryPortfolioStrategy, \
     CopyFactoryPortfolioStrategyUpdate
 from ..timeoutException import TimeoutException
-from requests import Response
+from httpx import Response
 from datetime import datetime
 import asyncio
 from typing import List

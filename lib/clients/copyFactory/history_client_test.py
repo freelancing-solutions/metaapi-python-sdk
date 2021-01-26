@@ -3,7 +3,8 @@ from .history_client import HistoryClient
 from ...metaApi.models import date, format_date
 from datetime import datetime
 import pytest
-import responses
+import respx
+from httpx import Response
 copy_factory_api_url = 'https://trading-api-v1.agiliumtrade.agiliumtrade.ai'
 http_client = HttpClient()
 history_client = HistoryClient(http_client, 'header.payload.sign')
@@ -18,6 +19,7 @@ async def run_around_tests():
 
 
 class TestHistoryClient:
+    @respx.mock
     @pytest.mark.asyncio
     async def test_retrieve_providers_from_api(self):
         """Should retrieve providers from API."""
@@ -29,14 +31,14 @@ class TestHistoryClient:
                 'name': 'Test strategy'
             }]
         }]
-        with responses.RequestsMock() as rsps:
-            rsps.add(responses.GET, f'{copy_factory_api_url}/users/current/providers',
-                     json=expected, status=200)
-            accounts = await history_client.get_providers()
-            assert rsps.calls[0].request.url == f'{copy_factory_api_url}/users/current/providers'
-            assert rsps.calls[0].request.method == 'GET'
-            assert rsps.calls[0].request.headers['auth-token'] == 'header.payload.sign'
-            assert accounts == expected
+
+        rsps = respx.get(f'{copy_factory_api_url}/users/current/providers')\
+            .mock(return_value=Response(200, json=expected))
+        accounts = await history_client.get_providers()
+        assert rsps.calls[0].request.url == f'{copy_factory_api_url}/users/current/providers'
+        assert rsps.calls[0].request.method == 'GET'
+        assert rsps.calls[0].request.headers['auth-token'] == 'header.payload.sign'
+        assert accounts == expected
 
     @pytest.mark.asyncio
     async def test_not_retrieve_providers_with_account_token(self):
@@ -49,6 +51,7 @@ class TestHistoryClient:
                                     'account access token. Please use API access token from ' + \
                                     'https://app.metaapi.cloud/token page to invoke this method.'
 
+    @respx.mock
     @pytest.mark.asyncio
     async def test_retrieve_subscribers_from_api(self):
         """Should retrieve subscribers from API."""
@@ -60,14 +63,13 @@ class TestHistoryClient:
             'name': 'Test strategy'
           }]
         }]
-        with responses.RequestsMock() as rsps:
-            rsps.add(responses.GET, f'{copy_factory_api_url}/users/current/subscribers',
-                     json=expected, status=200)
-            accounts = await history_client.get_subscribers()
-            assert rsps.calls[0].request.url == f'{copy_factory_api_url}/users/current/subscribers'
-            assert rsps.calls[0].request.method == 'GET'
-            assert rsps.calls[0].request.headers['auth-token'] == 'header.payload.sign'
-            assert accounts == expected
+        rsps = respx.get(f'{copy_factory_api_url}/users/current/subscribers') \
+            .mock(return_value=Response(200, json=expected))
+        accounts = await history_client.get_subscribers()
+        assert rsps.calls[0].request.url == f'{copy_factory_api_url}/users/current/subscribers'
+        assert rsps.calls[0].request.method == 'GET'
+        assert rsps.calls[0].request.headers['auth-token'] == 'header.payload.sign'
+        assert accounts == expected
 
     @pytest.mark.asyncio
     async def test_not_retrieve_subscribers_with_account_token(self):
@@ -80,6 +82,7 @@ class TestHistoryClient:
                                     'account access token. Please use API access token from ' + \
                                     'https://app.metaapi.cloud/token page to invoke this method.'
 
+    @respx.mock
     @pytest.mark.asyncio
     async def test_retrieve_strategies_subscribed_from_api(self):
         """Should retrieve strategies subscribed to from API."""
@@ -87,14 +90,13 @@ class TestHistoryClient:
             'id': 'ABCD',
             'name': 'Test strategy'
         }]
-        with responses.RequestsMock() as rsps:
-            rsps.add(responses.GET, f'{copy_factory_api_url}/users/current/strategies-subscribed',
-                     json=expected, status=200)
-            accounts = await history_client.get_strategies_subscribed()
-            assert rsps.calls[0].request.url == f'{copy_factory_api_url}/users/current/strategies-subscribed'
-            assert rsps.calls[0].request.method == 'GET'
-            assert rsps.calls[0].request.headers['auth-token'] == 'header.payload.sign'
-            assert accounts == expected
+        rsps = respx.get(f'{copy_factory_api_url}/users/current/strategies-subscribed') \
+            .mock(return_value=Response(200, json=expected))
+        accounts = await history_client.get_strategies_subscribed()
+        assert rsps.calls[0].request.url == f'{copy_factory_api_url}/users/current/strategies-subscribed'
+        assert rsps.calls[0].request.method == 'GET'
+        assert rsps.calls[0].request.headers['auth-token'] == 'header.payload.sign'
+        assert accounts == expected
 
     @pytest.mark.asyncio
     async def test_not_retrieve_strategies_subscribed_to_with_account_token(self):
@@ -107,6 +109,7 @@ class TestHistoryClient:
                    'connected with account access token. Please use API access token from ' + \
                    'https://app.metaapi.cloud/token page to invoke this method.'
 
+    @respx.mock
     @pytest.mark.asyncio
     async def test_retrieve_provided_strategies_from_api(self):
         """Should retrieve strategies subscribed to from API."""
@@ -114,14 +117,13 @@ class TestHistoryClient:
             'id': 'ABCD',
             'name': 'Test strategy'
         }]
-        with responses.RequestsMock() as rsps:
-            rsps.add(responses.GET, f'{copy_factory_api_url}/users/current/provided-strategies',
-                     json=expected, status=200)
-            accounts = await history_client.get_provided_strategies()
-            assert rsps.calls[0].request.url == f'{copy_factory_api_url}/users/current/provided-strategies'
-            assert rsps.calls[0].request.method == 'GET'
-            assert rsps.calls[0].request.headers['auth-token'] == 'header.payload.sign'
-            assert accounts == expected
+        rsps = respx.get(f'{copy_factory_api_url}/users/current/provided-strategies') \
+            .mock(return_value=Response(200, json=expected))
+        accounts = await history_client.get_provided_strategies()
+        assert rsps.calls[0].request.url == f'{copy_factory_api_url}/users/current/provided-strategies'
+        assert rsps.calls[0].request.method == 'GET'
+        assert rsps.calls[0].request.headers['auth-token'] == 'header.payload.sign'
+        assert accounts == expected
 
     @pytest.mark.asyncio
     async def test_not_retrieve_provided_strategies_with_account_token(self):
@@ -134,6 +136,7 @@ class TestHistoryClient:
                    'connected with account access token. Please use API access token from ' + \
                    'https://app.metaapi.cloud/token page to invoke this method.'
 
+    @respx.mock
     @pytest.mark.asyncio
     async def test_retrieve_transactions_for_provided_strategies_from_api(self):
         """Should retrieve transactions performed on provided strategies from API."""
@@ -168,19 +171,18 @@ class TestHistoryClient:
         }]
         time_from = datetime.now()
         time_till = datetime.now()
-        with responses.RequestsMock() as rsps:
-            rsps.add(responses.GET, f'{copy_factory_api_url}/users/current/provided-strategies/transactions',
-                     json=expected, status=200, match_querystring=False)
-            accounts = await history_client.get_provided_strategies_transactions(time_from, time_till, ['ABCD'],
-                                                                                 ['subscriberId'], 100, 200)
-            assert rsps.calls[0].request.url == f'{copy_factory_api_url}/users/current/provided-strategies/' \
-                                                f'transactions?from={format_date(time_from).replace(":", "%3A")}&' \
-                                                f'till={format_date(time_till).replace(":", "%3A")}&strategyId=ABCD&' \
-                                                f'subscriberId=subscriberId&offset=100&limit=200'
-            assert rsps.calls[0].request.method == 'GET'
-            assert rsps.calls[0].request.headers['auth-token'] == 'header.payload.sign'
-            expected[0]['time'] = date(expected[0]['time'])
-            assert accounts == expected
+        rsps = respx.get(url__startswith=f'{copy_factory_api_url}/users/current/provided-strategies') \
+            .mock(return_value=Response(200, json=expected))
+        accounts = await history_client.get_provided_strategies_transactions(time_from, time_till, ['ABCD'],
+                                                                             ['subscriberId'], 100, 200)
+        assert rsps.calls[0].request.url == f'{copy_factory_api_url}/users/current/provided-strategies/' \
+                                            f'transactions?from={format_date(time_from).replace(":", "%3A")}&' \
+                                            f'till={format_date(time_till).replace(":", "%3A")}&strategyId=ABCD&' \
+                                            f'subscriberId=subscriberId&offset=100&limit=200'
+        assert rsps.calls[0].request.method == 'GET'
+        assert rsps.calls[0].request.headers['auth-token'] == 'header.payload.sign'
+        expected[0]['time'] = date(expected[0]['time'])
+        assert accounts == expected
 
     @pytest.mark.asyncio
     async def test_not_retrieve_transactions_for_provided_strategies_with_account_token(self):
@@ -193,6 +195,7 @@ class TestHistoryClient:
                    'you have connected with account access token. Please use API access token from ' + \
                    'https://app.metaapi.cloud/token page to invoke this method.'
 
+    @respx.mock
     @pytest.mark.asyncio
     async def test_retrieve_transactions_for_subscribed_strategies_from_api(self):
         """Should retrieve transactions performed on strategies current user is subscribed to from API."""
@@ -227,19 +230,18 @@ class TestHistoryClient:
         }]
         time_from = datetime.now()
         time_till = datetime.now()
-        with responses.RequestsMock() as rsps:
-            rsps.add(responses.GET, f'{copy_factory_api_url}/users/current/strategies-subscribed/transactions',
-                     json=expected, status=200)
-            accounts = await history_client.get_strategies_subscribed_transactions(time_from, time_till, ['ABCD'],
-                                                                                   ['subscriberId'], 100, 200)
-            assert rsps.calls[0].request.url == f'{copy_factory_api_url}/users/current/strategies-subscribed/' \
-                                                f'transactions?from={format_date(time_from).replace(":", "%3A")}&' \
-                                                f'till={format_date(time_till).replace(":", "%3A")}&strategyId=ABCD&' \
-                                                f'providerId=subscriberId&offset=100&limit=200'
-            assert rsps.calls[0].request.method == 'GET'
-            assert rsps.calls[0].request.headers['auth-token'] == 'header.payload.sign'
-            expected[0]['time'] = date(expected[0]['time'])
-            assert accounts == expected
+        rsps = respx.get(f'{copy_factory_api_url}/users/current/strategies-subscribed/transactions') \
+            .mock(return_value=Response(200, json=expected))
+        accounts = await history_client.get_strategies_subscribed_transactions(time_from, time_till, ['ABCD'],
+                                                                               ['subscriberId'], 100, 200)
+        assert rsps.calls[0].request.url == f'{copy_factory_api_url}/users/current/strategies-subscribed/' \
+                                            f'transactions?from={format_date(time_from).replace(":", "%3A")}&' \
+                                            f'till={format_date(time_till).replace(":", "%3A")}&strategyId=ABCD&' \
+                                            f'providerId=subscriberId&offset=100&limit=200'
+        assert rsps.calls[0].request.method == 'GET'
+        assert rsps.calls[0].request.headers['auth-token'] == 'header.payload.sign'
+        expected[0]['time'] = date(expected[0]['time'])
+        assert accounts == expected
 
     @pytest.mark.asyncio
     async def test_not_retrieve_transactions_for_subscribed_strategies_with_account_token(self):

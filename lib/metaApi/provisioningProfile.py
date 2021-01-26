@@ -1,5 +1,5 @@
 from ..clients.metaApi.provisioningProfile_client import ProvisioningProfileDto, ProvisioningProfileClient
-from requests import Response
+from httpx import Response
 
 
 class ProvisioningProfile:

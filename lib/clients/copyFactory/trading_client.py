@@ -1,7 +1,7 @@
 from ..metaApi_client import MetaApiClient
 from .copyFactory_models import CopyFactoryStrategyStopout, CopyFactoryUserLogRecord
 from typing import List
-from requests import Response
+from httpx import Response
 from datetime import datetime
 from ...metaApi.models import date, format_date
 

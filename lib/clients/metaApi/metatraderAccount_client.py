@@ -1,8 +1,7 @@
-from ..httpClient import HttpClient
 from ..metaApi_client import MetaApiClient
 from typing_extensions import TypedDict
 from typing import List, Union, Optional, Dict
-from requests import Response
+from httpx import Response
 from enum import Enum
 
 

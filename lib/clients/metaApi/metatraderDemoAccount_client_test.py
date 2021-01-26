@@ -1,5 +1,6 @@
-import responses
 import pytest
+import respx
+from httpx import Response
 from ..httpClient import HttpClient
 from .metatraderDemoAccount_client import MetatraderDemoAccountClient
 PROVISIONING_API_URL = 'https://mt-provisioning-api-v1.agiliumtrade.agiliumtrade.ai'
@@ -8,7 +9,7 @@ demo_account_client = MetatraderDemoAccountClient(http_client, 'header.payload.s
 
 
 class TestMetatraderDemoAccountClient:
-    @responses.activate
+    @respx.mock
     @pytest.mark.asyncio
     async def test_create_mt4(self):
         """Should create new MetaTrader 4 demo from API."""
@@ -24,17 +25,14 @@ class TestMetatraderDemoAccountClient:
             'leverage': 15,
             'serverName': 'server'
         }
-        with responses.RequestsMock() as rsps:
-            rsps.add(responses.POST, f'{PROVISIONING_API_URL}/users/current/provisioning-profiles/'
-                                     'profileId1/mt4-demo-accounts',
-                     json=expected, status=200)
-
-            accounts = await demo_account_client.create_mt4_demo_account('profileId1', account)
-            assert rsps.calls[0].request.url == f'{PROVISIONING_API_URL}/users/current/provisioning-profiles/' + \
-                'profileId1/mt4-demo-accounts'
-            assert rsps.calls[0].request.method == 'POST'
-            assert rsps.calls[0].request.headers['auth-token'] == 'header.payload.sign'
-            assert accounts == expected
+        rsps = respx.post(f'{PROVISIONING_API_URL}/users/current/provisioning-profiles/profileId1/mt4-demo-accounts') \
+            .mock(return_value=Response(200, json=expected))
+        accounts = await demo_account_client.create_mt4_demo_account('profileId1', account)
+        assert rsps.calls[0].request.url == f'{PROVISIONING_API_URL}/users/current/provisioning-profiles/' + \
+            'profileId1/mt4-demo-accounts'
+        assert rsps.calls[0].request.method == 'POST'
+        assert rsps.calls[0].request.headers['auth-token'] == 'header.payload.sign'
+        assert accounts == expected
 
     @pytest.mark.asyncio
     async def test_not_create_mt4_demo_with_account_token(self):
@@ -47,7 +45,7 @@ class TestMetatraderDemoAccountClient:
                                     'connected with account access token. Please use API access token from ' + \
                                     'https://app.metaapi.cloud/token page to invoke this method.'
 
-    @responses.activate
+    @respx.mock
     @pytest.mark.asyncio
     async def test_create_mt5(self):
         """Should create new MetaTrader 4 demo from API."""
@@ -63,17 +61,14 @@ class TestMetatraderDemoAccountClient:
             'leverage': 15,
             'serverName': 'server'
         }
-        with responses.RequestsMock() as rsps:
-            rsps.add(responses.POST, f'{PROVISIONING_API_URL}/users/current/provisioning-profiles/'
-                                     'profileId2/mt5-demo-accounts',
-                     json=expected, status=200)
-
-            accounts = await demo_account_client.create_mt5_demo_account('profileId2', account)
-            assert rsps.calls[0].request.url == f'{PROVISIONING_API_URL}/users/current/provisioning-profiles/' + \
-                   'profileId2/mt5-demo-accounts'
-            assert rsps.calls[0].request.method == 'POST'
-            assert rsps.calls[0].request.headers['auth-token'] == 'header.payload.sign'
-            assert accounts == expected
+        rsps = respx.post(f'{PROVISIONING_API_URL}/users/current/provisioning-profiles/profileId2/mt5-demo-accounts') \
+            .mock(return_value=Response(200, json=expected))
+        accounts = await demo_account_client.create_mt5_demo_account('profileId2', account)
+        assert rsps.calls[0].request.url == f'{PROVISIONING_API_URL}/users/current/provisioning-profiles/' + \
+               'profileId2/mt5-demo-accounts'
+        assert rsps.calls[0].request.method == 'POST'
+        assert rsps.calls[0].request.headers['auth-token'] == 'header.payload.sign'
+        assert accounts == expected
 
     @pytest.mark.asyncio
     async def test_not_create_mt5_demo_with_account_token(self):

@@ -1,7 +1,8 @@
 from .httpClient import HttpClient
 import re
 import pytest
-import responses
+import respx
+from httpx import Response
 httpClient = None
 test_url = 'http://example.com'
 
@@ -49,46 +50,46 @@ class TestHttpClient:
         except Exception as err:
             assert err.__class__.__name__ == 'ConnectTimeout'
 
+    @respx.mock
     @pytest.mark.asyncio
     async def test_validation_exception(self):
         """Should return a validation exception"""
-        with responses.RequestsMock() as rsps:
-            error = {
-                'id': 1,
-                'error': 'error',
-                'message': 'test message',
-            }
-            rsps.add(responses.POST, test_url, json=error, status=400)
-            opts = {
-                'method': 'POST',
-                'url': test_url
-            }
-            try:
-                await httpClient.request(opts)
-                raise Exception('ValidationException is expected')
-            except Exception as err:
-                assert err.__class__.__name__ == 'ValidationException'
-                assert err.__str__() == 'test message, check error.details for more information'
+        error = {
+            'id': 1,
+            'error': 'error',
+            'message': 'test message',
+        }
+        respx.post(test_url).mock(return_value=Response(400, json=error))
+        opts = {
+            'method': 'POST',
+            'url': test_url
+        }
+        try:
+            await httpClient.request(opts)
+            raise Exception('ValidationException is expected')
+        except Exception as err:
+            assert err.__class__.__name__ == 'ValidationException'
+            assert err.__str__() == 'test message, check error.details for more information'
 
+    @respx.mock
     @pytest.mark.asyncio
     async def test_validation_exception_details(self):
         """Should return a validation exception with details"""
-        with responses.RequestsMock() as rsps:
-            error = {
-                'id': 1,
-                'error': 'error',
-                'message': 'test',
-                'details': [{'parameter': 'password', 'value': 'wrong', 'message': 'Invalid value'}]
-            }
-            rsps.add(responses.POST, test_url, json=error, status=400)
-            opts = {
-                'method': 'POST',
-                'url': test_url
-            }
-            try:
-                await httpClient.request(opts)
-                raise Exception('ValidationException is expected')
-            except Exception as err:
-                assert err.__class__.__name__ == 'ValidationException'
-                assert err.__str__() == 'test, check error.details for more information'
-                assert err.details == error['details']
+        error = {
+            'id': 1,
+            'error': 'error',
+            'message': 'test',
+            'details': [{'parameter': 'password', 'value': 'wrong', 'message': 'Invalid value'}]
+        }
+        respx.post(test_url).mock(return_value=Response(400, json=error))
+        opts = {
+            'method': 'POST',
+            'url': test_url
+        }
+        try:
+            await httpClient.request(opts)
+            raise Exception('ValidationException is expected')
+        except Exception as err:
+            assert err.__class__.__name__ == 'ValidationException'
+            assert err.__str__() == 'test, check error.details for more information'
+            assert err.details == error['details']

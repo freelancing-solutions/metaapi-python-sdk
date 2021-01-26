@@ -5,6 +5,7 @@ import iso8601
 import random
 import string
 import pytz
+import re
 
 
 def date(date_time: str or float or int) -> datetime:
@@ -23,6 +24,29 @@ def format_date(date: datetime) -> str:
 def random_id(length: int = 32) -> str:
     """Generates a random id of 32 symbols."""
     return ''.join(random.choice(string.ascii_lowercase) for i in range(length))
+
+
+def convert_iso_time_to_date(packet):
+    for field in packet:
+        value = packet[field]
+        if isinstance(value, str) and re.search('time|Time', field) and not \
+                re.search('brokerTime|BrokerTime', field):
+            packet[field] = date(value)
+        if isinstance(value, list):
+            for item in value:
+                convert_iso_time_to_date(item)
+        if isinstance(value, dict):
+            convert_iso_time_to_date(value)
+    if packet and 'timestamps' in packet:
+        for field in packet['timestamps']:
+            packet['timestamps'][field] = date(packet['timestamps'][field])
+    if packet and 'type' in packet and packet['type'] == 'prices':
+        if 'prices' in packet:
+            for price in packet['prices']:
+                if 'timestamps' in price:
+                    for field in price['timestamps']:
+                        if isinstance(price['timestamps'][field], str):
+                            price['timestamps'][field] = date(price['timestamps'][field])
 
 
 class MetatraderAccountInformation(TypedDict):

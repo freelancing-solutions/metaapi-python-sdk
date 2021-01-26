@@ -6,6 +6,8 @@ import json
 import os
 from mock import AsyncMock, patch
 from datetime import datetime
+from copy import deepcopy
+from .models import date
 import shutil
 file_manager: HistoryFileManager or None = None
 storage = None
@@ -167,8 +169,13 @@ class TestHistoryFileManager:
         f.close()
 
         history = await file_manager.get_history_from_disk()
-        assert history['deals'] == [test_deal]
-        assert history['historyOrders'] == [test_order]
+        expected_deal = deepcopy(test_deal)
+        expected_deal['time'] = date(expected_deal['time'])
+        assert history['deals'] == [expected_deal]
+        expected_order = deepcopy(test_order)
+        expected_order['time'] = date(expected_order['time'])
+        expected_order['doneTime'] = date(expected_order['doneTime'])
+        assert history['historyOrders'] == [expected_order]
         assert history['lastDealTimeByInstanceIndex'] == test_config['lastDealTimeByInstanceIndex']
         assert history['lastHistoryOrderTimeByInstanceIndex'] == test_config['lastHistoryOrderTimeByInstanceIndex']
 
