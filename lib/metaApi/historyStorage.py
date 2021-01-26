@@ -10,8 +10,8 @@ class HistoryStorage(SynchronizationListener, ABC):
     def __init__(self):
         """Inits the history storage"""
         super().__init__()
-        self._orderSynchronizationFinished = False
-        self._dealSynchronizationFinished = False
+        self._orderSynchronizationFinished = {}
+        self._dealSynchronizationFinished = {}
 
     @property
     def order_synchronization_finished(self) -> bool:
@@ -20,7 +20,7 @@ class HistoryStorage(SynchronizationListener, ABC):
         Returns:
             A flag indicating whether order history synchronization has finished.
         """
-        return self._orderSynchronizationFinished
+        return True in list(self._orderSynchronizationFinished.values())
 
     @property
     def deal_synchronization_finished(self) -> bool:
@@ -29,11 +29,14 @@ class HistoryStorage(SynchronizationListener, ABC):
         Returns:
             A flag indicating whether order history synchronization has finished.
         """
-        return self._dealSynchronizationFinished
+        return True in list(self._dealSynchronizationFinished.values())
 
     @abstractmethod
-    async def last_history_order_time(self) -> datetime:
+    async def last_history_order_time(self, instance_index: int = None) -> datetime:
         """Returns the time of the last history order record stored in the history storage.
+
+        Args:
+            instance_index: Index of an account instance connected.
 
         Returns:
             The time of the last history order record stored in the history storage.
@@ -41,8 +44,11 @@ class HistoryStorage(SynchronizationListener, ABC):
         pass
 
     @abstractmethod
-    async def last_deal_time(self) -> datetime:
+    async def last_deal_time(self, instance_index: int = None) -> datetime:
         """Returns the time of the last history deal record stored in the history storage.
+
+        Args:
+            instance_index: Index of an account instance connected.
 
         Returns:
             The time of the last history deal record stored in the history storage.
@@ -50,10 +56,11 @@ class HistoryStorage(SynchronizationListener, ABC):
         pass
 
     @abstractmethod
-    async def on_history_order_added(self, history_order: MetatraderOrder):
+    async def on_history_order_added(self, instance_index: int, history_order: MetatraderOrder):
         """Invoked when a new MetaTrader history order is added.
 
         Args:
+            instance_index: Index of an account instance connected.
             history_order: New MetaTrader history order.
 
         Returns:
@@ -62,10 +69,11 @@ class HistoryStorage(SynchronizationListener, ABC):
         pass
 
     @abstractmethod
-    async def on_deal_added(self, deal: MetatraderDeal):
+    async def on_deal_added(self, instance_index: int, deal: MetatraderDeal):
         """Invoked when a new MetaTrader history deal is added.
 
         Args:
+            instance_index: Index of an account instance connected.
             deal: New MetaTrader history deal.
 
         Returns:
@@ -73,29 +81,39 @@ class HistoryStorage(SynchronizationListener, ABC):
         """
         pass
 
-    async def on_deal_synchronization_finished(self, synchronization_id: str):
+    async def on_deal_synchronization_finished(self, instance_index: int, synchronization_id: str):
         """Invoked when a synchronization of history deals on a MetaTrader account have finished.
 
         Args:
+            instance_index: Index of an account instance connected.
             synchronization_id: Synchronization request id.
 
         Returns:
             A coroutine which resolves when the asynchronous event is processed.
         """
-        self._dealSynchronizationFinished = True
+        self._dealSynchronizationFinished[str(instance_index)] = True
 
-    async def on_order_synchronization_finished(self, synchronization_id: str):
+    async def on_order_synchronization_finished(self, instance_index: int, synchronization_id: str):
         """Invoked when a synchronization of history orders on a MetaTrader account have finished.
 
         Args:
+            instance_index: Index of an account instance connected.
             synchronization_id: Synchronization request id.
 
         Returns:
-             A coroutine which resolves when the asynchronous event is processed
+             A coroutine which resolves when the asynchronous event is processed.
         """
-        self._orderSynchronizationFinished = True
+        self._orderSynchronizationFinished[str(instance_index)] = True
 
-    async def on_connected(self):
-        """Invoked when connection to MetaTrader terminal established."""
-        self._orderSynchronizationFinished = False
-        self._dealSynchronizationFinished = False
+    async def on_connected(self, instance_index: int, replicas: int):
+        """Invoked when connection to MetaTrader terminal established.
+
+        Args:
+            instance_index: Index of an account instance connected.
+            replicas: Number of account replicas launched.
+
+        Returns:
+            A coroutine which resolves when the asynchronous event is processed.
+        """
+        self._orderSynchronizationFinished[str(instance_index)] = False
+        self._dealSynchronizationFinished[str(instance_index)] = False

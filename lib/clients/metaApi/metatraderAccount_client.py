@@ -98,6 +98,9 @@ class MetatraderAccountDto(TypedDict):
     """API extensions."""
     metadata: Dict
     """Extra information which can be stored together with your account."""
+    reliability: str
+    """Used to increase the reliability of the account. Allowed values are regular, high and maximum.
+    Default is regular."""
 
 
 class NewMetatraderAccountDto(TypedDict):
@@ -133,6 +136,9 @@ class NewMetatraderAccountDto(TypedDict):
     """API extensions."""
     metadata: Dict
     """Extra information which can be stored together with your account."""
+    reliability: str
+    """Used to increase the reliability of the account. Allowed values are regular, high and maximum.
+    Default is regular."""
 
 
 class MetatraderAccountUpdateDto(TypedDict):

@@ -1,6 +1,7 @@
 from typing_extensions import TypedDict
 from typing import List, Optional
 from datetime import datetime
+from enum import Enum
 
 
 class CopyFactoryStrategyIdAndName(TypedDict):
@@ -450,3 +451,34 @@ class CopyFactoryPortfolioStrategy(CopyFactoryPortfolioStrategyUpdate):
     platformCommissionRate: float
     """Commission rate the platform charges for strategy copying, applied to commissions charged by provider. This
     commission applies only to accounts not managed directly by provider. Should be fraction of 1."""
+
+
+class LogLevel(Enum):
+    """Log level."""
+    INFO = 'INFO'
+    WARN = 'WARN'
+    ERROR = 'ERROR'
+
+
+class CopyFactoryUserLogRecord(TypedDict):
+    """Trade copying user log record."""
+    time: datetime
+    """Log record time."""
+    level: LogLevel
+    """Log level. One of INFO, WARN, ERROR."""
+    message: str
+    """Log message."""
+    symbol: Optional[str]
+    """Symbol traded."""
+    strategyId: Optional[str]
+    """Id of the strategy event relates to."""
+    strategyName: Optional[str]
+    """Name of the strategy event relates to."""
+    positionId: Optional[str]
+    """Position id event relates to."""
+    side: Optional[str]
+    """Side of the trade event relates to. One of buy, sell, close."""
+    type: Optional[str]
+    """Type of the trade event relates to. One of market, limit, stop."""
+    openPrice: Optional[float]
+    """Open price for limit and stop orders."""

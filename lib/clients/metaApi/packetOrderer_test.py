@@ -191,9 +191,10 @@ class TestPacketOrderer:
         out_of_order_listener.on_out_of_order_packet.assert_called_once()
         args_list = out_of_order_listener.on_out_of_order_packet.call_args_list[0].args
         assert args_list[0] == 'accountId'
-        assert args_list[1] == 14
-        assert args_list[2] == 15
-        assert args_list[3] == third_packet
+        assert args_list[1] == 0
+        assert args_list[2] == 14
+        assert args_list[3] == 15
+        assert args_list[4] == third_packet
         await asyncio.sleep(1)
         out_of_order_listener.on_out_of_order_packet.assert_called_once()
 
@@ -203,18 +204,22 @@ class TestPacketOrderer:
         out_of_order_listener.on_out_of_order_packet = MagicMock()
         timed_out_packet = {
             'accountId': 'accountId',
+            'instanceId': 'accountId:0',
+            'instanceIndex': 0,
             'sequenceNumber': 11,
             'packet': {},
             'receivedAt': date
         }
         not_timed_out_packet = {
             'accountId': 'accountId',
+            'instanceId': 'accountId:0',
+            'instanceIndex': 0,
             'sequenceNumber': 15,
             'packet': {},
             'receivedAt': datetime.fromtimestamp(10000000000)
         }
-        packet_orderer._sequenceNumberByAccount['accountId'] = 1
-        packet_orderer._packetsByAccountId['accountId'] = [
+        packet_orderer._sequenceNumberByInstance['accountId:0'] = 1
+        packet_orderer._packetsByInstance['accountId:0'] = [
             timed_out_packet,
             not_timed_out_packet
         ]
@@ -222,9 +227,10 @@ class TestPacketOrderer:
         out_of_order_listener.on_out_of_order_packet.assert_called_once()
         args_list = out_of_order_listener.on_out_of_order_packet.call_args_list[0].args
         assert args_list[0] == 'accountId'
-        assert args_list[1] == 2
-        assert args_list[2] == 11
-        assert args_list[3] == timed_out_packet['packet']
+        assert args_list[1] == 0
+        assert args_list[2] == 2
+        assert args_list[3] == 11
+        assert args_list[4] == timed_out_packet['packet']
         await asyncio.sleep(1)
         out_of_order_listener.on_out_of_order_packet.assert_called_once()
 
@@ -244,8 +250,8 @@ class TestPacketOrderer:
             'packet': {},
             'receivedAt': datetime.fromtimestamp(10000000000)
         }
-        packet_orderer._sequenceNumberByAccount['accountId'] = 1
-        packet_orderer._packetsByAccountId['accountId'] = [
+        packet_orderer._sequenceNumberByInstance['accountId:0'] = 1
+        packet_orderer._packetsByInstance['accountId:0'] = [
             not_timed_out_packet,
             timed_out_packet
         ]
@@ -264,10 +270,10 @@ class TestPacketOrderer:
         }
 
         # There were no synchronization start packets
-        if 'accountId' in packet_orderer._sequenceNumberByAccount:
-            del packet_orderer._sequenceNumberByAccount['accountId']
+        if 'accountId' in packet_orderer._sequenceNumberByInstance:
+            del packet_orderer._sequenceNumberByInstance['accountId:0']
 
-        packet_orderer._packetsByAccountId['accountId'] = [out_of_order_packet]
+        packet_orderer._packetsByInstance['accountId:0'] = [out_of_order_packet]
         await asyncio.sleep(1)
         out_of_order_listener.on_out_of_order_packet.assert_not_called()
 
@@ -288,11 +294,11 @@ class TestPacketOrderer:
             'accountId': 'accountId'
         }
         packet_orderer.restore_order(second_packet)
-        assert len(packet_orderer._packetsByAccountId['accountId']) == 1
-        assert packet_orderer._packetsByAccountId['accountId'][0]['packet'] == second_packet
+        assert len(packet_orderer._packetsByInstance['accountId:0']) == 1
+        assert packet_orderer._packetsByInstance['accountId:0'][0]['packet'] == second_packet
         packet_orderer.restore_order(third_packet)
-        assert len(packet_orderer._packetsByAccountId['accountId']) == 1
-        assert packet_orderer._packetsByAccountId['accountId'][0]['packet'] == third_packet
+        assert len(packet_orderer._packetsByInstance['accountId:0']) == 1
+        assert packet_orderer._packetsByInstance['accountId:0'][0]['packet'] == third_packet
 
     @pytest.mark.asyncio
     async def test_count_start_packets_with_no_sync_id_as_out_of_order(self):
@@ -304,5 +310,5 @@ class TestPacketOrderer:
             'accountId': 'accountId'
         }
         assert packet_orderer.restore_order(start_packet) == []
-        assert len(packet_orderer._packetsByAccountId['accountId']) == 1
-        assert packet_orderer._packetsByAccountId['accountId'][0]['packet'] == start_packet
+        assert len(packet_orderer._packetsByInstance['accountId:0']) == 1
+        assert packet_orderer._packetsByInstance['accountId:0'][0]['packet'] == start_packet

@@ -80,7 +80,22 @@ class HistoryFileManager:
             A coroutine resolving with an object with deals and historyOrders.
         """
 
-        history = {'deals': [], 'historyOrders': []}
+        history = {
+            'deals': [],
+            'historyOrders': [],
+            'lastDealTimeByInstanceIndex': {},
+            'lastHistoryOrderTimeByInstanceIndex': {}
+        }
+        try:
+            if os.path.isfile(f'.metaapi/{self._accountId}-{self._application}-config.bin'):
+                config = json.loads(open(f'.metaapi/{self._accountId}-{self._application}-config.bin').read())
+                history['lastDealTimeByInstanceIndex'] = config['lastDealTimeByInstanceIndex']
+                history['lastHistoryOrderTimeByInstanceIndex'] = config['lastHistoryOrderTimeByInstanceIndex']
+        except Exception as err:
+            print(f'[{datetime.now().isoformat()}] Failed to read history storage config of '
+                  f'account {self._accountId}', err)
+            os.remove(f'.metaapi/{self._accountId}-{self._application}-config.bin')
+
         try:
             if os.path.isfile(f'.metaapi/{self._accountId}-{self._application}-deals.bin'):
                 deals = json.loads(open(f'.metaapi/{self._accountId}-{self._application}-deals.bin').read())
@@ -136,6 +151,7 @@ class HistoryFileManager:
         if not self._isUpdating:
             self._isUpdating = True
             try:
+                await self._update_config()
                 if self._startNewDealIndex != -1:
                     if not os.path.isfile(f'.metaapi/{account_id}-{application}-deals.bin'):
                         try:
@@ -172,13 +188,31 @@ class HistoryFileManager:
                       f'account {account_id}', err)
             self._isUpdating = False
 
+    async def _update_config(self):
+        """Updates stored config for account."""
+        account_id = self._accountId
+        history_storage = self._historyStorage
+        file_path = f'.metaapi/{account_id}-{self._application}-config.bin'
+        try:
+            config = {
+                'lastDealTimeByInstanceIndex': history_storage.last_deal_time_by_instance_index,
+                'lastHistoryOrderTimeByInstanceIndex': history_storage.last_history_order_time_by_instance_index
+            }
+            f = open(file_path, 'w+')
+            f.write(stringify(config))
+            f.close()
+        except Exception as err:
+            print(f'[{datetime.now().isoformat()}] Error updating disk storage config for '
+                  f'account {account_id}', err)
+
     async def delete_storage_from_disk(self):
         """Deletes storage files from disk.
 
         Returns:
             A coroutine resolving when the history is deleted from disk.
         """
-
+        if os.path.isfile(f'.metaapi/{self._accountId}-{self._application}-config.bin'):
+            os.remove(f'.metaapi/{self._accountId}-{self._application}-config.bin')
         if os.path.isfile(f'.metaapi/{self._accountId}-{self._application}-deals.bin'):
             os.remove(f'.metaapi/{self._accountId}-{self._application}-deals.bin')
         if os.path.isfile(f'.metaapi/{self._accountId}-{self._application}-historyOrders.bin'):

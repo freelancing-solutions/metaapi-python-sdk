@@ -157,6 +157,15 @@ class MetatraderAccount(MetatraderAccountModel):
         """
         return self._data['metadata']
 
+    @property
+    def reliability(self) -> str:
+        """Returns reliability value. Possible values are regular, high and maximum.
+
+        Returns:
+            Reliability value.
+        """
+        return self._data['reliability']
+
     async def reload(self):
         """Reloads MetaTrader account from API.
 

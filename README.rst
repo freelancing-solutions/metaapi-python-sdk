@@ -612,6 +612,20 @@ A subscription to a strategy can be stopped if the strategy have exceeded allowe
     # reset a stopout so that subscription can continue
     await trading_api.reset_stopout(account_id=account_id, strategy_id=strategy_id, reason='daily-equity')
 
+Retrieving slave trading logs
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+.. code-block:: python
+
+    trading_api = copy_factory.trading_api
+    account_id = '...' # CopyFactory account id
+
+    # retrieve slave trading log
+    print(await trading_api.get_user_log(account_id))
+
+    # retrieve paginated slave trading log by time range
+    print(await trading_api.get_user_log(account_id, datetime.fromtimestamp(datetime.now().timestamp() - 24 * 60 * 60), None, 20, 10))
+
 Keywords: MetaTrader API, MetaTrader REST API, MetaTrader websocket API,
 MetaTrader 5 API, MetaTrader 5 REST API, MetaTrader 5 websocket API,
 MetaTrader 4 API, MetaTrader 4 REST API, MetaTrader 4 websocket API,

@@ -18,18 +18,23 @@ class HealthStatus(TypedDict):
 class SynchronizationListener(ABC):
     """Defines interface for a synchronization listener class."""
 
-    async def on_connected(self):
+    async def on_connected(self, instance_index: int, replicas: int):
         """Invoked when connection to MetaTrader terminal established.
+
+        Args:
+            instance_index: Index of an account instance connected.
+            replicas: Number of account replicas launched.
 
         Returns:
             A coroutine which resolves when the asynchronous event is processed.
         """
         pass
 
-    async def on_health_status(self, status: HealthStatus):
+    async def on_health_status(self, instance_index: int, status: HealthStatus):
         """Invoked when a server-side application health status is received from MetaApi.
 
         Args:
+            instance_index: Index of an account instance connected.
             status: Server-side application health status.
 
         Returns:
@@ -37,18 +42,22 @@ class SynchronizationListener(ABC):
         """
         pass
 
-    async def on_disconnected(self):
+    async def on_disconnected(self, instance_index: int):
         """Invoked when connection to MetaTrader terminal terminated.
+
+        Args:
+            instance_index: Index of an account instance connected.
 
         Returns:
              A coroutine which resolves when the asynchronous event is processed.
         """
         pass
 
-    async def on_broker_connection_status_changed(self, connected: bool):
+    async def on_broker_connection_status_changed(self, instance_index: int, connected: bool):
         """Invoked when broker connection status have changed.
 
         Args:
+            instance_index: Index of an account instance connected.
             connected: Is MetaTrader terminal is connected to broker.
 
         Returns:
@@ -56,18 +65,23 @@ class SynchronizationListener(ABC):
         """
         pass
 
-    async def on_synchronization_started(self):
+    async def on_synchronization_started(self, instance_index: int):
         """Invoked when MetaTrader terminal state synchronization is started.
+
+        Args:
+            instance_index: Index of an account instance connected.
 
         Returns:
             A coroutine which resolves when the asynchronous event is processed.
         """
         pass
 
-    async def on_account_information_updated(self, account_information: MetatraderAccountInformation):
+    async def on_account_information_updated(self, instance_index: int,
+                                             account_information: MetatraderAccountInformation):
         """Invoked when MetaTrader position is updated.
 
         Args:
+            instance_index: Index of an account instance connected.
             account_information: Updated MetaTrader position.
 
         Returns:
@@ -75,10 +89,11 @@ class SynchronizationListener(ABC):
         """
         pass
 
-    async def on_positions_replaced(self, positions: List[MetatraderPosition]):
+    async def on_positions_replaced(self, instance_index: int, positions: List[MetatraderPosition]):
         """Invoked when the positions are replaced as a result of initial terminal state synchronization.
 
         Args:
+            instance_index: Index of an account instance connected.
             positions: Updated array of positions.
 
         Returns:
@@ -86,10 +101,11 @@ class SynchronizationListener(ABC):
         """
         pass
 
-    async def on_position_updated(self, position: MetatraderPosition):
+    async def on_position_updated(self, instance_index: int, position: MetatraderPosition):
         """Invoked when MetaTrader position is updated.
 
         Args:
+            instance_index: Index of an account instance connected.
             position: Updated MetaTrader position.
 
         Returns:
@@ -97,10 +113,11 @@ class SynchronizationListener(ABC):
         """
         pass
 
-    async def on_position_removed(self, position_id: str):
+    async def on_position_removed(self, instance_index: int, position_id: str):
         """Invoked when MetaTrader position is removed.
 
         Args:
+            instance_index: Index of an account instance connected.
             position_id: Removed MetaTrader position id.
 
         Returns:
@@ -108,10 +125,11 @@ class SynchronizationListener(ABC):
         """
         pass
 
-    async def on_orders_replaced(self, orders: List[MetatraderOrder]):
+    async def on_orders_replaced(self, instance_index: int, orders: List[MetatraderOrder]):
         """Invoked when the orders are replaced as a result of initial terminal state synchronization.
 
         Args:
+            instance_index: Index of an account instance connected.
             orders: Updated array of orders.
 
         Returns:
@@ -119,10 +137,11 @@ class SynchronizationListener(ABC):
         """
         pass
 
-    async def on_order_updated(self, order: MetatraderOrder):
+    async def on_order_updated(self, instance_index: int, order: MetatraderOrder):
         """Invoked when MetaTrader order is updated.
 
         Args:
+            instance_index: Index of an account instance connected.
             order: Updated MetaTrader order.
 
         Returns:
@@ -130,10 +149,11 @@ class SynchronizationListener(ABC):
         """
         pass
 
-    async def on_order_completed(self, order_id: str):
+    async def on_order_completed(self, instance_index: int, order_id: str):
         """Invoked when MetaTrader order is completed (executed or canceled).
 
         Args:
+            instance_index: Index of an account instance connected.
             order_id: Completed MetaTrader order id.
 
         Returns:
@@ -141,10 +161,11 @@ class SynchronizationListener(ABC):
         """
         pass
 
-    async def on_history_order_added(self, history_order: MetatraderOrder):
+    async def on_history_order_added(self, instance_index: int, history_order: MetatraderOrder):
         """Invoked when a new MetaTrader history order is added.
 
         Args:
+            instance_index: Index of an account instance connected.
             history_order: New MetaTrader history order.
 
         Returns:
@@ -152,10 +173,11 @@ class SynchronizationListener(ABC):
         """
         pass
 
-    async def on_deal_added(self, deal: MetatraderDeal):
+    async def on_deal_added(self, instance_index: int, deal: MetatraderDeal):
         """Invoked when a new MetaTrader history deal is added.
 
         Args:
+            instance_index: Index of an account instance connected.
             deal: New MetaTrader history deal.
 
         Returns:
@@ -163,10 +185,11 @@ class SynchronizationListener(ABC):
         """
         pass
 
-    async def on_deal_synchronization_finished(self, synchronization_id: str):
+    async def on_deal_synchronization_finished(self, instance_index: int, synchronization_id: str):
         """Invoked when a synchronization of history deals on a MetaTrader account have finished.
 
         Args:
+            instance_index: Index of an account instance connected.
             synchronization_id: Synchronization request id.
 
         Returns:
@@ -174,10 +197,11 @@ class SynchronizationListener(ABC):
         """
         pass
 
-    async def on_order_synchronization_finished(self, synchronization_id: str):
+    async def on_order_synchronization_finished(self, instance_index: int, synchronization_id: str):
         """Invoked when a synchronization of history orders on a MetaTrader account have finished.
 
         Args:
+            instance_index: Index of an account instance connected.
             synchronization_id: Synchronization request id.
 
         Returns:
@@ -185,10 +209,11 @@ class SynchronizationListener(ABC):
         """
         pass
 
-    async def on_symbol_specification_updated(self, specification: MetatraderSymbolSpecification):
+    async def on_symbol_specification_updated(self, instance_index: int, specification: MetatraderSymbolSpecification):
         """Invoked when a symbol specification was updated
 
         Args:
+            instance_index: Index of an account instance connected.
             specification: Updated MetaTrader symbol specification.
 
         Returns:
@@ -196,10 +221,11 @@ class SynchronizationListener(ABC):
         """
         pass
 
-    async def on_symbol_price_updated(self, price: MetatraderSymbolPrice):
+    async def on_symbol_price_updated(self, instance_index: int, price: MetatraderSymbolPrice):
         """Invoked when a symbol price was updated.
 
         Args:
+            instance_index: Index of an account instance connected.
             price: Updated MetaTrader symbol price.
 
         Returns:
@@ -207,11 +233,13 @@ class SynchronizationListener(ABC):
         """
         pass
 
-    async def on_symbol_prices_updated(self, prices: List[MetatraderSymbolPrice], equity: float = None,
-                                       margin: float = None, free_margin: float = None, margin_level: float = None):
+    async def on_symbol_prices_updated(self, instance_index: int, prices: List[MetatraderSymbolPrice],
+                                       equity: float = None, margin: float = None, free_margin: float = None,
+                                       margin_level: float = None):
         """Invoked when prices for several symbols were updated.
 
         Args:
+            instance_index: Index of an account instance connected.
             prices: Updated MetaTrader symbol prices.
             equity: Account liquidation value.
             margin: Margin used.

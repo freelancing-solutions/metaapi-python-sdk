@@ -14,12 +14,28 @@ from .models import random_id, MetatraderSymbolSpecification, MetatraderAccountI
 from datetime import datetime, timedelta
 from typing import Coroutine, List, Optional, Dict
 from typing_extensions import TypedDict
+from functools import reduce
 import pytz
 import asyncio
 from threading import Timer
 
 
+class MetaApiConnectionDict(TypedDict):
+    instanceIndex: int
+    ordersSynchronized: dict
+    dealsSynchronized: dict
+    shouldSynchronize: Optional[str]
+    synchronizationRetryIntervalInSeconds: float
+    synchronized: bool
+    lastDisconnectedSynchronizationId: Optional[str]
+    lastSynchronizationId: Optional[str]
+    disconnected: bool
+
+
 class SynchronizationOptions(TypedDict):
+    instanceIndex: Optional[int]
+    """Index of an account instance to ensure synchronization on, default is to wait for the first instance to
+    synchronize."""
     applicationPattern: Optional[str]
     """Application regular expression pattern, default is .*"""
     synchronizationId: Optional[str]
@@ -49,10 +65,6 @@ class MetaApiConnection(SynchronizationListener, ReconnectListener):
         self._websocketClient = websocket_client
         self._account = account
         self._closed = False
-        self._ordersSynchronized = {}
-        self._dealsSynchronized = {}
-        self._lastSynchronizationId = None
-        self._lastDisconnectedSynchronizationId = None
         self._connection_registry = connection_registry
         self._history_start_time = history_start_time
         self._terminalState = TerminalState()
@@ -64,6 +76,7 @@ class MetaApiConnection(SynchronizationListener, ReconnectListener):
         self._websocketClient.add_synchronization_listener(account.id, self._healthMonitor)
         self._websocketClient.add_reconnect_listener(self)
         self._subscriptions = {}
+        self._stateByInstanceIndex = {}
         self._synchronized = False
         self._shouldSynchronize = None
 
@@ -588,24 +601,27 @@ class MetaApiConnection(SynchronizationListener, ReconnectListener):
         """
         return self._websocketClient.reconnect(self._account.id)
 
-    async def synchronize(self) -> Coroutine:
+    async def synchronize(self, instance_index: int) -> Coroutine:
         """Requests the terminal to start synchronization process.
         (see https://metaapi.cloud/docs/client/websocket/synchronizing/synchronize/).
+
+        Args:
+            instance_index: Instance index.
 
         Returns:
             A coroutine which resolves when synchronization started.
         """
         starting_history_order_time = \
             datetime.utcfromtimestamp(max(((self._history_start_time and self._history_start_time.timestamp()) or 0),
-                                      (await self._historyStorage.last_history_order_time()).timestamp()))\
-            .replace(tzinfo=pytz.UTC)
+                                      (await self._historyStorage.last_history_order_time(instance_index))
+                                          .timestamp())).replace(tzinfo=pytz.UTC)
         starting_deal_time = \
             datetime.utcfromtimestamp(max(((self._history_start_time and self._history_start_time.timestamp()) or 0),
-                                      (await self._historyStorage.last_deal_time()).timestamp()))\
+                                      (await self._historyStorage.last_deal_time(instance_index)).timestamp()))\
             .replace(tzinfo=pytz.UTC)
         synchronization_id = random_id()
-        self._lastSynchronizationId = synchronization_id
-        return await self._websocketClient.synchronize(self._account.id, synchronization_id,
+        self._get_state(instance_index)['lastSynchronizationId'] = synchronization_id
+        return await self._websocketClient.synchronize(self._account.id, instance_index, synchronization_id,
                                                        starting_history_order_time, starting_deal_time)
 
     async def initialize(self):
@@ -624,18 +640,19 @@ class MetaApiConnection(SynchronizationListener, ReconnectListener):
             if err.__class__.__name__ != 'TimeoutException':
                 raise err
 
-    def subscribe_to_market_data(self, symbol: str) -> Coroutine:
+    def subscribe_to_market_data(self, symbol: str, instance_index: int) -> Coroutine:
         """Subscribes on market data of specified symbol (see
         https://metaapi.cloud/docs/client/websocket/marketDataStreaming/subscribeToMarketData/).
 
         Args:
             symbol: Symbol (e.g. currency pair or an index).
+            instance_index: Instance index.
 
         Returns:
             Promise which resolves when subscription request was processed.
         """
         self._subscriptions[symbol] = True
-        return self._websocketClient.subscribe_to_market_data(self._account.id, symbol)
+        return self._websocketClient.subscribe_to_market_data(self._account.id, instance_index, symbol)
 
     @property
     def subscribed_symbols(self) -> List[str]:
@@ -715,41 +732,72 @@ class MetaApiConnection(SynchronizationListener, ReconnectListener):
         """
         self._websocketClient.remove_synchronization_listener(self._account.id, listener)
 
-    async def on_connected(self):
+    async def on_connected(self, instance_index: int, replicas: int):
         """Invoked when connection to MetaTrader terminal established.
+
+        Args:
+            instance_index: Index of an account instance connected.
+            replicas: Number of account replicas launched.
 
         Returns:
             A coroutine which resolves when the asynchronous event is processed.
         """
         key = random_id(32)
-        self._shouldSynchronize = key
-        self._synchronizationRetryIntervalInSeconds = 1
-        self._synchronized = False
-        await self._ensure_synchronized(key)
+        state = self._get_state(instance_index)
+        state['shouldSynchronize'] = key
+        state['synchronizationRetryIntervalInSeconds'] = 1
+        state['synchronized'] = False
+        await self._ensure_synchronized(instance_index, key)
+        indices = []
+        for i in range(replicas):
+            indices.append(i)
+        for key in list(self._stateByInstanceIndex.keys()):
+            e = self._stateByInstanceIndex[key]
+            if e['instanceIndex'] not in indices:
+                del self._stateByInstanceIndex[key]
 
-    async def on_disconnected(self):
-        """Invoked when connection to MetaTrader terminal terminated"""
-        self._lastDisconnectedSynchronizationId = self._lastSynchronizationId
-        self._lastSynchronizationId = None
-        self._shouldSynchronize = None
-        self._synchronized = False
+    async def on_disconnected(self, instance_index: int):
+        """Invoked when connection to MetaTrader terminal terminated.
 
-    async def on_deal_synchronization_finished(self, synchronization_id: str):
+        Args:
+            instance_index: Index of an account instance connected.
+
+        Returns:
+             A coroutine which resolves when the asynchronous event is processed.
+        """
+        state = self._get_state(instance_index)
+        state['lastDisconnectedSynchronizationId'] = state['lastSynchronizationId']
+        state['lastSynchronizationId'] = None
+        state['shouldSynchronize'] = None
+        state['synchronized'] = False
+        state['disconnected'] = True
+
+    async def on_deal_synchronization_finished(self, instance_index: int, synchronization_id: str):
         """Invoked when a synchronization of history deals on a MetaTrader account have finished.
 
         Args:
+            instance_index: Index of an account instance connected.
             synchronization_id: Synchronization request id.
+
+        Returns:
+            A coroutine which resolves when the asynchronous event is processed.
         """
-        self._dealsSynchronized[synchronization_id] = True
+        state = self._get_state(instance_index)
+        state['dealsSynchronized'][synchronization_id] = True
         await self._historyStorage.update_disk_storage()
 
-    async def on_order_synchronization_finished(self, synchronization_id: str):
+    async def on_order_synchronization_finished(self, instance_index: int, synchronization_id: str):
         """Invoked when a synchronization of history orders on a MetaTrader account have finished.
 
         Args:
+            instance_index: Index of an account instance connected.
             synchronization_id: Synchronization request id.
+
+        Returns:
+             A coroutine which resolves when the asynchronous event is processed
         """
-        self._ordersSynchronized[synchronization_id] = True
+        state = self._get_state(instance_index)
+        state['ordersSynchronized'][synchronization_id] = True
 
     async def on_reconnected(self):
         """Invoked when connection to MetaApi websocket API restored after a disconnect.
@@ -759,21 +807,27 @@ class MetaApiConnection(SynchronizationListener, ReconnectListener):
         """
         await self.subscribe()
 
-    async def is_synchronized(self, synchronization_id: str = None) -> bool:
+    async def is_synchronized(self, instance_index: int, synchronization_id: str = None) -> bool:
         """Returns flag indicating status of state synchronization with MetaTrader terminal.
 
         Args:
+            instance_index: Index of an account instance connected.
             synchronization_id: Optional synchronization request id, last synchronization request id will be used.
 
         Returns:
             A coroutine resolving with a flag indicating status of state synchronization with MetaTrader terminal.
         """
-        synchronization_id = synchronization_id or self._lastSynchronizationId
-        if synchronization_id in self._ordersSynchronized and self._ordersSynchronized[synchronization_id] \
-                and synchronization_id in self._dealsSynchronized and self._dealsSynchronized[synchronization_id]:
-            return True
-        else:
-            return False
+        def reducer_func(acc, s: MetaApiConnectionDict):
+            if instance_index is not None and s['instanceIndex'] != instance_index:
+                return acc
+            nonlocal synchronization_id
+            synchronization_id = synchronization_id or s['lastSynchronizationId']
+            synchronized = bool(s['ordersSynchronized'][synchronization_id]) and \
+                bool(s['dealsSynchronized'][synchronization_id])
+            return acc or synchronized
+
+        return reduce(reducer_func, self._stateByInstanceIndex.values()) if len(self._stateByInstanceIndex.values())\
+            else False
 
     async def wait_synchronized(self, opts: SynchronizationOptions = None):
         """Waits until synchronization to MetaTrader terminal is completed.
@@ -789,28 +843,37 @@ class MetaApiConnection(SynchronizationListener, ReconnectListener):
         """
         start_time = datetime.now()
         opts = opts or {}
+        instance_index = opts['instanceIndex'] if 'instanceIndex' in opts else None
         synchronization_id = opts['synchronizationId'] if 'synchronizationId' in opts else None
         timeout_in_seconds = opts['timeoutInSeconds'] if 'timeoutInSeconds' in opts else 300
         interval_in_milliseconds = opts['intervalInMilliseconds'] if 'intervalInMilliseconds' in opts else 1000
         application_pattern = opts['applicationPattern'] if 'applicationPattern' in opts \
             else ('CopyFactory.*|RPC' if self._account.application == 'CopyFactory' else 'RPC')
-        synchronized = await self.is_synchronized(synchronization_id)
+        synchronized = await self.is_synchronized(instance_index, synchronization_id)
         while not synchronized and (start_time + timedelta(seconds=timeout_in_seconds) > datetime.now()):
             await asyncio.sleep(interval_in_milliseconds / 1000)
-            synchronized = await self.is_synchronized(synchronization_id)
+            synchronized = await self.is_synchronized(instance_index, synchronization_id)
+        state = None
+        if instance_index is None:
+            for s in self._stateByInstanceIndex.values():
+                if await self.is_synchronized(s['instanceIndex'], synchronization_id):
+                    state = s
+                    instance_index = s['instanceIndex']
+        else:
+            state = next((s for s in self._stateByInstanceIndex if s['instanceIndex'] == instance_index), None)
         if not synchronized:
             raise TimeoutException('Timed out waiting for MetaApi to synchronize to MetaTrader account ' +
-                                   self._account.id + ', synchronization id ' + (synchronization_id or
-                                                                                 self._lastSynchronizationId or
-                                                                                 self._lastDisconnectedSynchronizationId
-                                                                                 or 'None'))
+                                   self._account.id + ', synchronization id ' +
+                                   (synchronization_id or (bool(state) and state['lastSynchronizationId']) or
+                                    (bool(state) and state['lastDisconnectedSynchronizationId']) or 'None'))
         time_left_in_seconds = max(0, timeout_in_seconds - (datetime.now() - start_time).total_seconds())
-        await self._websocketClient.wait_synchronized(self._account.id, application_pattern, time_left_in_seconds)
+        await self._websocketClient.wait_synchronized(self._account.id, instance_index, application_pattern,
+                                                      time_left_in_seconds)
 
     async def close(self):
         """Closes the connection. The instance of the class should no longer be used after this method is invoked."""
         if not self._closed:
-            self._shouldSynchronize = None
+            self._stateByInstanceIndex = {}
             await self._websocketClient.unsubscribe(self._account.id)
             self._websocketClient.remove_synchronization_listener(self._account.id, self)
             self._websocketClient.remove_synchronization_listener(self._account.id, self._terminalState)
@@ -827,7 +890,7 @@ class MetaApiConnection(SynchronizationListener, ReconnectListener):
         Returns:
             Synchronization status.
         """
-        return self._synchronized
+        return True in list(map(lambda s: s['synchronized'], self._stateByInstanceIndex.values()))
 
     @property
     def account(self) -> MetatraderAccountModel:
@@ -847,19 +910,37 @@ class MetaApiConnection(SynchronizationListener, ReconnectListener):
         """
         return self._healthMonitor
 
-    async def _ensure_synchronized(self, key):
-        try:
-            await self.synchronize()
-            for symbol in self.subscribed_symbols:
-                await self.subscribe_to_market_data(symbol)
-            self._synchronized = True
-            self._synchronizationRetryIntervalInSeconds = 1
-        except Exception as err:
-            print(f'[{datetime.now().isoformat()}] MetaApi websocket client for account ' + self.account.id +
-                  ' failed to synchronize', err)
-            if self._shouldSynchronize == key:
-                def restart_ensure_sync():
-                    asyncio.create_task(self._ensure_synchronized(key))
-                self._ensure_sync_timer = Timer(self._synchronizationRetryIntervalInSeconds, restart_ensure_sync)
-                self._ensure_sync_timer.start()
-                self._synchronizationRetryIntervalInSeconds = min(self._synchronizationRetryIntervalInSeconds * 2, 300)
+    async def _ensure_synchronized(self, instance_index: int, key):
+        state = self._get_state(instance_index)
+        if state:
+            try:
+                await self.synchronize(instance_index)
+                for symbol in self.subscribed_symbols:
+                    await self.subscribe_to_market_data(symbol, instance_index)
+                state['synchronized'] = True
+                state['synchronizationRetryIntervalInSeconds'] = 1
+            except Exception as err:
+                print(f'[{datetime.now().isoformat()}] MetaApi websocket client for account ' + self.account.id +
+                      ':' + str(instance_index) + ' failed to synchronize', err)
+                if state['shouldSynchronize'] == key:
+                    def restart_ensure_sync():
+                        asyncio.run(self._ensure_synchronized(instance_index, key))
+                    self._ensure_sync_timer = Timer(state['synchronizationRetryIntervalInSeconds'], restart_ensure_sync)
+                    self._ensure_sync_timer.start()
+                    state['synchronizationRetryIntervalInSeconds'] = \
+                        min(state['synchronizationRetryIntervalInSeconds'] * 2, 300)
+
+    def _get_state(self, instance_index: int) -> MetaApiConnectionDict:
+        if str(instance_index) not in self._stateByInstanceIndex:
+            self._stateByInstanceIndex[str(instance_index)] = {
+                'instanceIndex': instance_index,
+                'ordersSynchronized': {},
+                'dealsSynchronized': {},
+                'shouldSynchronize': None,
+                'synchronizationRetryIntervalInSeconds': 1,
+                'synchronized': False,
+                'lastDisconnectedSynchronizationId': None,
+                'lastSynchronizationId': None,
+                'disconnected': False
+            }
+        return self._stateByInstanceIndex[str(instance_index)]

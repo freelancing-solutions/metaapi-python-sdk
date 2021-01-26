@@ -7,9 +7,12 @@ import string
 import pytz
 
 
-def date(date_time: str) -> datetime:
+def date(date_time: str or float or int) -> datetime:
     """Parses a date string into a datetime object."""
-    return iso8601.parse_date(date_time)
+    if isinstance(date_time, float) or isinstance(date_time, int):
+        return datetime.fromtimestamp(max(date_time, 100000)).astimezone(pytz.utc)
+    else:
+        return iso8601.parse_date(date_time)
 
 
 def format_date(date: datetime) -> str:

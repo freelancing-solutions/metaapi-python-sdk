@@ -12,7 +12,7 @@ class ConnectionHealthStatus(TypedDict):
     connected: bool
     """Flag indicating successful connection to API server."""
     connectedToBroker: bool
-    """Flag indicating successfull connection to broker."""
+    """Flag indicating successful connection to broker."""
     quoteStreamingHealthy: bool
     """Flag indicating that quotes are being streamed successfully from the broker."""
     synchronized: bool
@@ -50,23 +50,24 @@ class ConnectionHealthMonitor(SynchronizationListener):
         self._minQuoteInterval = 60
         self._updateQuoteHealthStatusInterval = asyncio.create_task(update_quote_health_job())
         self._measureUptimeInterval = asyncio.create_task(measure_uptime_job())
+        self._serverHealthStatus = {}
         self._uptimeReservoirs = {
             '5m': Reservoir(300, 5 * 60 * 1000),
             '1h': Reservoir(600, 60 * 60 * 1000),
             '1d': Reservoir(24 * 60, 24 * 60 * 60 * 1000),
             '1w': Reservoir(24 * 7, 7 * 24 * 60 * 60 * 1000),
         }
-        self._serverHealthStatus = None
 
     def stop(self):
         """Stops health monitor."""
         self._updateQuoteHealthStatusInterval.cancel()
         self._measureUptimeInterval.cancel()
 
-    async def on_symbol_price_updated(self, price: MetatraderSymbolPrice):
+    async def on_symbol_price_updated(self, instance_index: int, price: MetatraderSymbolPrice):
         """Invoked when a symbol price was updated.
 
         Args:
+            instance_index: Index of an account instance connected.
             price: Updated MetaTrader symbol price.
         """
         try:
@@ -78,16 +79,28 @@ class ConnectionHealthMonitor(SynchronizationListener):
             print(f'[{datetime.now().isoformat()}] failed to update quote streaming health status on price ' +
                   'update for account ' + self._connection.account.id, err)
 
-    async def on_health_status(self, status: HealthStatus):
+    async def on_health_status(self, instance_index: int, status: HealthStatus):
         """Invoked when a server-side application health status is received from MetaApi.
 
         Args:
+            instance_index: Index of an account instance connected.
             status: Server-side application health status.
 
         Returns:
             A coroutine which resolves when the asynchronous event is processed.
         """
-        self._serverHealthStatus = status
+        self._serverHealthStatus[str(instance_index)] = status
+
+    async def on_disconnected(self, instance_index: int):
+        """Invoked when connection to MetaTrader terminal terminated.
+
+        Args:
+            instance_index: Index of an account instance connected.
+
+        Returns:
+             A coroutine which resolves when the asynchronous event is processed.
+        """
+        del self._serverHealthStatus[str(instance_index)]
 
     @property
     def server_health_status(self) -> HealthStatus:
@@ -96,7 +109,14 @@ class ConnectionHealthMonitor(SynchronizationListener):
         Returns:
             Server-side application health status.
         """
-        return self._serverHealthStatus
+        result = None
+        for s in self._serverHealthStatus:
+            if not result:
+                result = s
+            else:
+                for field in list(s.keys()):
+                    result[field] = result[field] if field in result else s[field]
+        return result or {}
 
     @property
     def health_status(self) -> ConnectionHealthStatus:

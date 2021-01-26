@@ -5,12 +5,14 @@ from ..clients.metaApi.reconnectListener import ReconnectListener
 from ..metaApi.models import MetatraderOrder
 from ..metaApi.metatraderAccount import MetatraderAccount
 from .metaApiConnection import MetaApiConnection
+from .models import MetatraderDeal
 from mock import MagicMock, AsyncMock, patch
+from datetime import datetime
 import pytest
 
 
 class MockClient(MetaApiWebsocketClient):
-    async def subscribe(self, account_id: str):
+    async def subscribe(self, account_id: str, instance_index: int = None):
         pass
 
     def add_synchronization_listener(self, account_id: str, listener):
@@ -35,19 +37,27 @@ class MockStorage(MemoryHistoryStorageModel):
     def history_orders(self):
         return self._historyOrders
 
-    def last_deal_time(self):
+    @property
+    def last_deal_time_by_instance_index(self):
+        return {}
+
+    @property
+    def last_history_order_time_by_instance_index(self):
+        return {}
+
+    def last_deal_time(self, instance_index: int = None) -> datetime:
         pass
 
-    def last_history_order_time(self):
+    def last_history_order_time(self, instance_index: int = None) -> datetime:
         pass
 
-    def on_deal_added(self, deal):
+    def on_deal_added(self, instance_index: int, deal: MetatraderDeal):
         pass
 
     async def load_data_from_disk(self):
         return {'deals': [], 'history_orders': []}
 
-    def on_history_order_added(self, history_order: MetatraderOrder):
+    def on_history_order_added(self, instance_index: int, history_order: MetatraderOrder):
         pass
 
 
