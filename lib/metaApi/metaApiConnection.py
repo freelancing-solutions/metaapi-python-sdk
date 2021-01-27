@@ -822,12 +822,14 @@ class MetaApiConnection(SynchronizationListener, ReconnectListener):
                 return acc
             nonlocal synchronization_id
             synchronization_id = synchronization_id or s['lastSynchronizationId']
-            synchronized = bool(s['ordersSynchronized'][synchronization_id]) and \
+            synchronized = synchronization_id in s['ordersSynchronized'] and \
+                bool(s['ordersSynchronized'][synchronization_id]) and \
+                synchronization_id in s['dealsSynchronized'] and \
                 bool(s['dealsSynchronized'][synchronization_id])
             return acc or synchronized
 
-        return reduce(reducer_func, self._stateByInstanceIndex.values()) if len(self._stateByInstanceIndex.values())\
-            else False
+        return reduce(reducer_func, self._stateByInstanceIndex.values(), False) if \
+            len(self._stateByInstanceIndex.values()) else False
 
     async def wait_synchronized(self, opts: SynchronizationOptions = None):
         """Waits until synchronization to MetaTrader terminal is completed.
