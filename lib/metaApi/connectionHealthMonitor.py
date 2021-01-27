@@ -101,7 +101,8 @@ class ConnectionHealthMonitor(SynchronizationListener):
         Returns:
              A coroutine which resolves when the asynchronous event is processed.
         """
-        del self._serverHealthStatus[str(instance_index)]
+        if str(instance_index) in self._serverHealthStatus:
+            del self._serverHealthStatus[str(instance_index)]
 
     @property
     def server_health_status(self) -> HealthStatus:
