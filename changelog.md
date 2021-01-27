@@ -1,3 +1,6 @@
+12.0.5
+  - remove timers
+  
 12.0.4
   - fix is_synchronized check
 
