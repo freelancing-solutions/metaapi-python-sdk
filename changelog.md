@@ -1,3 +1,6 @@
+12.0.4
+  - fix is_synchronized check
+
 12.0.3
   - fix subscribe_to_market_data API contract
 
