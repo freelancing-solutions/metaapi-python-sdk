@@ -17,7 +17,6 @@ from typing_extensions import TypedDict
 from functools import reduce
 import pytz
 import asyncio
-from threading import Timer
 
 
 class MetaApiConnectionDict(TypedDict):
@@ -925,10 +924,11 @@ class MetaApiConnection(SynchronizationListener, ReconnectListener):
                 print(f'[{datetime.now().isoformat()}] MetaApi websocket client for account ' + self.account.id +
                       ':' + str(instance_index) + ' failed to synchronize', err)
                 if state['shouldSynchronize'] == key:
-                    def restart_ensure_sync():
-                        asyncio.run(self._ensure_synchronized(instance_index, key))
-                    self._ensure_sync_timer = Timer(state['synchronizationRetryIntervalInSeconds'], restart_ensure_sync)
-                    self._ensure_sync_timer.start()
+
+                    async def restart_ensure_sync():
+                        await asyncio.sleep(state['synchronizationRetryIntervalInSeconds'])
+                        await self._ensure_synchronized(instance_index, key)
+                    asyncio.create_task(restart_ensure_sync())
                     state['synchronizationRetryIntervalInSeconds'] = \
                         min(state['synchronizationRetryIntervalInSeconds'] * 2, 300)
 

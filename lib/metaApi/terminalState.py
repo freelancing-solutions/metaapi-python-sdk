@@ -5,7 +5,6 @@ import functools
 from typing import List, Dict, Optional
 from typing_extensions import TypedDict
 import asyncio
-from threading import Timer
 from datetime import datetime
 
 
@@ -150,13 +149,13 @@ class TerminalState(SynchronizationListener):
         """
         self._get_state(instance_index)['connectedToBroker'] = connected
 
-        def disconnect():
-            asyncio.run(self.on_disconnected(instance_index))
+        async def disconnect():
+            await asyncio.sleep(60)
+            await self.on_disconnected(instance_index)
 
         if hasattr(self, '_status_timer'):
             self._status_timer.cancel()
-        self._status_timer = Timer(60, disconnect)
-        self._status_timer.start()
+        self._status_timer = asyncio.create_task(disconnect())
 
     async def on_synchronization_started(self, instance_index: int):
         """Invoked when MetaTrader terminal state synchronization is started.
