@@ -79,6 +79,10 @@ class MetatraderAccountInformation(TypedDict):
     marginMode: str
     """Margin calculation mode, one of ACCOUNT_MARGIN_MODE_EXCHANGE, ACCOUNT_MARGIN_MODE_RETAIL_NETTING,
     ACCOUNT_MARGIN_MODE_RETAIL_HEDGING."""
+    name: str
+    """Account owner name."""
+    login: int
+    """Account login."""
 
 
 class MetatraderPosition(TypedDict):

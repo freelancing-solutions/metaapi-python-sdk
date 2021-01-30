@@ -1,5 +1,5 @@
 from .errorHandler import UnauthorizedException, ForbiddenException, ApiException, ConflictException, \
-    ValidationException, InternalException, NotFoundException
+    ValidationException, InternalException, NotFoundException, TooManyRequestsException
 from typing_extensions import TypedDict
 from typing import Optional
 from ..metaApi.models import ExceptionMessage
@@ -85,6 +85,8 @@ class HttpClient:
             raise NotFoundException(err_message)
         elif status == 409:
             raise ConflictException(err_message)
+        elif status == 429:
+            raise TooManyRequestsException(err_message)
         elif status == 500:
             raise InternalException(err_message)
         else:

@@ -140,3 +140,16 @@ class ConflictException(ApiException):
             message: Exception message.
         """
         super().__init__(message, 409)
+
+
+class TooManyRequestsException(ApiException):
+    """Represents too many requests error. Throwing this exception results in 429 (Too Many Requests) HTTP response
+    code."""
+
+    def __init__(self, message: str):
+        """Inits too many requests exception.
+
+        Args:
+            message: Exception message.
+        """
+        super().__init__(message, 429)
