@@ -433,13 +433,13 @@ Create a MetaTrader 5 demo account
             'serverName': 'ICMarketsSC-Demo'
         })
 
-CopyFactory copy trading API (experimental)
+CopyFactory copy trading API
 ===========================================
 
 CopyFactory is a powerful trade copying API which makes developing forex
 trade copying applications as easy as writing few lines of code.
 
-At this point this feature is experimental and we have not yet defined a final price for it.
+At this point we have not yet defined a final price for this feature.
 
 Why do we offer CopyFactory API
 -------------------------------
