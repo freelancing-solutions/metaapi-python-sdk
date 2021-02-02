@@ -408,7 +408,9 @@ class TestMetaApiConnection:
     async def test_remove_history(self):
         """Should remove history."""
         client.remove_history = AsyncMock()
+        api.history_storage.clear = AsyncMock()
         await api.remove_history('app')
+        api.history_storage.clear.assert_called()
         client.remove_history.assert_called_with('accountId', 'app')
 
     @pytest.mark.asyncio
@@ -827,7 +829,6 @@ class TestMetaApiConnection:
         await promise
         assert pytest.approx(10, 10) == (datetime.now() - start_time).seconds * 1000
         assert (await api.is_synchronized(1, 'synchronizationId'))
-        api._historyStorage.update_disk_storage.assert_called()
 
     @pytest.mark.asyncio
     async def test_time_out_waiting_for_sync(self):
@@ -850,6 +851,6 @@ class TestMetaApiConnection:
     @pytest.mark.asyncio
     async def test_load_history_storage_from_disk(self):
         """Should load data to history storage from disk."""
-        api._historyStorage.load_data_from_disk = AsyncMock()
+        api._historyStorage.initialize = AsyncMock()
         await api.initialize()
-        api._historyStorage.load_data_from_disk.assert_called()
+        api._historyStorage.initialize.assert_called()

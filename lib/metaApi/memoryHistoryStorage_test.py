@@ -142,8 +142,10 @@ class TestMemoryHistoryStorage:
     async def test_return_saved_deal_sync_status(self):
         """Should return saved deal synchronization status."""
 
+        storage._fileManager.update_disk_storage = AsyncMock()
         assert not storage.deal_synchronization_finished
         await storage.on_deal_synchronization_finished(1, 'synchronizationId')
+        storage._fileManager.update_disk_storage.assert_called()
         assert storage.deal_synchronization_finished
 
     @pytest.mark.asyncio
@@ -153,7 +155,7 @@ class TestMemoryHistoryStorage:
         await storage.on_deal_added(1, {'id': '1', 'time': date('2020-01-01T00:00:00.000Z'), 'type': 'DEAL_TYPE_SELL'})
         await storage.on_history_order_added(1, {'id': '1', 'doneTime': date('2020-01-01T00:00:00.000Z'),
                                              'type': 'ORDER_TYPE_SELL'})
-        storage.reset()
+        await storage.clear()
         assert storage.deals == []
         assert storage.history_orders == []
         storage._fileManager.delete_storage_from_disk.assert_called_once()

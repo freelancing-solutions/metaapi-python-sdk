@@ -1,3 +1,6 @@
+12.1.1
+  - fixed abstract methods of HistoryStorage class
+
 12.1.0
   - add name and login to account information
   - add a feature to select trade scaling mode in CopyFactory (i.e. if we want the trade size to be preserved or scaled according to balance when copying)
