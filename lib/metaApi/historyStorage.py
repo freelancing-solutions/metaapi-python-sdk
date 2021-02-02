@@ -13,6 +13,10 @@ class HistoryStorage(SynchronizationListener, ABC):
         self._orderSynchronizationFinished = {}
         self._dealSynchronizationFinished = {}
 
+    async def initialize(self):
+        """Initializes the storage and loads required data from a persistent storage."""
+        pass
+
     @property
     def order_synchronization_finished(self) -> bool:
         """Returns flag indicating whether order history synchronization has finished.
@@ -30,6 +34,11 @@ class HistoryStorage(SynchronizationListener, ABC):
             A flag indicating whether order history synchronization has finished.
         """
         return True in list(self._dealSynchronizationFinished.values())
+
+    @abstractmethod
+    async def clear(self):
+        """Clears the storage and deletes persistent data."""
+        pass
 
     @abstractmethod
     async def last_history_order_time(self, instance_index: int = None) -> datetime:

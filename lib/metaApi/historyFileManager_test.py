@@ -45,6 +45,9 @@ class MockStorage(MemoryHistoryStorageModel):
     def last_history_order_time_by_instance_index(self) -> dict:
         return self._lastHistoryOrderTimeByInstanceIndex
 
+    async def clear(self):
+        pass
+
     def last_deal_time(self):
         pass
 

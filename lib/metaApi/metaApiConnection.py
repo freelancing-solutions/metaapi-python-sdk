@@ -221,7 +221,7 @@ class MetaApiConnection(SynchronizationListener, ReconnectListener):
         Returns:
             A coroutine resolving when the history is cleared.
         """
-        self._historyStorage.reset()
+        asyncio.create_task(self._historyStorage.clear())
         return self._websocketClient.remove_history(self._account.id, application)
 
     def remove_application(self):
@@ -231,7 +231,7 @@ class MetaApiConnection(SynchronizationListener, ReconnectListener):
         Returns:
             A coroutine resolving when the history is cleared and application is removed.
         """
-        self._historyStorage.reset()
+        asyncio.create_task(self._historyStorage.clear())
         return self._websocketClient.remove_application(self._account.id)
 
     def create_market_buy_order(self, symbol: str, volume: float, stop_loss: float = None, take_profit: float = None,
@@ -625,7 +625,7 @@ class MetaApiConnection(SynchronizationListener, ReconnectListener):
 
     async def initialize(self):
         """Initializes meta api connection"""
-        await self._historyStorage.load_data_from_disk()
+        await self._historyStorage.initialize()
 
     async def subscribe(self) -> Coroutine:
         """Initiates subscription to MetaTrader terminal.
@@ -783,7 +783,6 @@ class MetaApiConnection(SynchronizationListener, ReconnectListener):
         """
         state = self._get_state(instance_index)
         state['dealsSynchronized'][synchronization_id] = True
-        await self._historyStorage.update_disk_storage()
 
     async def on_order_synchronization_finished(self, instance_index: int, synchronization_id: str):
         """Invoked when a synchronization of history orders on a MetaTrader account have finished.
