@@ -642,7 +642,8 @@ class MetaApiWebsocketClient:
             try:
                 await self._socket.disconnect()
                 url = f'{self._url}?auth-token={self._token}'
-                await asyncio.wait_for(self._socket.connect(url, socketio_path='ws'), timeout=self._connect_timeout)
+                await asyncio.wait_for(self._socket.connect(url, socketio_path='ws',
+                  headers={'Client-id': '{:01.10f}'.format(random())}), timeout=self._connect_timeout)
                 reconnected = True
                 await self._fire_reconnected()
                 await self._socket.wait()
