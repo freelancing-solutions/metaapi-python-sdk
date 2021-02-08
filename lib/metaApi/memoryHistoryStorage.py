@@ -21,6 +21,10 @@ class MemoryHistoryStorage(MemoryHistoryStorageModel):
         self._lastHistoryOrderTimeByInstanceIndex = {}
         self._fileManager.start_update_job()
 
+    async def initialize(self):
+        """Initializes the storage and loads required data from a persistent storage."""
+        await self.load_data_from_disk()
+
     @property
     def deals(self) -> List[MetatraderDeal]:
         """Returns all deals stored in history storage.
@@ -55,14 +59,13 @@ class MemoryHistoryStorage(MemoryHistoryStorageModel):
             Dictionary of last history orders times by instance indices."""
         return self._lastHistoryOrderTimeByInstanceIndex
 
-    def reset(self):
-        """Resets the storage. Intended for use in tests."""
-
+    async def clear(self):
+        """Clears the storage and deletes persistent data."""
         self._deals = []
         self._historyOrders = []
         self._lastDealTimeByInstanceIndex = {}
         self._lastHistoryOrderTimeByInstanceIndex = {}
-        self._fileManager.delete_storage_from_disk()
+        await self._fileManager.delete_storage_from_disk()
 
     async def load_data_from_disk(self):
         """Loads history data from the file manager.
@@ -202,3 +205,16 @@ class MemoryHistoryStorage(MemoryHistoryStorageModel):
         else:
             self._deals.insert(insert_index, new_deal)
             self._fileManager.set_start_new_deal_index(insert_index)
+
+    async def on_deal_synchronization_finished(self, instance_index: int, synchronization_id: str):
+        """Invoked when a synchronization of history deals on a MetaTrader account have finished.
+
+        Args:
+            instance_index: Index of an account instance connected.
+            synchronization_id: Synchronization request id.
+
+        Returns:
+            A coroutine which resolves when the asynchronous event is processed.
+        """
+        self._dealSynchronizationFinished[str(instance_index)] = True
+        await self.update_disk_storage()
