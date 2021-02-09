@@ -67,14 +67,20 @@ class MockRegistry(ConnectionRegistry):
         pass
 
 
-client = MockClient(MagicMock(), MagicMock())
-websocket_client = MockWebsocketClient('token')
-registry = MockRegistry(websocket_client)
-api = MetatraderAccountApi(client, websocket_client, registry)
+client: MockClient = None
+websocket_client: MockWebsocketClient = None
+registry: MockRegistry = None
+api: MetatraderAccountApi = None
 
 
 @pytest.fixture(autouse=True)
 async def run_around_tests():
+    global client
+    client = MockClient(MagicMock(), MagicMock())
+    global websocket_client
+    websocket_client = MockWebsocketClient('token')
+    global registry
+    registry = MockRegistry(websocket_client)
     global api
     registry.connect = AsyncMock()
     registry.remove = MagicMock()

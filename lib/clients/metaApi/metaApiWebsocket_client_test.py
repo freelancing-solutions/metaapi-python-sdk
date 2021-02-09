@@ -11,7 +11,7 @@ from mock import MagicMock, AsyncMock, patch
 from copy import deepcopy
 from datetime import datetime
 sio = None
-client = MetaApiWebsocketClient('token')
+client: MetaApiWebsocketClient = None
 
 
 class FakeServer:
