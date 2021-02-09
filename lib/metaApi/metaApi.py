@@ -56,7 +56,7 @@ class MetaApi:
         packet_ordering_timeout = opts['packetOrderingTimeout'] if 'packetOrderingTimeout' in opts else 60
         packet_logger = opts['packetLogger'] if 'packetLogger' in opts else {}
         max_concurrent_synchronizations = opts['maxConcurrentSynchronizations'] if 'maxConcurrentSynchronizations' in \
-                                                                                   opts else 10
+                                                                                   opts else 5
         if not re.search(r"[a-zA-Z0-9_]+", application):
             raise ValidationException('Application name must be non-empty string consisting ' +
                                       'from letters, digits and _ only')
