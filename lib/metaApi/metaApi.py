@@ -34,6 +34,8 @@ class MetaApiOpts(TypedDict):
     """An option to enable latency tracking."""
     enableLatencyTracking: Optional[bool]
     """An option to enable latency tracking."""
+    maxConcurrentSynchronizations: Optional[int]
+    """Max concurrent synchronizations via websocket client."""
 
 
 class MetaApi:
@@ -53,6 +55,8 @@ class MetaApi:
         connect_timeout = opts['connectTimeout'] if 'connectTimeout' in opts else 60
         packet_ordering_timeout = opts['packetOrderingTimeout'] if 'packetOrderingTimeout' in opts else 60
         packet_logger = opts['packetLogger'] if 'packetLogger' in opts else {}
+        max_concurrent_synchronizations = opts['maxConcurrentSynchronizations'] if 'maxConcurrentSynchronizations' in \
+                                                                                   opts else 10
         if not re.search(r"[a-zA-Z0-9_]+", application):
             raise ValidationException('Application name must be non-empty string consisting ' +
                                       'from letters, digits and _ only')
@@ -60,7 +64,8 @@ class MetaApi:
         self._metaApiWebsocketClient = MetaApiWebsocketClient(
             token, {'application': application, 'domain': domain, 'requestTimeout': request_timeout,
                     'connectTimeout': connect_timeout, 'packetLogger': packet_logger,
-                    'packetOrderingTimeout': packet_ordering_timeout})
+                    'packetOrderingTimeout': packet_ordering_timeout,
+                    'maxConcurrentSynchronizations': max_concurrent_synchronizations})
         self._provisioningProfileApi = ProvisioningProfileApi(ProvisioningProfileClient(http_client, token, domain))
         self._connectionRegistry = ConnectionRegistry(self._metaApiWebsocketClient, application)
         self._metatraderAccountApi = MetatraderAccountApi(MetatraderAccountClient(http_client, token, domain),

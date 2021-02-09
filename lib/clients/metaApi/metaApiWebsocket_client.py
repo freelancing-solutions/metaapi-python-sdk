@@ -11,6 +11,7 @@ from ...metaApi.models import MetatraderHistoryOrders, MetatraderDeals, date, ra
 from .latencyListener import LatencyListener
 from .packetOrderer import PacketOrderer
 from .packetLogger import PacketLogger
+from .synchronizationThrottler import SynchronizationThrottler
 import socketio
 import asyncio
 import re
@@ -35,6 +36,8 @@ class MetaApiWebsocketClient:
         self._url = f'https://mt-client-api-v1.{opts["domain"] if "domain" in opts else "agiliumtrade.agiliumtrade.ai"}'
         self._request_timeout = opts['requestTimeout'] if 'requestTimeout' in opts else 60
         self._connect_timeout = opts['connectTimeout'] if 'connectTimeout' in opts else 60
+        self._maxConcurrentSynchronizations = opts['maxConcurrentSynchronizations'] if 'maxConcurrentSynchronizations'\
+                                                                                       in opts else 10
         self._token = token
         self._requestResolves = {}
         self._synchronizationListeners = {}
@@ -44,6 +47,8 @@ class MetaApiWebsocketClient:
         self._reconnectListeners = []
         self._connectedHosts = {}
         self._resubscriptionTriggerTimes = {}
+        self._synchronizationThrottler = SynchronizationThrottler(self, self._maxConcurrentSynchronizations)
+        self._synchronizationThrottler.start()
         self._packetOrderer = PacketOrderer(self, opts['packetOrderingTimeout'])
         if 'packetLogger' in opts and 'enabled' in opts['packetLogger'] and opts['packetLogger']['enabled']:
             self._packetLogger = PacketLogger(opts['packetLogger'])
@@ -131,6 +136,7 @@ class MetaApiWebsocketClient:
 
             @self._socket.on('disconnect')
             async def on_disconnect():
+                self._synchronizationThrottler.on_disconnect()
                 print(f'[{datetime.now().isoformat()}] MetaApi websocket client disconnected from the MetaApi server')
                 await self._reconnect()
 
@@ -147,7 +153,8 @@ class MetaApiWebsocketClient:
                 else:
                     request_resolve = asyncio.Future()
                 self._convert_iso_time_to_date(data)
-                request_resolve.set_result(data)
+                if not request_resolve.done():
+                    request_resolve.set_result(data)
                 if 'timestamps' in data and hasattr(request_resolve, 'type'):
                     data['timestamps']['clientProcessingFinished'] = datetime.now()
                     for listener in self._latencyListeners:
@@ -165,7 +172,8 @@ class MetaApiWebsocketClient:
                 if data['requestId'] in self._requestResolves:
                     request_resolve = self._requestResolves[data['requestId']]
                     del self._requestResolves[data['requestId']]
-                    request_resolve.set_exception(self._convert_error(data))
+                    if not request_resolve.done():
+                        request_resolve.set_exception(self._convert_error(data))
 
             @self._socket.on('synchronization')
             async def on_synchronization(data):
@@ -478,10 +486,11 @@ class MetaApiWebsocketClient:
         Returns:
             A coroutine which resolves when synchronization is started.
         """
-        return self._rpc_request(account_id, {'requestId': synchronization_id, 'type': 'synchronize',
-                                              'startingHistoryOrderTime': format_date(starting_history_order_time),
-                                              'startingDealTime': format_date(starting_deal_time),
-                                              'instanceIndex': instance_index})
+        return self._synchronizationThrottler.schedule_synchronize(account_id, {
+            'requestId': synchronization_id, 'type': 'synchronize',
+            'startingHistoryOrderTime': format_date(starting_history_order_time),
+            'startingDealTime': format_date(starting_deal_time),
+            'instanceIndex': instance_index})
 
     def wait_synchronized(self, account_id: str, instance_index: int, application_pattern: str,
                           timeout_in_seconds: float):
@@ -726,6 +735,8 @@ class MetaApiWebsocketClient:
         try:
             packets = self._packetOrderer.restore_order(packet)
             for data in packets:
+                if 'synchronizationId' in data:
+                    self._synchronizationThrottler.update_synchronization_id(data['synchronizationId'])
                 instance_id = data['accountId'] + ':' + str(data['instanceIndex'] if 'instanceIndex' in data else 0)
                 instance_index = data['instanceIndex'] if 'instanceIndex' in data else 0
                 if data['type'] == 'authenticated':
@@ -990,6 +1001,7 @@ class MetaApiWebsocketClient:
                         on_deal_synchronization_finished_tasks: List[asyncio.Task] = []
 
                         async def run_on_deal_synchronization_finished(listener):
+                            self._synchronizationThrottler.remove_synchronization_id(data['synchronizationId'])
                             try:
                                 await listener.on_deal_synchronization_finished(instance_index,
                                                                                 data['synchronizationId'])

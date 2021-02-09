@@ -107,14 +107,20 @@ class AutoMockAccount(MetatraderAccount):
         return 'automatic'
 
 
-account = MockAccount(MagicMock(), MagicMock(), MagicMock(), MagicMock())
-auto_account = AutoMockAccount(MagicMock(), MagicMock(), MagicMock(), MagicMock())
-client = MockClient('token')
+account: MockAccount = None
+auto_account: AutoMockAccount = None
+client: MockClient = None
 api: MetaApiConnection = None
 
 
 @pytest.fixture(autouse=True)
 async def run_around_tests():
+    global account
+    account = MockAccount(MagicMock(), MagicMock(), MagicMock(), MagicMock())
+    global auto_account
+    auto_account = AutoMockAccount(MagicMock(), MagicMock(), MagicMock(), MagicMock())
+    global client
+    client = MockClient('token')
     global api
     api = MetaApiConnection(client, account, MagicMock(), MagicMock())
     yield

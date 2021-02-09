@@ -64,9 +64,9 @@ class MockStorage(MemoryHistoryStorageModel):
         pass
 
 
-mock_client = MockClient('token')
-mock_storage = MockStorage()
-registry = ConnectionRegistry(mock_client)
+mock_client: MockClient = None
+mock_storage: MockStorage = None
+registry: ConnectionRegistry = None
 
 
 class MockAccount(MetatraderAccount):
@@ -80,10 +80,12 @@ class MockAccount(MetatraderAccount):
         return self._id
 
 
-@pytest.fixture(scope="module", autouse=True)
-def run_around_tests():
+@pytest.fixture(autouse=True)
+async def run_around_tests():
     global mock_client
     mock_client = MockClient('token')
+    global mock_storage
+    mock_storage = MockStorage()
     global registry
     registry = ConnectionRegistry(mock_client)
     yield

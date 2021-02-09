@@ -8,11 +8,18 @@ login = os.getenv('LOGIN_MT4')
 password = os.getenv('PASSWORD_MT4')
 server_name = os.getenv('SERVER_MT4') or 'Tradeview-Demo'
 broker_srv_file = os.getenv('PATH_TO_BROKER_SRV') or './lib/integration_tests/files/tradeview-demo.broker.srv'
-api = MetaApi(token, {'application': 'MetaApi', 'domain': 'project-stock.v2.agiliumlabs.cloud'})
+api: MetaApi = None
 
 
 async def check_positions(connection):
     return {'local': len(connection.terminal_state.positions), 'real': len(await connection.get_positions())}
+
+
+@pytest.fixture(autouse=True)
+async def run_around_tests():
+    global api
+    api = MetaApi(token, {'application': 'MetaApi', 'domain': 'project-stock.v2.agiliumlabs.cloud'})
+    yield
 
 
 class TestSyncPositions:
