@@ -93,7 +93,8 @@ class PacketLogger:
                 if prev_price is not None:
                     valid_sequence_numbers = [prev_price['last']['sequenceNumber'],
                                               prev_price['last']['sequenceNumber'] + 1]
-                    if instance_index in self._lastKeepAlive[packet['accountId']]:
+                    if instance_index in self._lastKeepAlive[packet['accountId']] and 'sequenceNumber' in \
+                            self._lastKeepAlive[packet['accountId']][instance_index]:
                         valid_sequence_numbers.append(
                             self._lastKeepAlive[packet['accountId']][instance_index]['sequenceNumber'] + 1)
                     if packet['sequenceNumber'] not in valid_sequence_numbers:
