@@ -123,6 +123,7 @@ class TerminalState(SynchronizationListener):
             A coroutine which resolves when the asynchronous event is processed.
         """
         self._get_state(instance_index)['connected'] = True
+        self._reset_disconnect_timer(instance_index)
 
     async def on_disconnected(self, instance_index: int):
         """Invoked when connection to MetaTrader terminal terminated.
@@ -137,6 +138,15 @@ class TerminalState(SynchronizationListener):
         state['connected'] = False
         state['connectedToBroker'] = False
 
+    def _reset_disconnect_timer(self, instance_index: int):
+        async def disconnect():
+            await asyncio.sleep(60)
+            await self.on_disconnected(instance_index)
+
+        if hasattr(self, '_status_timer'):
+            self._status_timer.cancel()
+        self._status_timer = asyncio.create_task(disconnect())
+
     async def on_broker_connection_status_changed(self, instance_index: int, connected: bool):
         """Invoked when broker connection status have changed.
 
@@ -148,14 +158,7 @@ class TerminalState(SynchronizationListener):
             A coroutine which resolves when the asynchronous event is processed.
         """
         self._get_state(instance_index)['connectedToBroker'] = connected
-
-        async def disconnect():
-            await asyncio.sleep(60)
-            await self.on_disconnected(instance_index)
-
-        if hasattr(self, '_status_timer'):
-            self._status_timer.cancel()
-        self._status_timer = asyncio.create_task(disconnect())
+        self._reset_disconnect_timer(instance_index)
 
     async def on_synchronization_started(self, instance_index: int):
         """Invoked when MetaTrader terminal state synchronization is started.
