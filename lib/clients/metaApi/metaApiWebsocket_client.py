@@ -96,7 +96,7 @@ class MetaApiWebsocketClient:
             self._connected = True
             self._requestResolves = {}
             self._resolved = False
-            result = asyncio.Future()
+            self._connectResult = asyncio.Future()
             self._packetOrderer.start()
             url = f'{self._url}?auth-token={self._token}'
             self._socket = socketio.AsyncClient(reconnection=False, request_timeout=self._request_timeout)
@@ -115,7 +115,7 @@ class MetaApiWebsocketClient:
                 print(f'[{datetime.now().isoformat()}] MetaApi websocket client connected to the MetaApi server')
                 if not self._resolved:
                     self._resolved = True
-                    result.set_result(None)
+                    self._connectResult.set_result(None)
 
                 if not self._connected:
                     self._socket.disconnect()
@@ -125,14 +125,14 @@ class MetaApiWebsocketClient:
                 print(f'[{datetime.now().isoformat()}] MetaApi websocket client connection error', err)
                 if not self._resolved:
                     self._resolved = True
-                    result.set_exception(Exception(err))
+                    self._connectResult.set_exception(Exception(err))
 
             @self._socket.on('connect_timeout')
             def on_connect_timeout(timeout):
                 print(f'[{datetime.now().isoformat()}] MetaApi websocket client connection timeout')
                 if not self._resolved:
                     self._resolved = True
-                    result.set_exception(TimeoutException('MetaApi websocket client connection timed out'))
+                    self._connectResult.set_exception(TimeoutException('MetaApi websocket client connection timed out'))
 
             @self._socket.on('disconnect')
             async def on_disconnect():
@@ -182,7 +182,7 @@ class MetaApiWebsocketClient:
                 self._convert_iso_time_to_date(data)
                 await self._process_synchronization_packet(data)
 
-            return result
+            return self._connectResult
 
     async def close(self):
         """Closes connection to MetaApi server"""
@@ -651,14 +651,19 @@ class MetaApiWebsocketClient:
             try:
                 await self._socket.disconnect()
                 url = f'{self._url}?auth-token={self._token}'
+                self._connectResult = asyncio.Future()
+                self._resolved = False
                 await asyncio.wait_for(self._socket.connect(url, socketio_path='ws',
                                                             headers={'Client-id': '{:01.10f}'.format(random())}),
                                        timeout=self._connect_timeout)
+                await self._connectResult
                 reconnected = True
                 await self._fire_reconnected()
                 await self._socket.wait()
             except Exception:
-                pass
+                self._connectResult.cancel()
+                self._connectResult = None
+                await asyncio.sleep(1)
 
     async def _rpc_request(self, account_id: str, request: dict, timeout_in_seconds: float = None) -> Coroutine:
         if not self._connected:
