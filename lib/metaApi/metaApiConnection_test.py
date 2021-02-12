@@ -3,6 +3,7 @@ from ..clients.metaApi.metaApiWebsocket_client import MetaApiWebsocketClient
 from .models import MetatraderHistoryOrders, MetatraderDeals
 from ..clients.metaApi.reconnectListener import ReconnectListener
 from ..clients.metaApi.synchronizationListener import SynchronizationListener
+from ..clients.timeoutException import TimeoutException
 from .metatraderAccount import MetatraderAccount
 from datetime import datetime, timedelta
 from mock import MagicMock, AsyncMock, patch
@@ -124,6 +125,8 @@ async def run_around_tests():
     global api
     api = MetaApiConnection(client, account, MagicMock(), MagicMock())
     yield
+    api.health_monitor.stop()
+    client._synchronizationThrottler.stop()
 
 
 class TestMetaApiConnection:
@@ -663,6 +666,27 @@ class TestMetaApiConnection:
         client.subscribe = AsyncMock()
         await api.subscribe()
         client.subscribe.assert_called_with('accountId')
+
+    @pytest.mark.asyncio
+    async def test_retry_subscribe_to_terminal(self):
+        """Should retry subscribe to terminal if no response received."""
+        response = {'type': 'response', 'accountId': 'accountId', 'requestId': 'requestId'}
+        client.subscribe = AsyncMock(side_effect=[TimeoutException('timeout'), response, response])
+        await api.subscribe()
+        client.subscribe.assert_called_with('accountId')
+        assert client.subscribe.call_count == 2
+
+    @pytest.mark.asyncio
+    async def test_not_retry_subscribe_after_close(self):
+        """Should not retry subscribe to terminal if connection is closed."""
+        client.subscribe = AsyncMock(side_effect=TimeoutException('timeout'))
+        client.unsubscribe = AsyncMock()
+        asyncio.create_task(api.subscribe())
+        asyncio.create_task(api.close())
+        await asyncio.sleep(1)
+        client.subscribe.assert_called_with('accountId')
+        assert client.subscribe.call_count == 1
+        client.unsubscribe.assert_called_with('accountId')
 
     @pytest.mark.asyncio
     async def test_synchronize_state_with_terminal(self):
