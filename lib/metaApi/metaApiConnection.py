@@ -76,6 +76,7 @@ class MetaApiConnection(SynchronizationListener, ReconnectListener):
         self._websocketClient.add_reconnect_listener(self)
         self._subscriptions = {}
         self._stateByInstanceIndex = {}
+        self._subscribeRetryIntervalInSeconds = 1
         self._synchronized = False
         self._shouldSynchronize = None
 
@@ -638,6 +639,12 @@ class MetaApiConnection(SynchronizationListener, ReconnectListener):
         except Exception as err:
             if err.__class__.__name__ != 'TimeoutException':
                 raise err
+            else:
+                retry_interval = self._subscribeRetryIntervalInSeconds
+                self._subscribeRetryIntervalInSeconds = min(self._subscribeRetryIntervalInSeconds * 2, 300)
+                await asyncio.sleep(retry_interval)
+                if not self._closed:
+                    return await self.subscribe()
 
     def subscribe_to_market_data(self, symbol: str, instance_index: int = None) -> Coroutine:
         """Subscribes on market data of specified symbol (see
