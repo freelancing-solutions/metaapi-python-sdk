@@ -1358,3 +1358,40 @@ class TestMetaApiWebsocketClient:
         assert actual_timestamps['tradeExecuted'] == \
                date(timestamps['tradeExecuted'])
         assert 'clientProcessingFinished' in actual_timestamps
+
+    @pytest.mark.asyncio
+    async def test_reconnect(self):
+        """Should reconnect to server on disconnect."""
+
+        trade = {
+            'actionType': 'ORDER_TYPE_SELL',
+            'symbol': 'AUDNZD',
+            'volume': 0.07
+        }
+        response = {
+            'numericCode': 10009,
+            'stringCode': 'TRADE_RETCODE_DONE',
+            'message': 'Request completed',
+            'orderId': '46870472'
+        }
+        listener = MagicMock()
+        listener.on_reconnected = MagicMock()
+        client.add_reconnect_listener(listener)
+        request_counter = 0
+
+        @sio.on('request')
+        async def on_request(sid, data):
+            print(data)
+            if data['type'] == 'trade':
+                nonlocal request_counter
+                request_counter += 1
+                await sio.emit('response', {'type': 'response', 'accountId': data['accountId'],
+                                            'requestId': data['requestId'], 'response': response})
+            await sio.disconnect(sid)
+
+        await client.trade('accountId', trade)
+        await asyncio.sleep(0.1)
+        listener.on_reconnected.assert_called_once()
+        await client.trade('accountId', trade)
+        assert request_counter == 2
+        await client.close()
