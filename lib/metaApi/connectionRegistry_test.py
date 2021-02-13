@@ -80,6 +80,13 @@ class MockAccount(MetatraderAccount):
         return self._id
 
 
+def create_connection_mock():
+    mock = MagicMock()
+    mock.initialize = AsyncMock()
+    mock.subscribe = AsyncMock()
+    return mock
+
+
 @pytest.fixture(autouse=True)
 async def run_around_tests():
     global mock_client
@@ -96,44 +103,48 @@ class TestConnectionRegistry:
     @pytest.mark.asyncio
     async def test_connect_and_add(self):
         """Should connect and add connection to registry."""
-        with patch('lib.metaApi.metaApiConnection.MetaApiConnection.initialize', new_callable=AsyncMock):
-            mock_client.add_synchronization_listener = MagicMock()
-            mock_client.subscribe = AsyncMock()
+        with patch('lib.metaApi.connectionRegistry.MetaApiConnection') as mock_connection:
+            connection_instance = create_connection_mock()
+            mock_connection.return_value = connection_instance
             account = MockAccount('id')
             connection = await registry.connect(account, mock_storage)
-            assert isinstance(connection, MetaApiConnection)
-            assert connection.history_storage == mock_storage
-            mock_client.add_synchronization_listener.assert_any_call('id', mock_storage)
-            mock_client.subscribe.assert_called_with('id')
-            connection.initialize.assert_called()
+            assert connection.history_storage == connection_instance.history_storage
+            connection_instance.initialize.assert_called()
+            connection_instance.subscribe.assert_called()
             assert 'id' in registry._connections
             assert registry._connections['id'] == connection
 
     @pytest.mark.asyncio
     async def test_connect_and_return_previous(self):
         """Should return the same connection on second connect if same account id."""
-        mock_client.add_synchronization_listener = MagicMock()
-        mock_client.subscribe = AsyncMock()
-        accounts = [MockAccount('id0'), MockAccount('id1')]
-        connection0 = await registry.connect(accounts[0], mock_storage)
-        connection02 = await registry.connect(accounts[0], mock_storage)
-        connection1 = await registry.connect(accounts[1], mock_storage)
-        mock_client.add_synchronization_listener.assert_any_call('id0', mock_storage)
-        mock_client.add_synchronization_listener.assert_any_call('id1', mock_storage)
-        mock_client.subscribe.assert_any_call('id0')
-        mock_client.subscribe.assert_any_call('id1')
-        assert mock_client.subscribe.call_count == 2
-        assert registry._connections['id0'] == connection0
-        assert registry._connections['id1'] == connection1
-        assert connection0 == connection02
+        with patch('lib.metaApi.connectionRegistry.MetaApiConnection') as mock_connection:
+            connection_mock1 = create_connection_mock()
+            connection_mock2 = create_connection_mock()
+            connection_mock3 = create_connection_mock()
+            mock_connection.side_effect = [connection_mock1, connection_mock2, connection_mock3]
+            accounts = [MockAccount('id0'), MockAccount('id1')]
+            connection0 = await registry.connect(accounts[0], mock_storage)
+            connection02 = await registry.connect(accounts[0], mock_storage)
+            connection1 = await registry.connect(accounts[1], mock_storage)
+            connection_mock1.initialize.assert_called()
+            connection_mock1.subscribe.assert_called()
+            connection_mock2.initialize.assert_called()
+            connection_mock2.subscribe.assert_called()
+            assert registry._connections['id0'] == connection0
+            assert registry._connections['id1'] == connection1
+            assert connection0 == connection02
+            assert connection0 != connection1
 
     @pytest.mark.asyncio
     async def test_remove(self):
         """Should remove the account from registry."""
-        accounts = [MockAccount('id0'), MockAccount('id1')]
-        connection0 = await registry.connect(accounts[0], mock_storage)
-        connection1 = await registry.connect(accounts[1], mock_storage)
-        assert registry._connections['id0'] == connection0
-        assert registry._connections['id1'] == connection1
-        registry.remove(accounts[0].id)
-        assert not accounts[0].id in registry._connections
+        with patch('lib.metaApi.connectionRegistry.MetaApiConnection') as mock_connection:
+            connection_instance = create_connection_mock()
+            mock_connection.return_value = connection_instance
+            accounts = [MockAccount('id0'), MockAccount('id1')]
+            connection0 = await registry.connect(accounts[0], mock_storage)
+            connection1 = await registry.connect(accounts[1], mock_storage)
+            assert registry._connections['id0'] == connection0
+            assert registry._connections['id1'] == connection1
+            registry.remove(accounts[0].id)
+            assert not accounts[0].id in registry._connections
