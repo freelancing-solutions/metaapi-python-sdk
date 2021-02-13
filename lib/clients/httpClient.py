@@ -26,15 +26,20 @@ class RequestOptions(TypedDict):
 
 class HttpClient:
     """HTTP client library based on requests module."""
-    def __init__(self, timeout: float = 60):
+    def __init__(self, timeout: float = 60, retry_opts=None):
         """Inits HttpClient class instance.
 
         Args:
             timeout: Request timeout in seconds.
         """
+        if retry_opts is None:
+            retry_opts = {}
         self._timeout = timeout
+        self._retries = retry_opts['retries'] if 'retries' in retry_opts else 5
+        self._minRetryDelayInSeconds = retry_opts['minDelayInSeconds'] if 'minDelayInSeconds' in retry_opts else 1
+        self._maxRetryDelayInSeconds = retry_opts['maxDelayInSeconds'] if 'maxDelayInSeconds' in retry_opts else 30
 
-    async def request(self, options: RequestOptions) -> Response:
+    async def request(self, options: RequestOptions, retry_counter: int = 0) -> Response:
         """Performs a request. Response errors are returned as ApiError or subclasses.
 
         Args:
@@ -43,8 +48,8 @@ class HttpClient:
         Returns:
             A request response.
         """
-        response = await self._make_request(options)
         try:
+            response = await self._make_request(options)
             response.raise_for_status()
             if response.content:
                 try:
@@ -52,7 +57,17 @@ class HttpClient:
                 except Exception as err:
                     print('Error parsing json', err)
         except HTTPError as err:
-            self._convert_error(err)
+            if err.__class__.__name__ == 'ConnectTimeout':
+                error = err
+            else:
+                error = self._convert_error(err)
+            if error.__class__.__name__ in ['ConflictException', 'InternalException', 'ApiException', 'ConnectTimeout']\
+                    and retry_counter < self._retries:
+                await asyncio.sleep(min(pow(2, retry_counter) * self._minRetryDelayInSeconds,
+                                        self._maxRetryDelayInSeconds))
+                return await self.request(options, retry_counter + 1)
+            else:
+                raise error
         return response
 
     async def _make_request(self, options: RequestOptions) -> Response:
@@ -76,18 +91,19 @@ class HttpClient:
         status = err.response.status_code
         if status == 400:
             details = response['details'] if 'details' in response else []
-            raise ValidationException(err_message, details)
+            return ValidationException(err_message, details)
         elif status == 401:
-            raise UnauthorizedException(err_message)
+            return UnauthorizedException(err_message)
         elif status == 403:
-            raise ForbiddenException(err_message)
+            return ForbiddenException(err_message)
         elif status == 404:
-            raise NotFoundException(err_message)
+            return NotFoundException(err_message)
         elif status == 409:
-            raise ConflictException(err_message)
+            return ConflictException(err_message)
         elif status == 429:
-            raise TooManyRequestsException(err_message)
+            err_metadata = response['metadata'] if 'metadata' in response else {}
+            return TooManyRequestsException(err_message, err_metadata)
         elif status == 500:
-            raise InternalException(err_message)
+            return InternalException(err_message)
         else:
-            raise ApiException(err_message, status)
+            return ApiException(err_message, status)

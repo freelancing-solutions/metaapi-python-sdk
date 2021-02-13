@@ -16,6 +16,15 @@ from typing import Optional
 from typing_extensions import TypedDict
 
 
+class RetryOpts(TypedDict):
+    retries: Optional[int]
+    """Maximum amount of request retries, default value is 5."""
+    minDelayInSeconds: Optional[float]
+    """Minimum delay in seconds until request retry, default value is 1."""
+    maxDelayInSeconds: Optional[float]
+    """Maximum delay in seconds until request retry, default value is 30."""
+
+
 class MetaApiOpts(TypedDict):
     """MetaApi options"""
     application: Optional[str]
@@ -36,6 +45,8 @@ class MetaApiOpts(TypedDict):
     """An option to enable latency tracking."""
     maxConcurrentSynchronizations: Optional[int]
     """Max concurrent synchronizations via websocket client."""
+    retryOpts: Optional[RetryOpts]
+    """Options for request retries."""
 
 
 class MetaApi:
@@ -54,18 +65,20 @@ class MetaApi:
         request_timeout = opts['requestTimeout'] if 'requestTimeout' in opts else 60
         connect_timeout = opts['connectTimeout'] if 'connectTimeout' in opts else 60
         packet_ordering_timeout = opts['packetOrderingTimeout'] if 'packetOrderingTimeout' in opts else 60
+        retry_opts = opts['retryOpts'] if 'retryOpts' in opts else {}
         packet_logger = opts['packetLogger'] if 'packetLogger' in opts else {}
         max_concurrent_synchronizations = opts['maxConcurrentSynchronizations'] if 'maxConcurrentSynchronizations' in \
                                                                                    opts else 5
         if not re.search(r"[a-zA-Z0-9_]+", application):
             raise ValidationException('Application name must be non-empty string consisting ' +
                                       'from letters, digits and _ only')
-        http_client = HttpClient(request_timeout)
+        http_client = HttpClient(request_timeout, retry_opts)
         self._metaApiWebsocketClient = MetaApiWebsocketClient(
             token, {'application': application, 'domain': domain, 'requestTimeout': request_timeout,
                     'connectTimeout': connect_timeout, 'packetLogger': packet_logger,
                     'packetOrderingTimeout': packet_ordering_timeout,
-                    'maxConcurrentSynchronizations': max_concurrent_synchronizations})
+                    'maxConcurrentSynchronizations': max_concurrent_synchronizations,
+                    'retryOpts': retry_opts})
         self._provisioningProfileApi = ProvisioningProfileApi(ProvisioningProfileClient(http_client, token, domain))
         self._connectionRegistry = ConnectionRegistry(self._metaApiWebsocketClient, application)
         self._metatraderAccountApi = MetatraderAccountApi(MetatraderAccountClient(http_client, token, domain),
@@ -126,6 +139,8 @@ class MetaApi:
             error['details'] = err.details
         if err.__class__.__name__ == 'TradeException':
             error['string_code'] = err.stringCode
+        if err.__class__.__name__ == 'TooManyRequestsException':
+            error['metadata'] = err.metadata
         error['trace'] = traceback.format_exc()
         return error
 

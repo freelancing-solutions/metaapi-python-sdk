@@ -1,4 +1,5 @@
 from typing import Tuple, List
+from typing_extensions import TypedDict
 
 
 class ApiException(Exception):
@@ -142,14 +143,25 @@ class ConflictException(ApiException):
         super().__init__(message, 409)
 
 
+class TooManyRequestsErrorMetadata(TypedDict):
+    periodInMinutes: float
+    """Throttling period in minutes."""
+    requestsPerPeriodAllowed: int
+    """Available requests for periodInMinutes."""
+    recommendedRetryTime: str
+    """Recommended date to retry request."""
+
+
 class TooManyRequestsException(ApiException):
     """Represents too many requests error. Throwing this exception results in 429 (Too Many Requests) HTTP response
     code."""
 
-    def __init__(self, message: str):
+    def __init__(self, message: str, metadata: TooManyRequestsErrorMetadata):
         """Inits too many requests exception.
 
         Args:
             message: Exception message.
+            metadata: Error metadata.
         """
         super().__init__(message, 429)
+        self.metadata = metadata

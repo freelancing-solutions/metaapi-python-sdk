@@ -49,7 +49,9 @@ async def run_around_tests():
     await fake_server.start()
     global client
     client = MetaApiWebsocketClient('token', {'application': 'application', 'domain': 'project-stock.agiliumlabs.cloud',
-                                              'requestTimeout': 3})
+                                              'requestTimeout': 3, 'retryOpts': {'retries': 3,
+                                                                                 'minDelayInSeconds': 0.1,
+                                                                                 'maxDelayInSeconds': 0.5}})
     client.set_url('http://localhost:8080')
     await client.connect()
     client._resolved = True
@@ -1093,6 +1095,88 @@ class TestMetaApiWebsocketClient:
         listener.on_order_completed.assert_called_with(1, update['completedOrderIds'][0])
         listener.on_history_order_added.assert_called_with(1, update['historyOrders'][0])
         listener.on_deal_added.assert_called_with(1, update['deals'][0])
+
+    @pytest.mark.asyncio
+    async def test_retry_on_failure(self):
+        """Should retry request on failure."""
+        request_counter = 0
+        order = {
+            'id': '46871284',
+            'type': 'ORDER_TYPE_BUY_LIMIT',
+            'state': 'ORDER_STATE_PLACED',
+            'symbol': 'AUDNZD',
+            'magic': 123456,
+            'platform': 'mt5',
+            'time': '2020-04-20T08:38:58.270Z',
+            'openPrice': 1.03,
+            'currentPrice': 1.05206,
+            'volume': 0.01,
+            'currentVolume': 0.01,
+            'comment': 'COMMENT2'
+        }
+
+        @sio.on('request')
+        async def on_request(sid, data):
+            nonlocal request_counter
+            if request_counter > 1 and data['type'] == 'getOrder' and data['accountId'] == 'accountId' and \
+                    data['orderId'] == '46871284' and data['application'] == 'RPC':
+                await sio.emit('response', {'type': 'response', 'accountId': data['accountId'],
+                                            'requestId': data['requestId'], 'order': order})
+            request_counter += 1
+
+        actual = await client.get_order('accountId', '46871284')
+        order['time'] = date(order['time'])
+        assert actual == order
+
+    @pytest.mark.asyncio
+    async def test_not_retry_on_failure(self):
+        """Should not retry request on validation error."""
+        request_counter = 0
+
+        @sio.on('request')
+        async def on_request(sid, data):
+            nonlocal request_counter
+            if request_counter > 0 and data['type'] == 'subscribeToMarketData' and data['accountId'] == 'accountId' \
+                    and data['symbol'] == 'EURUSD' and data['application'] == 'application' and \
+                    data['instanceIndex'] == 1:
+                await sio.emit('response', {'type': 'response', 'accountId': data['accountId'],
+                                            'requestId': data['requestId']})
+            else:
+                await sio.emit('processingError', {'id': 1, 'error': 'ValidationError', 'message': 'Validation failed',
+                                                   'details': [{'parameter': 'volume', 'message': 'Required value.'}],
+                                                   'requestId': data['requestId']})
+            request_counter += 1
+            try:
+                await client.subscribe_to_market_data('accountId', 1, 'EURUSD')
+                Exception('ValidationException expected')
+            except Exception as err:
+                assert err.__class__.__name__ == 'ValidationException'
+                await client.close()
+            assert request_counter == 1
+
+    @pytest.mark.asyncio
+    async def test_not_retry_trade(self):
+        """Should not retry trade requests on fail."""
+        request_counter = 0
+        trade = {
+            'actionType': 'ORDER_TYPE_SELL',
+            'symbol': 'AUDNZD',
+            'volume': 0.07
+        }
+
+        @sio.on('request')
+        async def on_request(sid, data):
+            nonlocal request_counter
+            if request_counter > 0:
+                pytest.fail()
+            request_counter += 1
+
+        try:
+            await client.trade('accountId', trade)
+            Exception('TimeoutException expected')
+        except Exception as err:
+            assert err.__class__.__name__ == 'TimeoutException'
+            await client.close()
 
     @pytest.mark.asyncio
     async def test_timeout_on_no_response(self):

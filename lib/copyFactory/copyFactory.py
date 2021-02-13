@@ -2,7 +2,9 @@ from ..clients.httpClient import HttpClient
 from ..clients.copyFactory.configuration_client import ConfigurationClient
 from ..clients.copyFactory.history_client import HistoryClient
 from ..clients.copyFactory.trading_client import TradingClient
+from ..metaApi.metaApi import RetryOpts
 from typing_extensions import TypedDict
+from typing import Optional
 
 
 class CopyFactoryOpts(TypedDict):
@@ -11,6 +13,8 @@ class CopyFactoryOpts(TypedDict):
     """Domain to connect to."""
     requestTimeout: float
     """Timeout for http requests in seconds."""
+    retryOpts: Optional[RetryOpts]
+    """Options for request retries."""
 
 
 class CopyFactory:
@@ -26,7 +30,8 @@ class CopyFactory:
         opts: CopyFactoryOpts = opts or {}
         domain = opts['domain'] if 'domain' in opts else 'agiliumtrade.agiliumtrade.ai'
         request_timeout = opts['requestTimeout'] if 'requestTimeout' in opts else 60
-        http_client = HttpClient(request_timeout)
+        retry_opts = opts['retryOpts'] if 'retryOpts' in opts else {}
+        http_client = HttpClient(request_timeout, retry_opts)
         self._configurationClient = ConfigurationClient(http_client, token, domain)
         self._historyClient = HistoryClient(http_client, token, domain)
         self._tradingClient = TradingClient(http_client, token, domain)
