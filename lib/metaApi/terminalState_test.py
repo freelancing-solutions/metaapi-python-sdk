@@ -1,6 +1,7 @@
 from .terminalState import TerminalState
 import pytest
-import asyncio
+from mock import patch
+from asyncio import sleep
 from datetime import datetime
 state = TerminalState()
 
@@ -38,16 +39,17 @@ class TestTerminalState:
     @pytest.mark.asyncio
     async def test_call_disconnect(self):
         """Should call an on_disconnect if there was no signal for a long time"""
-        await state.on_connected(1, 1)
-        await state.on_broker_connection_status_changed(1, True)
-        await asyncio.sleep(10)
-        await state.on_broker_connection_status_changed(1, True)
-        await asyncio.sleep(55)
-        assert state.connected_to_broker
-        assert state.connected
-        await asyncio.sleep(10)
-        assert not state.connected_to_broker
-        assert not state.connected
+        with patch('lib.metaApi.terminalState.asyncio.sleep', new=lambda x: sleep(x / 50)):
+            await state.on_connected(1, 1)
+            await state.on_broker_connection_status_changed(1, True)
+            await sleep(0.2)
+            await state.on_broker_connection_status_changed(1, True)
+            await sleep(1.1)
+            assert state.connected_to_broker
+            assert state.connected
+            await sleep(0.2)
+            assert not state.connected_to_broker
+            assert not state.connected
 
     @pytest.mark.asyncio
     async def test_return_account_information(self):

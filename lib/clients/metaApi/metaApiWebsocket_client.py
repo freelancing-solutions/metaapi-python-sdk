@@ -38,6 +38,10 @@ class MetaApiWebsocketClient:
         self._connect_timeout = opts['connectTimeout'] if 'connectTimeout' in opts else 60
         self._maxConcurrentSynchronizations = opts['maxConcurrentSynchronizations'] if 'maxConcurrentSynchronizations'\
                                                                                        in opts else 10
+        retry_opts = opts['retryOpts'] if 'retryOpts' in opts else {}
+        self._retries = retry_opts['retries'] if 'retries' in opts else 5
+        self._minRetryDelayInSeconds = retry_opts['minDelayInSeconds'] if 'minDelayInSeconds' in retry_opts else 1
+        self._maxRetryDelayInSeconds = retry_opts['maxDelayInSeconds'] if 'maxDelayInSeconds' in retry_opts else 30
         self._token = token
         self._requestResolves = {}
         self._synchronizationListeners = {}
@@ -674,12 +678,28 @@ class MetaApiWebsocketClient:
         if not self._resolved:
             raise TimeoutException(f"MetaApi websocket client request of account {account_id} timed because socket "
                                    f"client failed to connect to the server.")
+        if request['type'] == 'trade':
+            return await self._make_request(account_id, request, timeout_in_seconds)
+        retry_counter = 0
+        while True:
+            try:
+                return await self._make_request(account_id, request, timeout_in_seconds)
+            except Exception as err:
+                if err.__class__.__name__ in ['NotSynchronizedException', 'TimeoutException',
+                                              'NotAuthenticatedException', 'InternalException'] and retry_counter < \
+                        self._retries:
+                    await asyncio.sleep(min(pow(2, retry_counter) * self._minRetryDelayInSeconds,
+                                            self._maxRetryDelayInSeconds))
+                    retry_counter += 1
+                else:
+                    raise err
+
+    async def _make_request(self, account_id: str, request: dict, timeout_in_seconds: float = None):
         if 'requestId' in request:
             request_id = request['requestId']
         else:
             request_id = random_id()
             request['requestId'] = request_id
-
         request['timestamps'] = {'clientProcessingStarted': format_date(datetime.now())}
         self._requestResolves[request_id] = asyncio.Future()
         self._requestResolves[request_id].type = request['type']

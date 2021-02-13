@@ -163,7 +163,8 @@ class CopyFactoryStrategySubscription(TypedDict):
     suffixes). By default this setting is disabled and the trades are copied using signal source symbol name."""
     tradeSizeScalingMode: Optional[str]
     """If set to balance, the trade size on strategy subscriber will be scaled according to balance to preserve risk.
-    If value is none, than trade size will be preserved irregardless of the subscriber balance. Default is balance."""
+    If value is none, then trade size will be preserved irregardless of the subscriber balance. If value is
+    contractSize, then trade size will be scaled according to contract size. Default is balance."""
 
 
 class CopyFactoryAccountUpdate(TypedDict):
@@ -296,7 +297,8 @@ class CopyFactoryStrategyUpdate(TypedDict):
     suffixes). By default this setting is disabled and the trades are copied using signal source symbol name."""
     tradeSizeScalingMode: Optional[str]
     """If set to balance, the trade size on strategy subscriber will be scaled according to balance to preserve risk.
-    If value is none, than trade size will be preserved irregardless of the subscriber balance. Default is balance."""
+    If value is none, then trade size will be preserved irregardless of the subscriber balance. If value is
+    contractSize, then trade size will be scaled according to contract size. Default is balance."""
 
 
 class CopyFactorySubscriberOrProvider(TypedDict):
@@ -430,7 +432,8 @@ class CopyFactoryPortfolioMember(TypedDict):
     suffixes). By default this setting is disabled and the trades are copied using signal source symbol name."""
     tradeSizeScalingMode: Optional[str]
     """If set to balance, the trade size on strategy subscriber will be scaled according to balance to preserve risk.
-    If value is none, than trade size will be preserved irregardless of the subscriber balance. Default is balance."""
+    If value is none, then trade size will be preserved irregardless of the subscriber balance. If value is
+    contractSize, then trade size will be scaled according to contract size. Default is balance."""
 
 
 class CopyFactoryPortfolioStrategyUpdate(TypedDict):
@@ -475,7 +478,8 @@ class CopyFactoryPortfolioStrategyUpdate(TypedDict):
     suffixes). By default this setting is disabled and the trades are copied using signal source symbol name."""
     tradeSizeScalingMode: Optional[str]
     """If set to balance, the trade size on strategy subscriber will be scaled according to balance to preserve risk.
-    If value is none, than trade size will be preserved irregardless of the subscriber balance. Default is balance."""
+    If value is none, then trade size will be preserved irregardless of the subscriber balance. If value is
+    contractSize, then trade size will be scaled according to contract size. Default is balance."""
 
 
 class CopyFactoryPortfolioStrategy(CopyFactoryPortfolioStrategyUpdate):
