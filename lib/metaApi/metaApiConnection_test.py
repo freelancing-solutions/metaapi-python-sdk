@@ -664,6 +664,12 @@ class TestMetaApiConnection:
     async def test_subscribe_to_terminal(self):
         """Should subscribe to terminal."""
         client.subscribe = AsyncMock()
+
+        async def delay_connect():
+            await asyncio.sleep(0.5)
+            await api.on_connected(1, 1)
+
+        asyncio.create_task(delay_connect())
         await api.subscribe()
         client.subscribe.assert_called_with('accountId')
 
@@ -672,9 +678,27 @@ class TestMetaApiConnection:
         """Should retry subscribe to terminal if no response received."""
         response = {'type': 'response', 'accountId': 'accountId', 'requestId': 'requestId'}
         client.subscribe = AsyncMock(side_effect=[TimeoutException('timeout'), response, response])
+
+        async def delay_connect():
+            await asyncio.sleep(1.1)
+            await api.on_connected(1, 1)
+
+        asyncio.create_task(delay_connect())
         await api.subscribe()
         client.subscribe.assert_called_with('accountId')
         assert client.subscribe.call_count == 2
+
+    @pytest.mark.asyncio
+    async def test_no_multiple_subscribes(self):
+        """Should not send multiple subscribe requests at the same time."""
+        client.subscribe = AsyncMock()
+        asyncio.create_task(api.subscribe())
+        asyncio.create_task(api.subscribe())
+        await asyncio.sleep(0.5)
+        await api.on_connected(1, 1)
+        await asyncio.sleep(0.6)
+        client.subscribe.assert_called_with('accountId')
+        assert client.subscribe.call_count == 1
 
     @pytest.mark.asyncio
     async def test_not_retry_subscribe_after_close(self):

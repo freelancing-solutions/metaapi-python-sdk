@@ -79,6 +79,8 @@ class MetaApiConnection(SynchronizationListener, ReconnectListener):
         self._subscribeRetryIntervalInSeconds = 1
         self._synchronized = False
         self._shouldSynchronize = None
+        self._shouldRetrySubscribe = False
+        self._isSubscribing = False
 
     def get_account_information(self) -> 'Coroutine[asyncio.Future[MetatraderAccountInformation]]':
         """Returns account information (see
@@ -628,23 +630,24 @@ class MetaApiConnection(SynchronizationListener, ReconnectListener):
         """Initializes meta api connection"""
         await self._historyStorage.initialize()
 
-    async def subscribe(self) -> Coroutine:
+    async def subscribe(self):
         """Initiates subscription to MetaTrader terminal.
 
         Returns:
             A coroutine which resolves when subscription is initiated.
         """
-        try:
-            return await self._websocketClient.subscribe(self._account.id)
-        except Exception as err:
-            if err.__class__.__name__ != 'TimeoutException':
-                raise err
-            else:
+        if not self._isSubscribing:
+            self._isSubscribing = True
+            self._shouldRetrySubscribe = True
+            while self._shouldRetrySubscribe and not self._closed:
+                try:
+                    await self._websocketClient.subscribe(self._account.id)
+                except Exception:
+                    pass
                 retry_interval = self._subscribeRetryIntervalInSeconds
                 self._subscribeRetryIntervalInSeconds = min(self._subscribeRetryIntervalInSeconds * 2, 300)
                 await asyncio.sleep(retry_interval)
-                if not self._closed:
-                    return await self.subscribe()
+            self._isSubscribing = False
 
     def subscribe_to_market_data(self, symbol: str, instance_index: int = None) -> Coroutine:
         """Subscribes on market data of specified symbol (see
@@ -748,6 +751,7 @@ class MetaApiConnection(SynchronizationListener, ReconnectListener):
         Returns:
             A coroutine which resolves when the asynchronous event is processed.
         """
+        self._shouldRetrySubscribe = False
         key = random_id(32)
         state = self._get_state(instance_index)
         state['shouldSynchronize'] = key
