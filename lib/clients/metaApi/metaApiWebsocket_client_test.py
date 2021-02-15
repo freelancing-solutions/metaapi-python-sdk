@@ -7,7 +7,7 @@ import asyncio
 import copy
 import re
 from urllib.parse import parse_qs
-from mock import MagicMock, AsyncMock, patch
+from mock import MagicMock, AsyncMock
 from copy import deepcopy
 from datetime import datetime
 sio = None
@@ -754,7 +754,6 @@ class TestMetaApiWebsocketClient:
         """Should process authenticated synchronization event."""
         listener = MagicMock()
         listener.on_connected = FinalMock()
-
         client.add_synchronization_listener('accountId', listener)
         await sio.emit('synchronization', {'type': 'authenticated', 'accountId': 'accountId', 'instanceIndex': 1,
                                            'replicas': 2})
@@ -762,11 +761,24 @@ class TestMetaApiWebsocketClient:
         listener.on_connected.assert_called_with(1, 2)
 
     @pytest.mark.asyncio
+    async def test_process_auth_sync_event_with_session_id(self):
+        """Should process authenticated synchronization event with session id."""
+        listener = MagicMock()
+        listener.on_connected = FinalMock()
+        client.add_synchronization_listener('accountId', listener)
+        await sio.emit('synchronization', {'type': 'authenticated', 'accountId': 'accountId', 'instanceIndex': 2,
+                                           'replicas': 4, 'sessionId': 'wrong'})
+        await sio.emit('synchronization', {'type': 'authenticated', 'accountId': 'accountId', 'instanceIndex': 1,
+                                           'replicas': 2, 'sessionId': client._sessionId})
+        await client._socket.wait()
+        assert listener.on_connected.call_count == 1
+        listener.on_connected.assert_called_with(1, 2)
+
+    @pytest.mark.asyncio
     async def test_process_broker_connection_status_event(self):
         """Should process broker connection status event."""
         listener = MagicMock()
         listener.on_broker_connection_status_changed = FinalMock()
-
         client.add_synchronization_listener('accountId', listener)
         await sio.emit('synchronization', {'type': 'authenticated', 'accountId': 'accountId', 'host': 'ps-mpa-1',
                                            'instanceIndex': 1})

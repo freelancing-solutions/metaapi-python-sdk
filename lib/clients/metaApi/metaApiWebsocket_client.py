@@ -48,6 +48,7 @@ class MetaApiWebsocketClient:
         self._latencyListeners = []
         self._connected = False
         self._socket = None
+        self._sessionId = None
         self._reconnectListeners = []
         self._connectedHosts = {}
         self._resubscriptionTriggerTimes = {}
@@ -107,6 +108,7 @@ class MetaApiWebsocketClient:
 
             while not self._socket.connected:
                 try:
+                    self._sessionId = random_id()
                     await asyncio.wait_for(
                         self._socket.connect(url, socketio_path='ws',
                                              headers={'Client-id': '{:01.10f}'.format(random())}),
@@ -657,6 +659,7 @@ class MetaApiWebsocketClient:
                 url = f'{self._url}?auth-token={self._token}'
                 self._connectResult = asyncio.Future()
                 self._resolved = False
+                self._sessionId = random_id()
                 await asyncio.wait_for(self._socket.connect(url, socketio_path='ws',
                                                             headers={'Client-id': '{:01.10f}'.format(random())}),
                                        timeout=self._connect_timeout)
@@ -678,6 +681,8 @@ class MetaApiWebsocketClient:
         if not self._resolved:
             raise TimeoutException(f"MetaApi websocket client request of account {account_id} timed because socket "
                                    f"client failed to connect to the server.")
+        if request['type'] == 'subscribe':
+            request['sessionId'] = self._sessionId
         if request['type'] == 'trade':
             return await self._make_request(account_id, request, timeout_in_seconds)
         retry_counter = 0
@@ -766,22 +771,23 @@ class MetaApiWebsocketClient:
                 instance_id = data['accountId'] + ':' + str(data['instanceIndex'] if 'instanceIndex' in data else 0)
                 instance_index = data['instanceIndex'] if 'instanceIndex' in data else 0
                 if data['type'] == 'authenticated':
-                    if 'host' in data:
-                        self._connectedHosts[instance_id] = data['host']
+                    if 'sessionId' not in data or data['sessionId'] == self._sessionId:
+                        if 'host' in data:
+                            self._connectedHosts[instance_id] = data['host']
 
-                    on_connected_tasks: List[asyncio.Task] = []
+                        on_connected_tasks: List[asyncio.Task] = []
 
-                    async def run_on_connected(listener):
-                        try:
-                            await listener.on_connected(instance_index, data['replicas'])
-                        except Exception as err:
-                            print(f'{data["accountId"]}: Failed to notify listener about connected event', err)
+                        async def run_on_connected(listener):
+                            try:
+                                await listener.on_connected(instance_index, data['replicas'])
+                            except Exception as err:
+                                print(f'{data["accountId"]}: Failed to notify listener about connected event', err)
 
-                    if data['accountId'] in self._synchronizationListeners:
-                        for listener in self._synchronizationListeners[data['accountId']]:
-                            on_connected_tasks.append(asyncio.create_task(run_on_connected(listener)))
-                    if len(on_connected_tasks) > 0:
-                        await asyncio.wait(on_connected_tasks)
+                        if data['accountId'] in self._synchronizationListeners:
+                            for listener in self._synchronizationListeners[data['accountId']]:
+                                on_connected_tasks.append(asyncio.create_task(run_on_connected(listener)))
+                        if len(on_connected_tasks) > 0:
+                            await asyncio.wait(on_connected_tasks)
                 elif data['type'] == 'disconnected':
                     if instance_id in self._connectedHosts and self._connectedHosts[instance_id] == data['host']:
                         on_disconnected_tasks: List[asyncio.Task] = []
