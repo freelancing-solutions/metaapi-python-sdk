@@ -76,11 +76,12 @@ class MetaApiConnection(SynchronizationListener, ReconnectListener):
         self._websocketClient.add_reconnect_listener(self)
         self._subscriptions = {}
         self._stateByInstanceIndex = {}
-        self._subscribeRetryIntervalInSeconds = 1
         self._synchronized = False
         self._shouldSynchronize = None
         self._shouldRetrySubscribe = False
         self._isSubscribing = False
+        self._subscribeTask = None
+        self._subscribeFuture = None
 
     def get_account_information(self) -> 'Coroutine[asyncio.Future[MetatraderAccountInformation]]':
         """Returns account information (see
@@ -639,14 +640,26 @@ class MetaApiConnection(SynchronizationListener, ReconnectListener):
         if not self._isSubscribing:
             self._isSubscribing = True
             self._shouldRetrySubscribe = True
+            subscribe_retry_interval_in_seconds = 3
             while self._shouldRetrySubscribe and not self._closed:
                 try:
                     await self._websocketClient.subscribe(self._account.id)
                 except Exception:
                     pass
-                retry_interval = self._subscribeRetryIntervalInSeconds
-                self._subscribeRetryIntervalInSeconds = min(self._subscribeRetryIntervalInSeconds * 2, 300)
-                await asyncio.sleep(retry_interval)
+                retry_interval = subscribe_retry_interval_in_seconds
+                subscribe_retry_interval_in_seconds = min(subscribe_retry_interval_in_seconds * 2, 300)
+                subscribe_future = asyncio.Future()
+
+                async def subscribe_task():
+                    await asyncio.sleep(retry_interval)
+                    subscribe_future.set_result(True)
+                self._subscribeTask = asyncio.create_task(subscribe_task())
+                self._subscribeFuture = subscribe_future
+                result = await self._subscribeFuture
+                self._subscribeFuture = None
+                if not result:
+                    self._shouldRetrySubscribe = False
+                    break
             self._isSubscribing = False
 
     def subscribe_to_market_data(self, symbol: str, instance_index: int = None) -> Coroutine:
@@ -751,6 +764,9 @@ class MetaApiConnection(SynchronizationListener, ReconnectListener):
         Returns:
             A coroutine which resolves when the asynchronous event is processed.
         """
+        if self._subscribeFuture and not self._subscribeFuture.done():
+            self._subscribeFuture.set_result(False)
+            self._subscribeTask.cancel()
         self._shouldRetrySubscribe = False
         key = random_id(32)
         state = self._get_state(instance_index)
@@ -814,6 +830,9 @@ class MetaApiConnection(SynchronizationListener, ReconnectListener):
         Returns:
             A coroutine which resolves when connection to MetaApi websocket API restored after a disconnect.
         """
+        if self._subscribeFuture and not self._subscribeFuture.done():
+            self._subscribeFuture.set_result(False)
+            self._subscribeTask.cancel()
         await self.subscribe()
 
     async def is_synchronized(self, instance_index: int, synchronization_id: str = None) -> bool:
