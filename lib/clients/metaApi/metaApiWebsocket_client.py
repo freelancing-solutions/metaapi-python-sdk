@@ -683,7 +683,7 @@ class MetaApiWebsocketClient:
                                    f"client failed to connect to the server.")
         if request['type'] == 'subscribe':
             request['sessionId'] = self._sessionId
-        if request['type'] == 'trade':
+        if request['type'] in ['trade', 'subscribe']:
             return await self._make_request(account_id, request, timeout_in_seconds)
         retry_counter = 0
         while True:

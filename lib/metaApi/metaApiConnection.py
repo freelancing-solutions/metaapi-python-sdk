@@ -77,7 +77,6 @@ class MetaApiConnection(SynchronizationListener, ReconnectListener):
         self._subscriptions = {}
         self._stateByInstanceIndex = {}
         self._synchronized = False
-        self._shouldSynchronize = None
         self._shouldRetrySubscribe = False
         self._isSubscribing = False
         self._subscribeTask = None
@@ -646,6 +645,8 @@ class MetaApiConnection(SynchronizationListener, ReconnectListener):
                     await self._websocketClient.subscribe(self._account.id)
                 except Exception:
                     pass
+                if not self._shouldRetrySubscribe:
+                    break
                 retry_interval = subscribe_retry_interval_in_seconds
                 subscribe_retry_interval_in_seconds = min(subscribe_retry_interval_in_seconds * 2, 300)
                 subscribe_future = asyncio.Future()
@@ -658,7 +659,6 @@ class MetaApiConnection(SynchronizationListener, ReconnectListener):
                 result = await self._subscribeFuture
                 self._subscribeFuture = None
                 if not result:
-                    self._shouldRetrySubscribe = False
                     break
             self._isSubscribing = False
 
