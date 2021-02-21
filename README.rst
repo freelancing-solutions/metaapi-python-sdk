@@ -449,7 +449,7 @@ which requires lots of effort, because developers have to solve a series
 of complex technical tasks to create a product.
 
 We decided to share our product as it allows developers to start with a
-powerful solution in almost no time, save on development and
+powerful solution in almost no time, saving on development and
 infrastructure maintenance costs.
 
 CopyFactory features
@@ -457,6 +457,7 @@ CopyFactory features
 Features supported:
 
 - low latency trade copying
+- reliable copy trading execution
 - connect arbitrary number of strategy providers and subscribers
 - subscribe accounts to multiple strategies at once
 - select arbitrary copy ratio for each subscription

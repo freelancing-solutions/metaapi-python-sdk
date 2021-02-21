@@ -4,7 +4,6 @@ from .copyFactory_models import StrategyId, CopyFactoryAccountUpdate, CopyFactor
     ResynchronizationTask, CopyFactoryAccount, CopyFactoryStrategy, CopyFactoryPortfolioStrategy, \
     CopyFactoryPortfolioStrategyUpdate
 from ..timeoutException import TimeoutException
-from httpx import Response
 from datetime import datetime
 import asyncio
 from typing import List
@@ -25,7 +24,7 @@ class ConfigurationClient(MetaApiClient):
         super().__init__(http_client, token, domain)
         self._host = f'https://trading-api-v1.{domain}'
 
-    async def generate_strategy_id(self) -> 'Response[StrategyId]':
+    async def generate_strategy_id(self) -> StrategyId:
         """Retrieves new unused strategy id. Method is accessible only with API access token. See
         https://trading-api-v1.agiliumtrade.agiliumtrade.ai/swagger/#!/default/get_users_current_configuration_unused_strategy_id
 
@@ -51,7 +50,7 @@ class ConfigurationClient(MetaApiClient):
         """
         return random_id(64)
 
-    async def get_accounts(self) -> 'Response[List[CopyFactoryAccount]]':
+    async def get_accounts(self) -> 'List[CopyFactoryAccount]':
         """Retrieves CopyFactory copy trading accounts. See
         https://trading-api-v1.agiliumtrade.agiliumtrade.ai/swagger/#!/default/get_users_current_configuration_accounts
 
@@ -115,7 +114,7 @@ class ConfigurationClient(MetaApiClient):
         }
         return await self._httpClient.request(opts)
 
-    async def get_strategies(self) -> 'Response[List[CopyFactoryStrategy]]':
+    async def get_strategies(self) -> 'List[CopyFactoryStrategy]':
         """Retrieves CopyFactory copy trading strategies. See
         https://trading-api-v1.agiliumtrade.agiliumtrade.ai/swagger/#!/default
         /get_users_current_configuration_strategies
