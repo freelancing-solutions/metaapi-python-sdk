@@ -69,6 +69,9 @@ class MockClient(MetaApiWebsocketClient):
     def subscribe_to_market_data(self, account_id: str, instance_index: int, symbol: str) -> Coroutine:
         pass
 
+    def unsubscribe_from_market_data(self, account_id: str, instance_index: int, symbol: str) -> Coroutine:
+        pass
+
     def add_synchronization_listener(self, account_id: str, listener):
         pass
 
@@ -763,7 +766,19 @@ class TestMetaApiConnection:
         """Should subscribe to market data."""
         client.subscribe_to_market_data = AsyncMock()
         await api.subscribe_to_market_data('EURUSD', 1)
+        assert 'EURUSD' in api.subscribed_symbols
         client.subscribe_to_market_data.assert_called_with('accountId', 1, 'EURUSD')
+
+    @pytest.mark.asyncio
+    async def test_unsubscribe_from_market_data(self):
+        """Should unsubscribe from market data."""
+        client.subscribe_to_market_data = AsyncMock()
+        client.unsubscribe_from_market_data = AsyncMock()
+        await api.subscribe_to_market_data('EURUSD', 1)
+        assert 'EURUSD' in api.subscribed_symbols
+        await api.unsubscribe_from_market_data('EURUSD', 1)
+        assert 'EURUSD' not in api.subscribed_symbols
+        client.unsubscribe_from_market_data.assert_called_with('accountId', 1, 'EURUSD')
 
     @pytest.mark.asyncio
     async def test_retrieve_symbol_specification(self):

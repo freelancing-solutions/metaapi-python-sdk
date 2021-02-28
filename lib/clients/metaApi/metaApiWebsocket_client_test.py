@@ -1230,6 +1230,24 @@ class TestMetaApiWebsocketClient:
         assert request_received
 
     @pytest.mark.asyncio
+    async def test_unsubscribe_from_market_data_with_mt_terminal(self):
+        """Should unsubscribe from market data with MetaTrader terminal."""
+
+        request_received = False
+
+        @sio.on('request')
+        async def on_request(sid, data):
+            if data['type'] == 'unsubscribeFromMarketData' and data['accountId'] == 'accountId' and \
+                    data['symbol'] == 'EURUSD' and data['application'] == 'application' and data['instanceIndex'] == 1:
+                nonlocal request_received
+                request_received = True
+                await sio.emit('response', {'type': 'response', 'accountId': data['accountId'],
+                                            'requestId': data['requestId']})
+
+        await client.unsubscribe_from_market_data('accountId', 1, 'EURUSD')
+        assert request_received
+
+    @pytest.mark.asyncio
     async def test_synchronize_symbol_specifications(self):
         """Should synchronize symbol specifications."""
 
