@@ -83,6 +83,8 @@ class MetatraderAccountInformation(TypedDict):
     """Account owner name."""
     login: int
     """Account login."""
+    credit: float
+    """Account credit in the deposit currency."""
 
 
 class MetatraderPosition(TypedDict):

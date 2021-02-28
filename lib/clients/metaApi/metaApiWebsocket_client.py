@@ -460,7 +460,7 @@ class MetaApiWebsocketClient:
             A coroutine which resolves when subscription started.
         """
         packet = {'type': 'subscribe'}
-        if instance_index:
+        if instance_index is not None:
             packet['instanceIndex'] = instance_index
         return self._rpc_request(account_id, packet)
 
@@ -526,7 +526,24 @@ class MetaApiWebsocketClient:
             A coroutine which resolves when subscription request was processed.
         """
         packet = {'type': 'subscribeToMarketData', 'symbol': symbol}
-        if instance_index:
+        if instance_index is not None:
+            packet['instanceIndex'] = instance_index
+        return self._rpc_request(account_id, packet)
+
+    def unsubscribe_from_market_data(self, account_id: str, instance_index: int, symbol: str) -> Coroutine:
+        """Unsubscribes from market data of specified symbol
+        (see https://metaapi.cloud/docs/client/websocket/marketDataStreaming/unsubscribeFromMarketData/).
+
+        Args:
+            account_id: Id of the MetaTrader account.
+            instance_index: Instance index.
+            symbol: Symbol (e.g. currency pair or an index).
+
+        Returns:
+            A coroutine which resolves when unsubscription request was processed.
+        """
+        packet = {'type': 'unsubscribeFromMarketData', 'symbol': symbol}
+        if instance_index is not None:
             packet['instanceIndex'] = instance_index
         return self._rpc_request(account_id, packet)
 

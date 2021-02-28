@@ -676,6 +676,21 @@ class MetaApiConnection(SynchronizationListener, ReconnectListener):
         self._subscriptions[symbol] = True
         return self._websocketClient.subscribe_to_market_data(self._account.id, instance_index, symbol)
 
+    def unsubscribe_from_market_data(self, symbol: str, instance_index: int = None) -> Coroutine:
+        """Unsubscribes from market data of specified symbol (see
+        https://metaapi.cloud/docs/client/websocket/marketDataStreaming/subscribeToMarketData/).
+
+        Args:
+            symbol: Symbol (e.g. currency pair or an index).
+            instance_index: Instance index.
+
+        Returns:
+            Promise which resolves when subscription request was processed.
+        """
+        if symbol in self._subscriptions:
+            del self._subscriptions[symbol]
+        return self._websocketClient.unsubscribe_from_market_data(self._account.id, instance_index, symbol)
+
     @property
     def subscribed_symbols(self) -> List[str]:
         """Returns list of the symbols connection is subscribed to.

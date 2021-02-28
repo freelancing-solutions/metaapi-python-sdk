@@ -159,7 +159,7 @@ class MetatraderAccount(MetatraderAccountModel):
 
     @property
     def reliability(self) -> str:
-        """Returns reliability value. Possible values are regular, high and maximum.
+        """Returns reliability value. Possible values are regular and high.
 
         Returns:
             Reliability value.

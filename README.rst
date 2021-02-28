@@ -131,7 +131,8 @@ Create a MetaTrader account (API server) via API
       'provisioningProfileId': provisioningProfile.id,
       'application': 'MetaApi',
       'magic': 123456,
-      'quoteStreamingIntervalInSeconds': 2.5 # set to 0 to receive quote per tick
+      'quoteStreamingIntervalInSeconds': 2.5, # set to 0 to receive quote per tick
+      'reliability': 'regular' # set this field to 'high' value if you want to increase uptime of your account (recommended for production environments)
     })
 
 Retrieving existing accounts via API
@@ -230,6 +231,9 @@ Query contract specifications and quotes via RPC API
     # read current price
     print(await connection.get_symbol_price(symbol='GBPUSD'))
 
+    # unsubscribe from market data when no longer needed
+    await connection.unsubscribe_from_market_data(symbol='GBPUSD')
+
 Use real-time streaming API
 ---------------------------
 Real-time streaming API is good for developing trading applications like trade copiers or automated trading strategies.
@@ -326,6 +330,9 @@ Retrieve contract specifications and quotes via streaming API
 
     # read current price
     print(terminalState.price(symbol='EURUSD'))
+
+    # unsubscribe from market data when no longer needed
+    await connection.unsubscribe_from_market_data(symbol='GBPUSD')
 
 Execute trades (both RPC and streaming APIs)
 --------------------------------------------
@@ -534,7 +541,7 @@ In order to configure trade copying you need to:
         'connectionId': slave_metaapi_account.id,
         'subscriptions': [
             {
-                'strategyId': strategy_id,
+                'strategyId': strategy_id['id'],
                 'multiplier': 1
             }
         ]
