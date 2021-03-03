@@ -31,6 +31,7 @@ class TerminalState(SynchronizationListener):
         """Inits the instance of terminal state class"""
         super().__init__()
         self._stateByInstanceIndex = {}
+        self._status_timers = {}
 
     @property
     def connected(self) -> bool:
@@ -143,9 +144,9 @@ class TerminalState(SynchronizationListener):
             await asyncio.sleep(60)
             await self.on_disconnected(instance_index)
 
-        if hasattr(self, '_status_timer'):
-            self._status_timer.cancel()
-        self._status_timer = asyncio.create_task(disconnect())
+        if instance_index in self._status_timers:
+            self._status_timers[instance_index].cancel()
+        self._status_timers[instance_index] = asyncio.create_task(disconnect())
 
     async def on_broker_connection_status_changed(self, instance_index: int, connected: bool):
         """Invoked when broker connection status have changed.

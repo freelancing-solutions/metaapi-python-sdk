@@ -1,3 +1,6 @@
+12.3.1
+  - fixed health state tracking for multiple replicas
+
 12.3.0
   - added credit account property
   - added feature to unsubscribe from market data (remove symbol from market watch)
