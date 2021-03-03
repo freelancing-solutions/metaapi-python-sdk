@@ -4,7 +4,7 @@ with open("README.rst", "r") as fh:
     long_description = fh.read()
 
 install_requires = [
-   'aiohttp==3.6.2', 'python-engineio==3.13.0', 'typing-extensions==3.7.4.3', 'iso8601', 'pytz',
+   'aiohttp==3.7.4', 'python-engineio==3.14.2', 'typing-extensions==3.7.4.3', 'iso8601', 'pytz',
    'python-socketio[asyncio_client]==4.6.0', 'requests==2.24.0', 'websockets==8.1', 'httpx==0.16.1'
 ]
 
