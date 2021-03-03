@@ -32,12 +32,12 @@ class MetaApiWebsocketClient:
         """
         opts = opts or {}
         opts['packetOrderingTimeout'] = opts['packetOrderingTimeout'] if 'packetOrderingTimeout' in opts else 60
+        opts['synchronizationThrottler'] = opts['synchronizationThrottler'] if 'synchronizationThrottler' in \
+                                                                               opts else {}
         self._application = opts['application'] if 'application' in opts else 'MetaApi'
         self._url = f'https://mt-client-api-v1.{opts["domain"] if "domain" in opts else "agiliumtrade.agiliumtrade.ai"}'
         self._request_timeout = opts['requestTimeout'] if 'requestTimeout' in opts else 60
         self._connect_timeout = opts['connectTimeout'] if 'connectTimeout' in opts else 60
-        self._maxConcurrentSynchronizations = opts['maxConcurrentSynchronizations'] if 'maxConcurrentSynchronizations'\
-                                                                                       in opts else 10
         retry_opts = opts['retryOpts'] if 'retryOpts' in opts else {}
         self._retries = retry_opts['retries'] if 'retries' in opts else 5
         self._minRetryDelayInSeconds = retry_opts['minDelayInSeconds'] if 'minDelayInSeconds' in retry_opts else 1
@@ -52,7 +52,7 @@ class MetaApiWebsocketClient:
         self._reconnectListeners = []
         self._connectedHosts = {}
         self._resubscriptionTriggerTimes = {}
-        self._synchronizationThrottler = SynchronizationThrottler(self, self._maxConcurrentSynchronizations)
+        self._synchronizationThrottler = SynchronizationThrottler(self, opts['synchronizationThrottler'])
         self._synchronizationThrottler.start()
         self._packetOrderer = PacketOrderer(self, opts['packetOrderingTimeout'])
         if 'packetLogger' in opts and 'enabled' in opts['packetLogger'] and opts['packetLogger']['enabled']:

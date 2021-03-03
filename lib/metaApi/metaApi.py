@@ -8,6 +8,7 @@ from ..clients.metaApi.packetLogger import PacketLoggerOpts
 from ..clients.errorHandler import ValidationException
 from ..metaApi.connectionRegistry import ConnectionRegistry
 from .metatraderDemoAccountApi import MetatraderDemoAccountApi
+from ..clients.metaApi.synchronizationThrottler import SynchronizationThrottlerOpts
 from ..clients.metaApi.metatraderDemoAccount_client import MetatraderDemoAccountClient
 from .latencyMonitor import LatencyMonitor
 import re
@@ -43,8 +44,8 @@ class MetaApiOpts(TypedDict):
     """An option to enable latency tracking."""
     enableLatencyTracking: Optional[bool]
     """An option to enable latency tracking."""
-    maxConcurrentSynchronizations: Optional[int]
-    """Max concurrent synchronizations via websocket client."""
+    synchronizationThrottler: Optional[SynchronizationThrottlerOpts]
+    """Options for synchronization throttler."""
     retryOpts: Optional[RetryOpts]
     """Options for request retries."""
 
@@ -67,8 +68,7 @@ class MetaApi:
         packet_ordering_timeout = opts['packetOrderingTimeout'] if 'packetOrderingTimeout' in opts else 60
         retry_opts = opts['retryOpts'] if 'retryOpts' in opts else {}
         packet_logger = opts['packetLogger'] if 'packetLogger' in opts else {}
-        max_concurrent_synchronizations = opts['maxConcurrentSynchronizations'] if 'maxConcurrentSynchronizations' in \
-                                                                                   opts else 5
+        synchronization_throttler = opts['synchronizationThrottler'] if 'synchronizationThrottler' in opts else {}
         if not re.search(r"[a-zA-Z0-9_]+", application):
             raise ValidationException('Application name must be non-empty string consisting ' +
                                       'from letters, digits and _ only')
@@ -77,7 +77,7 @@ class MetaApi:
             token, {'application': application, 'domain': domain, 'requestTimeout': request_timeout,
                     'connectTimeout': connect_timeout, 'packetLogger': packet_logger,
                     'packetOrderingTimeout': packet_ordering_timeout,
-                    'maxConcurrentSynchronizations': max_concurrent_synchronizations,
+                    'synchronizationThrottler': synchronization_throttler,
                     'retryOpts': retry_opts})
         self._provisioningProfileApi = ProvisioningProfileApi(ProvisioningProfileClient(http_client, token, domain))
         self._connectionRegistry = ConnectionRegistry(self._metaApiWebsocketClient, application)

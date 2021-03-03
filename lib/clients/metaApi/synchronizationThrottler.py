@@ -2,19 +2,37 @@ from typing import Dict
 from collections import deque
 from datetime import datetime
 import asyncio
+from typing_extensions import TypedDict
+from typing import Optional
+
+
+class SynchronizationThrottlerOpts(TypedDict):
+    """Options for synchronization throttler."""
+    maxConcurrentSynchronizations: Optional[int]
+    """Amount of maximum allowed concurrent synchronizations."""
+    queueTimeoutInSeconds: Optional[float]
+    """Allowed time for a synchronization in queue."""
+    synchronizationTimeoutInSeconds: Optional[float]
+    """Time after which a synchronization slot is freed to be used by another synchronization."""
 
 
 class SynchronizationThrottler:
     """Synchronization throttler used to limit the amount of concurrent synchronizations to prevent application
     from being overloaded due to excessive number of synchronisation responses being sent."""
 
-    def __init__(self, client, max_concurrent_synchronizations: int = 10):
+    def __init__(self, client, opts: SynchronizationThrottlerOpts = None):
         """Inits the synchronization throttler.
 
         Args:
-            max_concurrent_synchronizations: Limit of concurrent synchronizations.
+            client: Websocket client.
+            opts: Synchronization throttler options.
         """
-        self._maxConcurrentSynchronizations = max_concurrent_synchronizations
+        opts: SynchronizationThrottlerOpts = opts or {}
+        self._maxConcurrentSynchronizations = opts['maxConcurrentSynchronizations'] if \
+            'maxConcurrentSynchronizations' in opts else 10
+        self._queueTimeoutInSeconds = opts['queueTimeoutInSeconds'] if 'queueTimeoutInSeconds' in opts else 300
+        self._synchronizationTimeoutInSeconds = opts['synchronizationTimeoutInSeconds'] if \
+            'synchronizationTimeoutInSeconds' in opts else 10
         self._client = client
         self._synchronizationIds = {}
         self._accountsBySynchronizationIds = {}
@@ -48,11 +66,11 @@ class SynchronizationThrottler:
     async def _remove_old_sync_ids_job(self):
         now = datetime.now().timestamp()
         for key in list(self._synchronizationIds.keys()):
-            if (now - self._synchronizationIds[key]) > 10:
+            if (now - self._synchronizationIds[key]) > self._synchronizationTimeoutInSeconds:
                 del self._synchronizationIds[key]
                 self._advance_queue()
         while len(self._synchronizationQueue) and \
-                (datetime.now().timestamp() - self._synchronizationQueue[0]['queueTime']) > 300:
+                (datetime.now().timestamp() - self._synchronizationQueue[0]['queueTime']) > self._queueTimeoutInSeconds:
             self._remove_from_queue(self._synchronizationQueue[0]['synchronizationId'])
         await asyncio.sleep(1)
 
