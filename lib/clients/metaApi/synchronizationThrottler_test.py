@@ -25,7 +25,7 @@ async def run_around_tests():
         client = MockClient('token')
         client._rpc_request = AsyncMock()
         global throttler
-        throttler = SynchronizationThrottler(client, 2)
+        throttler = SynchronizationThrottler(client, {'maxConcurrentSynchronizations': 2})
         throttler.start()
         yield
         throttler.stop()
