@@ -52,6 +52,27 @@ class TestTerminalState:
             assert not state.connected
 
     @pytest.mark.asyncio
+    async def test_call_disconnect_multiple(self):
+        """Should call an on_disconnect if there was no signal for a long time on multiple instances"""
+        with patch('lib.metaApi.terminalState.asyncio.sleep', new=lambda x: sleep(x / 50)):
+            await state.on_connected(1, 2)
+            await state.on_connected(0, 2)
+            await state.on_broker_connection_status_changed(1, True)
+            await sleep(0.2)
+            await state.on_broker_connection_status_changed(1, True)
+            await state.on_broker_connection_status_changed(0, True)
+            await sleep(1.1)
+            assert state.connected_to_broker
+            assert state.connected
+            await state.on_broker_connection_status_changed(0, True)
+            await sleep(0.2)
+            assert state.connected_to_broker
+            assert state.connected
+            await sleep(1.1)
+            assert not state.connected_to_broker
+            assert not state.connected
+
+    @pytest.mark.asyncio
     async def test_return_account_information(self):
         """Should return account information."""
         assert not state.account_information
