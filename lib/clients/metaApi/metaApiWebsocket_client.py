@@ -103,16 +103,13 @@ class MetaApiWebsocketClient:
             self._resolved = False
             self._connectResult = asyncio.Future()
             self._packetOrderer.start()
-            url = f'{self._url}?auth-token={self._token}'
             self._socket = socketio.AsyncClient(reconnection=False, request_timeout=self._request_timeout)
 
             while not self._socket.connected:
                 try:
+                    url = f'{self._url}?auth-token={self._token}&clientId={"{:01.10f}".format(random())}'
                     self._sessionId = random_id()
-                    await asyncio.wait_for(
-                        self._socket.connect(url, socketio_path='ws',
-                                             headers={'Client-id': '{:01.10f}'.format(random())}),
-                        timeout=self._connect_timeout)
+                    await asyncio.wait_for(self._socket.connect(url, socketio_path='ws'), timeout=self._connect_timeout)
                 except Exception:
                     pass
 
@@ -673,13 +670,11 @@ class MetaApiWebsocketClient:
         while self._connected and not reconnected:
             try:
                 await self._socket.disconnect()
-                url = f'{self._url}?auth-token={self._token}'
+                url = f'{self._url}?auth-token={self._token}&clientId={"{:01.10f}".format(random())}'
                 self._connectResult = asyncio.Future()
                 self._resolved = False
                 self._sessionId = random_id()
-                await asyncio.wait_for(self._socket.connect(url, socketio_path='ws',
-                                                            headers={'Client-id': '{:01.10f}'.format(random())}),
-                                       timeout=self._connect_timeout)
+                await asyncio.wait_for(self._socket.connect(url, socketio_path='ws'), timeout=self._connect_timeout)
                 await self._connectResult
                 reconnected = True
                 await self._fire_reconnected()
