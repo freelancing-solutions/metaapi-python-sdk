@@ -10,6 +10,7 @@ from urllib.parse import parse_qs
 from mock import MagicMock, AsyncMock
 from copy import deepcopy
 from datetime import datetime
+from freezegun import freeze_time
 sio = None
 client: MetaApiWebsocketClient = None
 
@@ -77,6 +78,40 @@ FinalMock.__await__ = lambda x: async_magic_close().__await__()
 
 
 class TestMetaApiWebsocketClient:
+    @pytest.mark.asyncio
+    async def test_change_client_id_on_reconnect(self):
+        """Should change client id on reconnect."""
+        with freeze_time() as frozen_datetime:
+            frozen_datetime.move_to('2020-10-10 01:00:01.000')
+            connect_amount = 0
+            client_id = None
+            await client.close()
+
+            @sio.event
+            async def connect(sid, environ):
+                async def disconnect():
+                    await asyncio.sleep(0.02)
+                    await sio.disconnect(sid)
+
+                await sio.emit('response', {'type': 'response'})
+                nonlocal connect_amount
+                nonlocal client_id
+                connect_amount += 1
+                qs = parse_qs(environ['QUERY_STRING'])
+                if client_id == qs['clientId']:
+                    pytest.fail()
+                client_id = qs['clientId']
+                if connect_amount < 3:
+                    asyncio.create_task(disconnect())
+
+            await client.connect()
+            await asyncio.sleep(0.02)
+            frozen_datetime.tick(1.5)
+            await asyncio.sleep(0.02)
+            frozen_datetime.tick(1.5)
+            await asyncio.sleep(0.02)
+            assert connect_amount >= 3
+
     @pytest.mark.asyncio
     async def test_retrieve_account(self):
         """Should retrieve MetaTrader account information from API."""
