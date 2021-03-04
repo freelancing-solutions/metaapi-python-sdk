@@ -1,4 +1,6 @@
-12.3.1
+12.4.0
+  - added clientId to query websocket url
+  - added equity curve filter to CopyFactory
   - fixed health state tracking for multiple replicas
 
 12.3.0
