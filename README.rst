@@ -432,13 +432,20 @@ Create a MetaTrader 5 demo account
 ----------------------------------
 .. code-block:: python
 
-    demo_account = await api.metatrader_demo_account_api.create_mt5_demo_account((profile_id=provisioningProfile.id,
+    demo_account = await api.metatrader_demo_account_api.create_mt5_demo_account(profile_id=provisioningProfile.id,
         account={
             'balance': 100000,
             'email': 'example@example.com',
             'leverage': 100,
             'serverName': 'ICMarketsSC-Demo'
         })
+
+Rate limits & quotas
+===========================================
+MetaApi applies rate limits to requests. See `MT account management API <https://metaapi.cloud/docs/provisioning/rateLimiting/>`_
+and `MetaApi API <https://metaapi.cloud/docs/client/restApi/rateLimiting/>`_ for details.
+Also, MetaApi applies quotas to limit the number of accounts and provisioning profiles,
+for more details see the `MT account management API quotas <https://metaapi.cloud/docs/provisioning/userQuota/>`_
 
 CopyFactory copy trading API
 ===========================================
