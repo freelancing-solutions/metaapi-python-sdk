@@ -3,7 +3,7 @@ from collections import deque
 from datetime import datetime
 import asyncio
 from typing_extensions import TypedDict
-from typing import Optional
+from typing import Optional, List
 
 
 class SynchronizationThrottlerOpts(TypedDict):
@@ -82,6 +82,11 @@ class SynchronizationThrottler:
         """
         if synchronization_id in self._accountsBySynchronizationIds:
             self._synchronizationIds[synchronization_id] = datetime.now().timestamp()
+
+    @property
+    def active_synchronization_ids(self) -> List[str]:
+        """Returns the list of currently active synchronization ids."""
+        return list(self._accountsBySynchronizationIds.keys())
 
     @property
     def is_synchronization_available(self) -> bool:

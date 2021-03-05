@@ -180,10 +180,12 @@ class MetaApiWebsocketClient:
 
             @self._socket.on('synchronization')
             async def on_synchronization(data):
-                if self._packetLogger:
-                    self._packetLogger.log_packet(data)
-                self._convert_iso_time_to_date(data)
-                await self._process_synchronization_packet(data)
+                if ('synchronizationId' not in data) or \
+                        (data['synchronizationId'] in self._synchronizationThrottler.active_synchronization_ids):
+                    if self._packetLogger:
+                        self._packetLogger.log_packet(data)
+                    self._convert_iso_time_to_date(data)
+                    await self._process_synchronization_packet(data)
 
             return self._connectResult
 
