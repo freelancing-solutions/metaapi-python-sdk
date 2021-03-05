@@ -41,7 +41,7 @@ class PacketLogger:
         self._compressSpecifications = opts['compressSpecifications'] if 'compressSpecifications' in opts else True
         self._compressPrices = opts['compressPrices'] if 'compressPrices' in opts else True
         self._previousPrices = {}
-        self._lastKeepAlive = {}
+        self._lastSNPacket = {}
         self._writeQueue = {}
         self._root = './.metaapi/logs'
         self._recordInterval: asyncio.Task or None = None
@@ -68,10 +68,10 @@ class PacketLogger:
             self._writeQueue[packet['accountId']] = {'isWriting': False, 'queue': []}
         if packet['type'] == 'status':
             return
-        if packet['accountId'] not in self._lastKeepAlive:
-            self._lastKeepAlive[packet['accountId']] = {}
-        if packet['type'] == 'keepalive':
-            self._lastKeepAlive[packet['accountId']][instance_index] = packet
+        if packet['accountId'] not in self._lastSNPacket:
+            self._lastSNPacket[packet['accountId']] = {}
+        if packet['type'] in ['keepalive', 'noop']:
+            self._lastSNPacket[packet['accountId']][instance_index] = packet
             return
         queue: List = self._writeQueue[packet['accountId']]['queue']
         if packet['accountId'] not in self._previousPrices:
@@ -95,10 +95,10 @@ class PacketLogger:
                 if prev_price is not None:
                     valid_sequence_numbers = [prev_price['last']['sequenceNumber'],
                                               prev_price['last']['sequenceNumber'] + 1]
-                    if instance_index in self._lastKeepAlive[packet['accountId']] and 'sequenceNumber' in \
-                            self._lastKeepAlive[packet['accountId']][instance_index]:
+                    if instance_index in self._lastSNPacket[packet['accountId']] and 'sequenceNumber' in \
+                            self._lastSNPacket[packet['accountId']][instance_index]:
                         valid_sequence_numbers.append(
-                            self._lastKeepAlive[packet['accountId']][instance_index]['sequenceNumber'] + 1)
+                            self._lastSNPacket[packet['accountId']][instance_index]['sequenceNumber'] + 1)
                     if packet['sequenceNumber'] not in valid_sequence_numbers:
                         self._record_prices(packet['accountId'], instance_index)
                         self._ensure_previous_price_object(packet['accountId'])
