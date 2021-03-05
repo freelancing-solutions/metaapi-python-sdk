@@ -852,6 +852,41 @@ class TestMetaApiWebsocketClient:
         listener.on_disconnected.assert_called_with(1)
 
     @pytest.mark.asyncio
+    async def test_accept_own_packets(self):
+        """Should only accept packets with own synchronization ids."""
+        account_information = {
+            'broker': 'True ECN Trading Ltd',
+            'currency': 'USD',
+            'server': 'ICMarketsSC-Demo',
+            'balance': 7319.9,
+            'equity': 7306.649913200001,
+            'margin': 184.1,
+            'freeMargin': 7120.22,
+            'leverage': 100,
+            'marginLevel': 3967.58283542
+        }
+
+        listener = MagicMock()
+        listener.on_account_information_updated = AsyncMock()
+        client._synchronizationThrottler = MagicMock()
+        client._synchronizationThrottler.active_synchronization_ids = ['synchronizationId']
+        client.add_synchronization_listener('accountId', listener)
+        await sio.emit('synchronization', {'type': 'accountInformation', 'accountId': 'accountId',
+                                           'accountInformation': account_information, 'instanceIndex': 1})
+        await asyncio.sleep(0.05)
+        assert listener.on_account_information_updated.call_count == 1
+        await sio.emit('synchronization', {'type': 'accountInformation', 'accountId': 'accountId',
+                                           'accountInformation': account_information, 'instanceIndex': 1,
+                                           'synchronizationId': 'wrong'})
+        await asyncio.sleep(0.05)
+        assert listener.on_account_information_updated.call_count == 1
+        await sio.emit('synchronization', {'type': 'accountInformation', 'accountId': 'accountId',
+                                           'accountInformation': account_information, 'instanceIndex': 1,
+                                           'synchronizationId': 'synchronizationId'})
+        await asyncio.sleep(0.05)
+        assert listener.on_account_information_updated.call_count == 2
+
+    @pytest.mark.asyncio
     async def test_synchronize_with_metatrader_terminal(self):
         """Should synchronize with MetaTrader terminal."""
 
