@@ -14,6 +14,8 @@ from ...metaApi.models import date
 class PacketLoggerOpts(TypedDict):
     """Packet logger options."""
 
+    enabled: Optional[bool]
+    """Whether packet logger is enabled."""
     fileNumberLimit: Optional[int]
     """Maximum amount of files per account. Default is 12."""
     logFileSizeInHours: Optional[float]

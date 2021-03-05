@@ -37,6 +37,15 @@ class CopyFactoryStrategyStopout(TypedDict):
     """Time the strategy is stopped till."""
 
 
+class CopyFactoryStrategyEquityCurveFilter(TypedDict):
+    """CopyFactory strategy equity curve filter."""
+    period: float
+    """Moving average period, must be greater or equal to 1."""
+    granularity: str
+    """Moving average granularity, a positive integer followed by time unit, e.g. 2h.
+    Allowed units are s, m, h, d and w."""
+
+
 class StrategyId(TypedDict):
     """Strategy id"""
     id: str
@@ -299,6 +308,8 @@ class CopyFactoryStrategyUpdate(TypedDict):
     """If set to balance, the trade size on strategy subscriber will be scaled according to balance to preserve risk.
     If value is none, then trade size will be preserved irregardless of the subscriber balance. If value is
     contractSize, then trade size will be scaled according to contract size. Default is balance."""
+    equityCurveFilter: CopyFactoryStrategyEquityCurveFilter
+    """Filter which permits the trades only if account equity is greater than balance moving average."""
 
 
 class CopyFactorySubscriberOrProvider(TypedDict):
