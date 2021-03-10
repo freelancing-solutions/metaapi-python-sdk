@@ -98,9 +98,10 @@ class TestMetaApiWebsocketClient:
                 nonlocal client_id
                 connect_amount += 1
                 qs = parse_qs(environ['QUERY_STRING'])
-                if client_id == qs['clientId']:
+                if environ['aiohttp.request'].headers['Client-Id'] != qs['clientId'][0] or \
+                        client_id == qs['clientId'][0]:
                     pytest.fail()
-                client_id = qs['clientId']
+                client_id = qs['clientId'][0]
                 if connect_amount < 3:
                     asyncio.create_task(disconnect())
 
