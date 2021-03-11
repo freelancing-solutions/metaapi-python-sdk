@@ -7,13 +7,10 @@ from metaapi_cloud_sdk.metaApi.models import MetatraderSymbolPrice
 token = os.getenv('TOKEN') or '<put in your token here>'
 account_id = os.getenv('ACCOUNT_ID') or '<put in your account id here>'
 
-
-
 class EURUSDListener(SynchronizationListener):
     async def on_symbol_price_updated(self, instance_index: int, price: MetatraderSymbolPrice):
         if price['symbol'] == 'EURUSD':
             print('EURUSD price updated', price)
-
 
 async def stream_quotes():
     api = MetaApi(token)
@@ -22,7 +19,7 @@ async def stream_quotes():
 
         #  wait until account is deployed and connected to broker
         print('Deploying account')
-        #await account.deploy()
+        await account.deploy()
         print('Waiting for API server to connect to broker (may take couple of minutes)')
         await account.wait_connected()
 
