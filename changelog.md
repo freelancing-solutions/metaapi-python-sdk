@@ -2,6 +2,8 @@
   - added clientId to query websocket url
   - added equity curve filter to CopyFactory
   - fixed health state tracking for multiple replicas
+  - extended synchronization throttler options
+  - move CopyFactory trade copying API to a separate pypi module
 
 12.3.0
   - added credit account property
