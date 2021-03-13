@@ -51,10 +51,10 @@ class MetaApiWebsocketClient:
         self._sessionId = None
         self._reconnectListeners = []
         self._connectedHosts = {}
-        self._resubscriptionTriggerTimes = {}
         self._synchronizationThrottler = SynchronizationThrottler(self, opts['synchronizationThrottler'])
         self._synchronizationThrottler.start()
         self._packetOrderer = PacketOrderer(self, opts['packetOrderingTimeout'])
+        self._status_timers = {}
         if 'packetLogger' in opts and 'enabled' in opts['packetLogger'] and opts['packetLogger']['enabled']:
             self._packetLogger = PacketLogger(opts['packetLogger'])
             self._packetLogger.start()
@@ -789,7 +789,35 @@ class MetaApiWebsocketClient:
                     self._synchronizationThrottler.update_synchronization_id(data['synchronizationId'])
                 instance_id = data['accountId'] + ':' + str(data['instanceIndex'] if 'instanceIndex' in data else 0)
                 instance_index = data['instanceIndex'] if 'instanceIndex' in data else 0
+
+                def reset_disconnect_timer():
+                    async def disconnect():
+                        await asyncio.sleep(60)
+                        await on_disconnected()
+
+                    if instance_id in self._status_timers:
+                        self._status_timers[instance_id].cancel()
+                    self._status_timers[instance_id] = asyncio.create_task(disconnect())
+
+                async def on_disconnected():
+                    if instance_id in self._connectedHosts and self._connectedHosts[instance_id] == data['host']:
+                        on_disconnected_tasks: List[asyncio.Task] = []
+
+                        async def run_on_disconnected(listener):
+                            try:
+                                await listener.on_disconnected(instance_index)
+                            except Exception as err:
+                                print(f'{data["accountId"]}: Failed to notify listener about disconnected event', err)
+
+                        if data['accountId'] in self._synchronizationListeners:
+                            for listener in self._synchronizationListeners[data['accountId']]:
+                                on_disconnected_tasks.append(asyncio.create_task(run_on_disconnected(listener)))
+                        if len(on_disconnected_tasks) > 0:
+                            await asyncio.wait(on_disconnected_tasks)
+                        del self._connectedHosts[instance_id]
+
                 if data['type'] == 'authenticated':
+                    reset_disconnect_timer()
                     if 'sessionId' not in data or data['sessionId'] == self._sessionId:
                         if 'host' in data:
                             self._connectedHosts[instance_id] = data['host']
@@ -808,21 +836,9 @@ class MetaApiWebsocketClient:
                         if len(on_connected_tasks) > 0:
                             await asyncio.wait(on_connected_tasks)
                 elif data['type'] == 'disconnected':
-                    if instance_id in self._connectedHosts and self._connectedHosts[instance_id] == data['host']:
-                        on_disconnected_tasks: List[asyncio.Task] = []
-
-                        async def run_on_disconnected(listener):
-                            try:
-                                await listener.on_disconnected(instance_index)
-                            except Exception as err:
-                                print(f'{data["accountId"]}: Failed to notify listener about disconnected event', err)
-
-                        if data['accountId'] in self._synchronizationListeners:
-                            for listener in self._synchronizationListeners[data['accountId']]:
-                                on_disconnected_tasks.append(asyncio.create_task(run_on_disconnected(listener)))
-                        if len(on_disconnected_tasks) > 0:
-                            await asyncio.wait(on_disconnected_tasks)
-                        del self._connectedHosts[instance_id]
+                    if instance_id in self._status_timers:
+                        self._status_timers[instance_id].cancel()
+                    await on_disconnected()
                 elif data['type'] == 'synchronizationStarted':
                     on_sync_started_tasks: List[asyncio.Task] = []
 
@@ -1083,25 +1099,20 @@ class MetaApiWebsocketClient:
                         if len(on_order_synchronization_finished_tasks) > 0:
                             await asyncio.wait(on_order_synchronization_finished_tasks)
                 elif data['type'] == 'status':
+                    reset_disconnect_timer()
                     if instance_id not in self._connectedHosts:
-                        if instance_id not in self._resubscriptionTriggerTimes:
-                            self._resubscriptionTriggerTimes[instance_id] = datetime.now()
-                        elif self._resubscriptionTriggerTimes[instance_id].timestamp() + 2 * 60 < \
-                                datetime.now().timestamp():
-                            del self._resubscriptionTriggerTimes[instance_id]
-                            print(f'[{datetime.now().isoformat()}] it seems like we are not connected to a ' +
-                                  'running API server yet, retrying subscription for account ' + instance_id)
+                        print(f'[{datetime.now().isoformat()}] it seems like we are not connected to a ' +
+                              'running API server yet, retrying subscription for account ' + instance_id)
 
-                            async def run_subscribe():
-                                try:
-                                    await self.subscribe(data['accountId'], data['instanceIndex'])
-                                except Exception as error:
-                                    print(f'[{datetime.now().isoformat()}] MetaApi websocket client failed to ' +
-                                          'receive subscribe response for account id ' + instance_id, error)
-                            asyncio.create_task(run_subscribe())
+                        async def run_subscribe():
+                            try:
+                                await self.subscribe(data['accountId'], data['instanceIndex'])
+                            except Exception as error:
+                                print(f'[{datetime.now().isoformat()}] MetaApi websocket client failed to ' +
+                                      'receive subscribe response for account id ' + instance_id, error)
+                        asyncio.create_task(run_subscribe())
+
                     elif instance_id in self._connectedHosts and self._connectedHosts[instance_id] == data['host']:
-                        if instance_id in self._resubscriptionTriggerTimes:
-                            del self._resubscriptionTriggerTimes[instance_id]
                         on_broker_connection_status_changed_tasks: List[asyncio.Task] = []
 
                         async def run_on_broker_connection_status_changed(listener):

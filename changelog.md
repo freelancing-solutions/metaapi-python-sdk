@@ -4,6 +4,7 @@
   - fixed health state tracking for multiple replicas
   - extended synchronization throttler options
   - move CopyFactory trade copying API to a separate pypi module
+  - increase socket connection stability
 
 12.3.0
   - added credit account property

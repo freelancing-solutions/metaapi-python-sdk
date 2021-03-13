@@ -81,6 +81,7 @@ class MetaApiConnection(SynchronizationListener, ReconnectListener):
         self._isSubscribing = False
         self._subscribeTask = None
         self._subscribeFuture = None
+        self._lastAccountReloadTime = 0
 
     def get_account_information(self) -> 'Coroutine[asyncio.Future[MetatraderAccountInformation]]':
         """Returns account information (see
@@ -640,7 +641,7 @@ class MetaApiConnection(SynchronizationListener, ReconnectListener):
             self._isSubscribing = True
             self._shouldRetrySubscribe = True
             subscribe_retry_interval_in_seconds = 3
-            while self._shouldRetrySubscribe and not self._closed:
+            while self._shouldRetrySubscribe and (not self._closed) and self._account.state == 'DEPLOYED':
                 try:
                     await self._websocketClient.subscribe(self._account.id)
                 except Exception:
@@ -812,6 +813,10 @@ class MetaApiConnection(SynchronizationListener, ReconnectListener):
         state['shouldSynchronize'] = None
         state['synchronized'] = False
         state['disconnected'] = True
+        if (datetime.now().timestamp() - 10 * 60) > self._lastAccountReloadTime:
+            await self._account.reload()
+            self._lastAccountReloadTime = datetime.now().timestamp()
+        asyncio.create_task(self.subscribe())
 
     async def on_deal_synchronization_finished(self, instance_index: int, synchronization_id: str):
         """Invoked when a synchronization of history deals on a MetaTrader account have finished.
@@ -848,6 +853,7 @@ class MetaApiConnection(SynchronizationListener, ReconnectListener):
         if self._subscribeFuture and not self._subscribeFuture.done():
             self._subscribeFuture.set_result(False)
             self._subscribeTask.cancel()
+        await asyncio.sleep(0.05)
         await self.subscribe()
 
     async def is_synchronized(self, instance_index: int, synchronization_id: str = None) -> bool:
