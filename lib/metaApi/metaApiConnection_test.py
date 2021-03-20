@@ -684,86 +684,18 @@ class TestMetaApiConnection:
     @pytest.mark.asyncio
     async def test_subscribe_to_terminal(self):
         """Should subscribe to terminal."""
-        client.subscribe = AsyncMock()
-
-        async def delay_connect():
-            await asyncio.sleep(0.1)
-            await api.on_connected(1, 1)
-
-        asyncio.create_task(delay_connect())
+        client.ensure_subscribe = AsyncMock()
         await api.subscribe()
-        client.subscribe.assert_called_with('accountId')
-
-    @pytest.mark.asyncio
-    async def test_not_subscribe_undeployed(self):
-        """Should not subscribe undeployed accounts."""
-        client.subscribe = AsyncMock()
-        account._state = 'UNDEPLOYED'
-
-        async def delay_connect():
-            await asyncio.sleep(0.1)
-            await api.on_connected(1, 1)
-
-        asyncio.create_task(delay_connect())
-        await api.subscribe()
-        client.subscribe.assert_not_called()
-
-    @pytest.mark.asyncio
-    async def test_retry_subscribe_to_terminal(self):
-        """Should retry subscribe to terminal if no response received."""
-        with patch('lib.metaApi.metaApiConnection.asyncio.sleep', new=lambda x: sleep(x / 10)):
-            response = {'type': 'response', 'accountId': 'accountId', 'requestId': 'requestId'}
-            client.subscribe = AsyncMock(side_effect=[TimeoutException('timeout'), response, response])
-
-            async def delay_connect():
-                await sleep(0.36)
-                await api.on_connected(1, 1)
-
-            asyncio.create_task(delay_connect())
-            await api.subscribe()
-            client.subscribe.assert_called_with('accountId')
-            assert client.subscribe.call_count == 2
+        client.ensure_subscribe.assert_called_with('accountId')
 
     @pytest.mark.asyncio
     async def test_subscribe_after_reconnect(self):
         """Should subscribe after reconnect."""
         with patch('lib.metaApi.metaApiConnection.asyncio.sleep', new=lambda x: sleep(x / 10)):
             client.connect = AsyncMock()
-            client.subscribe = AsyncMock()
-            asyncio.create_task(api.subscribe())
-            await sleep(0.18)
-            client.subscribe.assert_called_with('accountId')
-            await api.on_connected(1, 1)
-            asyncio.create_task(api.on_reconnected())
-            await sleep(0.33)
-            assert client.subscribe.call_count == 3
-            await api.on_connected(1, 1)
-            await sleep(0.18)
-            assert client.subscribe.call_count == 3
-
-    @pytest.mark.asyncio
-    async def test_no_multiple_subscribes(self):
-        """Should not send multiple subscribe requests at the same time."""
-        client.subscribe = AsyncMock()
-        asyncio.create_task(api.subscribe())
-        asyncio.create_task(api.subscribe())
-        await asyncio.sleep(0.5)
-        await api.on_connected(1, 1)
-        await asyncio.sleep(0.6)
-        client.subscribe.assert_called_with('accountId')
-        assert client.subscribe.call_count == 1
-
-    @pytest.mark.asyncio
-    async def test_not_retry_subscribe_after_close(self):
-        """Should not retry subscribe to terminal if connection is closed."""
-        client.subscribe = AsyncMock(side_effect=TimeoutException('timeout'))
-        client.unsubscribe = AsyncMock()
-        asyncio.create_task(api.subscribe())
-        asyncio.create_task(api.close())
-        await asyncio.sleep(1)
-        client.subscribe.assert_called_with('accountId')
-        assert client.subscribe.call_count == 1
-        client.unsubscribe.assert_called_with('accountId')
+            client.ensure_subscribe = AsyncMock()
+            await api.on_reconnected()
+            client.ensure_subscribe.assert_called_with('accountId')
 
     @pytest.mark.asyncio
     async def test_synchronize_state_with_terminal(self):
@@ -968,16 +900,6 @@ class TestMetaApiConnection:
         api.subscribe.assert_called_with()
 
     @pytest.mark.asyncio
-    async def test_overwrite_subscribe_to_terminal_on_reconnect(self):
-        """Should overwrite previous subscribe on reconnect."""
-        client.subscribe = AsyncMock()
-        asyncio.create_task(api.subscribe())
-        await asyncio.sleep(0.1)
-        asyncio.create_task(api.on_reconnected())
-        await asyncio.sleep(0.1)
-        assert client.subscribe.call_count == 2
-
-    @pytest.mark.asyncio
     async def test_load_history_storage_from_disk(self):
         """Should load data to history storage from disk."""
         api._historyStorage.initialize = AsyncMock()
@@ -985,14 +907,9 @@ class TestMetaApiConnection:
         api._historyStorage.initialize.assert_called()
 
     @pytest.mark.asyncio
-    async def test_resubscribe_on_disconnect(self):
-        """Should resubscribe account on disconnect."""
+    async def test_disconnect(self):
+        """Should set synchronized false on disconnect."""
         client.subscribe = AsyncMock()
         account.reload = AsyncMock()
         await api.on_disconnected(1)
-        await asyncio.sleep(0.05)
         assert not api.synchronized
-        account.reload.assert_called()
-        client.subscribe.assert_called_with('accountId')
-        await api.on_disconnected(1)
-        assert account.reload.call_count == 1

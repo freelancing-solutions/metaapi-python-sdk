@@ -115,11 +115,11 @@ class TestMetaApiWebsocketClient:
                     asyncio.create_task(disconnect())
 
             await client.connect()
-            await asyncio.sleep(0.02)
+            await asyncio.sleep(0.05)
             frozen_datetime.tick(1.5)
-            await asyncio.sleep(0.02)
+            await asyncio.sleep(0.05)
             frozen_datetime.tick(1.5)
-            await asyncio.sleep(0.02)
+            await asyncio.sleep(0.05)
             assert connect_amount >= 3
 
     @pytest.mark.asyncio
