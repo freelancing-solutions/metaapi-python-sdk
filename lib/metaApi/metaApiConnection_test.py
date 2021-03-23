@@ -97,7 +97,7 @@ class MockAccount(MetatraderAccount):
     def __init__(self, data, metatrader_account_client,
                  meta_api_websocket_client, connection_registry):
         super(MockAccount, self).__init__(data, metatrader_account_client, meta_api_websocket_client,
-                                          connection_registry)
+                                          connection_registry, MagicMock())
         self._state = 'DEPLOYED'
 
     @property
@@ -137,7 +137,7 @@ async def run_around_tests():
     global account
     account = MockAccount(MagicMock(), MagicMock(), MagicMock(), MagicMock())
     global auto_account
-    auto_account = AutoMockAccount(MagicMock(), MagicMock(), MagicMock(), MagicMock())
+    auto_account = AutoMockAccount(MagicMock(), MagicMock(), MagicMock(), MagicMock(), MagicMock())
     global client
     client = MockClient('token')
     storage = MagicMock()
@@ -725,20 +725,38 @@ class TestMetaApiConnection:
     async def test_subscribe_to_market_data(self):
         """Should subscribe to market data."""
         client.subscribe_to_market_data = AsyncMock()
-        await api.subscribe_to_market_data('EURUSD', 1)
+        await api.subscribe_to_market_data('EURUSD', [{'type': 'quotes'}], 1)
         assert 'EURUSD' in api.subscribed_symbols
-        client.subscribe_to_market_data.assert_called_with('accountId', 1, 'EURUSD')
+        client.subscribe_to_market_data.assert_called_with('accountId', 1, 'EURUSD', [{'type': 'quotes'}])
 
     @pytest.mark.asyncio
     async def test_unsubscribe_from_market_data(self):
         """Should unsubscribe from market data."""
         client.subscribe_to_market_data = AsyncMock()
         client.unsubscribe_from_market_data = AsyncMock()
-        await api.subscribe_to_market_data('EURUSD', 1)
+        await api.subscribe_to_market_data('EURUSD', [{'type': 'quotes'}], 1)
         assert 'EURUSD' in api.subscribed_symbols
-        await api.unsubscribe_from_market_data('EURUSD', 1)
+        await api.unsubscribe_from_market_data('EURUSD', [{'type': 'quotes'}], 1)
         assert 'EURUSD' not in api.subscribed_symbols
-        client.unsubscribe_from_market_data.assert_called_with('accountId', 1, 'EURUSD')
+        client.unsubscribe_from_market_data.assert_called_with('accountId', 1, 'EURUSD', [{'type': 'quotes'}])
+
+    @pytest.mark.asyncio
+    async def test_unsubscribe_during_subscription_downgrade(self):
+        """Should unsubscribe during market data subscription downgrade."""
+        api.subscribe_to_market_data = AsyncMock()
+        api.unsubscribe_from_market_data = AsyncMock()
+        await api.on_subscription_downgraded(1, 'EURUSD', None, [{'type': 'ticks'}, {'type': 'books'}])
+        api.unsubscribe_from_market_data.assert_called_with('EURUSD', [{'type': 'ticks'}, {'type': 'books'}])
+        api.subscribe_to_market_data.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_update_market_data_subscription_on_downgrade(self):
+        """Should update market data subscription on downgrade."""
+        api.subscribe_to_market_data = AsyncMock()
+        api.unsubscribe_from_market_data = AsyncMock()
+        await api.on_subscription_downgraded(1, 'EURUSD', [{'type': 'quotes', 'intervalInMilliseconds': 30000}])
+        api.subscribe_to_market_data.assert_called_with('EURUSD', [{'type': 'quotes', 'intervalInMilliseconds': 30000}])
+        api.unsubscribe_from_market_data.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_retrieve_symbol_specification(self):
@@ -770,6 +788,73 @@ class TestMetaApiConnection:
         assert actual == price
 
         client.get_symbol_price.assert_called_with('accountId', 'AUDNZD')
+
+    @pytest.mark.asyncio
+    async def test_retrieve_current_candle(self):
+        """Should retrieve current candle."""
+        candle = {
+            'symbol': 'AUDNZD',
+            'timeframe': '15m',
+            'time': '2020-04-07T03:45:00.000Z',
+            'brokerTime': '2020-04-07 06:45:00.000',
+            'open': 1.03297,
+            'high': 1.06309,
+            'low': 1.02705,
+            'close': 1.043,
+            'tickVolume': 1435,
+            'spread': 17,
+            'volume': 345
+        }
+        client.get_candle = AsyncMock(return_value=candle)
+        actual = await api.get_candle('AUDNZD', '15m')
+        candle['time'] = date(candle['time'])
+        assert actual == candle
+        client.get_candle.assert_called_with('accountId', 'AUDNZD', '15m')
+
+    @pytest.mark.asyncio
+    async def test_retrieve_latest_tick(self):
+        """Should retrieve latest tick."""
+        tick = {
+            'symbol': 'AUDNZD',
+            'time': '2020-04-07T03:45:00.000Z',
+            'brokerTime': '2020-04-07 06:45:00.000',
+            'bid': 1.05297,
+            'ask': 1.05309,
+            'last': 0.5298,
+            'volume': 0.13,
+            'side': 'buy'
+        }
+        client.get_tick = AsyncMock(return_value=tick)
+        actual = await api.get_tick('AUDNZD')
+        tick['time'] = date(tick['time'])
+        assert actual == tick
+        client.get_tick.assert_called_with('accountId', 'AUDNZD')
+
+    @pytest.mark.asyncio
+    async def test_retrieve_latest_order_book(self):
+        """Should retrieve latest order book."""
+        book = {
+            'symbol': 'AUDNZD',
+            'time': '2020-04-07T03:45:00.000Z',
+            'brokerTime': '2020-04-07 06:45:00.000',
+            'book': [
+                {
+                    'type': 'BOOK_TYPE_SELL',
+                    'price': 1.05309,
+                    'volume': 5.67
+                },
+                {
+                    'type': 'BOOK_TYPE_BUY',
+                    'price': 1.05297,
+                    'volume': 3.45
+                }
+            ]
+        }
+        client.get_book = AsyncMock(return_value=book)
+        actual = await api.get_book('AUDNZD')
+        book['time'] = date(book['time'])
+        assert actual == book
+        client.get_book.assert_called_with('accountId', 'AUDNZD')
 
     @pytest.mark.asyncio
     async def test_save_uptime_stats(self):
@@ -840,11 +925,11 @@ class TestMetaApiConnection:
             api = MetaApiConnection(client, account, None, MagicMock())
             await api.history_storage.on_history_order_added(1, {'doneTime': date('2020-01-01T00:00:00.000Z')})
             await api.history_storage.on_deal_added(1, {'time': date('2020-01-02T00:00:00.000Z')})
-            await api.subscribe_to_market_data('EURUSD', 1)
+            await api.subscribe_to_market_data('EURUSD')
             await api.on_connected(1, 1)
             client.synchronize.assert_called_with('accountId', 1, 'synchronizationId', date('2020-01-01T00:00:00.000Z'),
                                                   date('2020-01-02T00:00:00.000Z'))
-            client.subscribe_to_market_data.assert_called_with('accountId', 1, 'EURUSD')
+            client.subscribe_to_market_data.assert_called_with('accountId', 1, 'EURUSD', None)
             assert client.subscribe_to_market_data.call_count == 2
 
     @pytest.mark.asyncio

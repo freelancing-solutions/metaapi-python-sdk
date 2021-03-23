@@ -10,6 +10,8 @@ from .memoryHistoryStorage import MemoryHistoryStorage
 from .historyStorage import HistoryStorage
 from mock import AsyncMock, MagicMock, patch
 from .metatraderAccountModel import MetatraderAccountModel
+from ..clients.metaApi.expertAdvisor_client import ExpertAdvisorClient
+from .expertAdvisor import ExpertAdvisor
 from httpx import Response
 from datetime import datetime
 from .models import date
@@ -71,6 +73,7 @@ client: MockClient = None
 websocket_client: MockWebsocketClient = None
 registry: MockRegistry = None
 api: MetatraderAccountApi = None
+ea_client: ExpertAdvisorClient = None
 
 
 @pytest.fixture(autouse=True)
@@ -84,7 +87,9 @@ async def run_around_tests():
     global api
     registry.connect = AsyncMock()
     registry.remove = MagicMock()
-    api = MetatraderAccountApi(client, websocket_client, registry)
+    global ea_client
+    ea_client = ExpertAdvisorClient(MagicMock(), 'token')
+    api = MetatraderAccountApi(client, websocket_client, registry, ea_client)
     yield
 
 
@@ -383,6 +388,41 @@ class TestMetatraderAccountApi:
         assert client.get_account.call_count == 2
 
     @pytest.mark.asyncio
+    async def test_increase_reliability(self):
+        """Should increase MT account reliability."""
+        client.get_account = AsyncMock(side_effect=[{
+            '_id': 'id',
+            'login': '50194988',
+            'name': 'mt5a',
+            'server': 'ICMarketsSC-Demo',
+            'provisioningProfileId': 'f9ce1f12-e720-4b9a-9477-c2d4cb25f076',
+            'magic': 123456,
+            'application': 'MetaApi',
+            'connectionStatus': 'DISCONNECTED',
+            'state': 'DEPLOYED',
+            'type': 'cloud'
+        }, {
+            '_id': 'id',
+            'login': '50194988',
+            'name': 'mt5a',
+            'server': 'ICMarketsSC-Demo',
+            'provisioningProfileId': 'f9ce1f12-e720-4b9a-9477-c2d4cb25f076',
+            'magic': 123456,
+            'application': 'MetaApi',
+            'connectionStatus': 'CONNECTED',
+            'state': 'UNDEPLOYING',
+            'type': 'cloud',
+            'reliability': 'high'
+        }])
+        client.increase_reliability = AsyncMock()
+        account = await api.get_account('id')
+        await account.increase_reliability()
+        assert account.reliability == 'high'
+        client.increase_reliability.assert_called_with('id')
+        client.get_account.assert_called_with('id')
+        assert client.get_account.call_count == 2
+
+    @pytest.mark.asyncio
     async def test_wait_for_deployment(self):
         """Should wait for deployment."""
         deploying_account = {
@@ -660,3 +700,214 @@ class TestMetatraderAccountApi:
         })
         client.get_account.assert_called_with('id')
         assert client.get_account.call_count == 2
+
+    @pytest.mark.asyncio
+    async def test_retrieve_expert_advisors(self):
+        """Should retrieve expert advisors."""
+        client.get_account = AsyncMock(return_value={
+            '_id': 'id',
+            'type': 'cloud-g1'
+        })
+        ea_client.get_expert_advisors = AsyncMock(return_value=[{'expertId': 'ea'}])
+        account = await api.get_account('id')
+        experts = await account.get_expert_advisors()
+        assert list(map(lambda e: e.expert_id, experts)) == ['ea']
+        for ea in experts:
+            assert isinstance(ea, ExpertAdvisor)
+        ea_client.get_expert_advisors.assert_called_with('id')
+
+    @pytest.mark.asyncio
+    async def test_retrieve_expert_advisor(self):
+        """Should retrieve expert advisor by expert id."""
+        client.get_account = AsyncMock(return_value={
+            '_id': 'id',
+            'type': 'cloud-g1'
+        })
+        ea_client.get_expert_advisor = AsyncMock(return_value={
+            'expertId': 'ea',
+            'period': '1H',
+            'symbol': 'EURUSD',
+            'fileUploaded': False
+        })
+        account = await api.get_account('id')
+        expert = await account.get_expert_advisor('ea')
+        assert expert.expert_id == 'ea'
+        assert expert.period == '1H'
+        assert expert.symbol == 'EURUSD'
+        assert not expert.file_uploaded
+        assert isinstance(expert, ExpertAdvisor)
+        ea_client.get_expert_advisor.assert_called_with('id', 'ea')
+
+    @pytest.mark.asyncio
+    async def test_validate_account_type(self):
+        """Should validate account type."""
+        client.get_account = AsyncMock(return_value={
+            '_id': 'id',
+            'type': 'cloud-g2'
+        })
+        ea_client.get_expert_advisors = AsyncMock(return_value=[{
+            'expertId': 'ea',
+            'period': '1H',
+            'symbol': 'EURUSD',
+            'fileUploaded': False
+        }])
+        ea_client.get_expert_advisor = AsyncMock(return_value={
+            'expertId': 'ea',
+            'period': '1H',
+            'symbol': 'EURUSD',
+            'fileUploaded': False
+        })
+        ea_client.update_expert_advisor = AsyncMock()
+        new_expert_advisor = {
+            'period': '1H',
+            'symbol': 'EURUSD',
+            'preset': 'preset'
+        }
+        account = await api.get_account('id')
+        try:
+            await account.get_expert_advisors()
+            pytest.fail()
+        except Exception:
+            pass
+        try:
+            await account.get_expert_advisor('ea')
+            pytest.fail()
+        except Exception:
+            pass
+        try:
+            await account.create_expert_advisor('ea', new_expert_advisor)
+            pytest.fail()
+        except Exception:
+            pass
+
+    @pytest.mark.asyncio
+    async def test_create_expert_advisor(self):
+        """Should create expert advisor."""
+        client.get_account = AsyncMock(return_value={
+            '_id': 'id',
+            'type': 'cloud-g1'
+        })
+        ea_client.update_expert_advisor = AsyncMock()
+        ea_client.get_expert_advisor = AsyncMock(return_value={
+            'expertId': 'ea',
+            'period': '1H',
+            'symbol': 'EURUSD',
+            'fileUploaded': False
+        })
+        new_expert_advisor = {
+          'period': '1H',
+          'symbol': 'EURUSD',
+          'preset': 'preset'
+        }
+        account = await api.get_account('id')
+        expert = await account.create_expert_advisor('ea', new_expert_advisor)
+        assert expert.expert_id == 'ea'
+        assert expert.period == '1H'
+        assert expert.symbol == 'EURUSD'
+        assert not expert.file_uploaded
+        assert isinstance(expert, ExpertAdvisor)
+        ea_client.update_expert_advisor.assert_called_with('id', 'ea', new_expert_advisor)
+        ea_client.get_expert_advisor.assert_called_with('id', 'ea')
+
+    @pytest.mark.asyncio
+    async def test_reload_expert_advisor(self):
+        """Should reload expert advisor."""
+        client.get_account = AsyncMock(return_value={
+            '_id': 'id',
+            'type': 'cloud-g1'
+        })
+        ea_client.get_expert_advisor = AsyncMock(side_effect=[{
+            'expertId': 'ea',
+            'period': '1H',
+            'symbol': 'EURUSD',
+            'fileUploaded': False
+        }, {
+            'expertId': 'ea',
+            'period': '4H',
+            'symbol': 'EURUSD',
+            'fileUploaded': False
+        }])
+        account = await api.get_account('id')
+        expert = await account.get_expert_advisor('ea')
+        await expert.reload()
+        assert expert.period == '4H'
+        ea_client.get_expert_advisor.assert_called_with('id', 'ea')
+        assert ea_client.get_expert_advisor.call_count == 2
+
+    @pytest.mark.asyncio
+    async def test_update_expert_advisor(self):
+        """Should update expert advisor."""
+        client.get_account = AsyncMock(return_value={
+            '_id': 'id',
+            'type': 'cloud-g1'
+        })
+        ea_client.get_expert_advisor = AsyncMock(side_effect=[{
+            'expertId': 'ea',
+            'period': '1H',
+            'symbol': 'EURUSD',
+            'fileUploaded': False
+        }, {
+            'expertId': 'ea',
+            'period': '4H',
+            'symbol': 'EURUSD',
+            'fileUploaded': False
+        }])
+        new_expert_advisor = {
+            'period': '4H',
+            'symbol': 'EURUSD',
+            'preset': 'preset'
+        }
+        ea_client.update_expert_advisor = AsyncMock()
+        account = await api.get_account('id')
+        expert = await account.get_expert_advisor('ea')
+        await expert.update(new_expert_advisor)
+        assert expert.period == '4H'
+        ea_client.update_expert_advisor.assert_called_with('id', 'ea', new_expert_advisor)
+        assert ea_client.get_expert_advisor.call_count == 2
+        ea_client.get_expert_advisor.assert_called_with('id', 'ea')
+
+    @pytest.mark.asyncio
+    async def test_upload_expert_advisor_file(self):
+        """Should upload expert advisor file."""
+        client.get_account = AsyncMock(return_value={
+            '_id': 'id',
+            'type': 'cloud-g1'
+        })
+        ea_client.get_expert_advisor = AsyncMock(side_effect=[{
+            'expertId': 'ea',
+            'period': '1H',
+            'symbol': 'EURUSD',
+            'fileUploaded': False
+        }, {
+            'expertId': 'ea',
+            'period': '4H',
+            'symbol': 'EURUSD',
+            'fileUploaded': True
+        }])
+        ea_client.upload_expert_advisor_file = AsyncMock()
+        account = await api.get_account('id')
+        expert = await account.get_expert_advisor('ea')
+        await expert.upload_file('/path/to/file')
+        assert expert.file_uploaded
+        ea_client.upload_expert_advisor_file.assert_called_with('id', 'ea', '/path/to/file')
+        assert ea_client.get_expert_advisor.call_count == 2
+        ea_client.get_expert_advisor.assert_called_with('id', 'ea')
+
+    @pytest.mark.asyncio
+    async def test_remove_expert_advisor(self):
+        """Should remove expert advisor."""
+        client.get_account = AsyncMock(return_value={
+            '_id': 'id',
+            'type': 'cloud-g1'
+        })
+        ea_client.get_expert_advisor = AsyncMock(return_value={
+            'expertId': 'ea',
+            'period': '1H',
+            'symbol': 'EURUSD',
+            'fileUploaded': False
+        })
+        ea_client.delete_expert_advisor = AsyncMock(return_value={'_id': 'id'})
+        account = await api.get_account('id')
+        expert = await account.get_expert_advisor('ea')
+        await expert.remove()
+        ea_client.delete_expert_advisor.assert_called_with('id', 'ea')

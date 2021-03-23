@@ -358,3 +358,25 @@ class MetatraderAccountClient(MetaApiClient):
             'body': account
         }
         return await self._httpClient.request(opts)
+
+    async def increase_reliability(self, id: str):
+        """Increases MetaTrader account reliability. The account will be temporary stopped to perform this action. (see
+        https://metaapi.cloud/docs/provisioning/api/account/increaseReliability/).
+        Method is accessible only with API access token.
+
+        Args:
+            id: MetaTrader account id.
+
+        Returns:
+            A coroutine resolving when MetaTrader account reliability is increased.
+        """
+        if self._is_not_jwt_token():
+            return self._handle_no_access_exception('increase_reliability')
+        opts = {
+            'url': f'{self._host}/users/current/accounts/{id}/increase-reliability',
+            'method': 'POST',
+            'headers': {
+                'auth-token': self._token
+            }
+        }
+        return await self._httpClient.request(opts)

@@ -262,3 +262,25 @@ class TestMetatraderAccountClient:
             assert err.__str__() == 'You can not invoke update_account method, because you have connected with ' + \
                                     'account access token. Please use API access token from ' + \
                                     'https://app.metaapi.cloud/token page to invoke this method.'
+
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_increase_reliability(self):
+        """Should increase MetaTrader account reliability via API."""
+        rsps = respx.post(f'{PROVISIONING_API_URL}/users/current/accounts/id/increase-reliability') \
+            .mock(return_value=Response(204))
+        await account_client.increase_reliability('id')
+        assert rsps.calls[0].request.url == f'{PROVISIONING_API_URL}/users/current/accounts/id/increase-reliability'
+        assert rsps.calls[0].request.method == 'POST'
+        assert rsps.calls[0].request.headers['auth-token'] == 'header.payload.sign'
+
+    @pytest.mark.asyncio
+    async def test_not_increase_reliability_with_account_token(self):
+        """Should not increase MetaTrader account reliability via API with account token."""
+        account_client = MetatraderAccountClient(http_client, 'token')
+        try:
+            await account_client.increase_reliability('id')
+        except Exception as err:
+            assert err.__str__() == 'You can not invoke increase_reliability method, because you have connected ' + \
+                    'with account access token. Please use API access token from ' + \
+                    'https://app.metaapi.cloud/token page to invoke this method.'

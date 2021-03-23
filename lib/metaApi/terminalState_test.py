@@ -71,7 +71,9 @@ class TestTerminalState:
         assert len(state.specifications) == 0
         await state.on_symbol_specification_updated(1, {'symbol': 'EURUSD', 'tickSize': 0.00001})
         await state.on_symbol_specification_updated(1, {'symbol': 'GBPUSD'})
+        await state.on_symbol_specification_updated(1, {'symbol': 'AUDNZD'})
         await state.on_symbol_specification_updated(1, {'symbol': 'EURUSD', 'tickSize': 0.0001})
+        await state.on_symbol_specifications_removed(1, ['AUDNZD'])
         assert len(state.specifications) == 2
         assert state.specifications == [{'symbol': 'EURUSD', 'tickSize': 0.0001}, {'symbol': 'GBPUSD'}]
         assert state.specification('EURUSD') == {'symbol': 'EURUSD', 'tickSize': 0.0001}

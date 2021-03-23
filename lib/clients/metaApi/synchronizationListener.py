@@ -1,5 +1,6 @@
 from ...metaApi.models import MetatraderPosition, MetatraderAccountInformation, MetatraderOrder, \
-    MetatraderDeal, MetatraderSymbolSpecification, MetatraderSymbolPrice
+    MetatraderDeal, MetatraderSymbolSpecification, MetatraderSymbolPrice, MetatraderCandle, MetatraderTick,\
+    MetatraderBook, MarketDataSubscription, MarketDataUnsubscription
 from abc import ABC
 from typing import List, Optional
 from typing_extensions import TypedDict
@@ -221,6 +222,18 @@ class SynchronizationListener(ABC):
         """
         pass
 
+    async def on_symbol_specifications_removed(self, instance_index: int, symbols: List[str]):
+        """Invoked when a symbol specifications was removed.
+
+        Args:
+            instance_index: Index of an account instance connected.
+            symbols: Removed symbols.
+
+        Returns:
+            A coroutine which resolves when the asynchronous event is processed.
+        """
+        pass
+
     async def on_symbol_price_updated(self, instance_index: int, price: MetatraderSymbolPrice):
         """Invoked when a symbol price was updated.
 
@@ -235,7 +248,7 @@ class SynchronizationListener(ABC):
 
     async def on_symbol_prices_updated(self, instance_index: int, prices: List[MetatraderSymbolPrice],
                                        equity: float = None, margin: float = None, free_margin: float = None,
-                                       margin_level: float = None):
+                                       margin_level: float = None, account_currency_exchange_rate: float = None):
         """Invoked when prices for several symbols were updated.
 
         Args:
@@ -245,6 +258,80 @@ class SynchronizationListener(ABC):
             margin: Margin used.
             free_margin: Free margin.
             margin_level: Margin level calculated as % of equity/margin.
+            account_currency_exchange_rate: Current exchange rate of account currency into USD.
+
+        Returns:
+            A coroutine which resolves when the asynchronous event is processed.
+        """
+        pass
+
+    async def on_candles_updated(self, instance_index: int, candles: List[MetatraderCandle], equity: float = None,
+                                 margin: float = None, free_margin: float = None, margin_level: float = None,
+                                 account_currency_exchange_rate: float = None):
+        """Invoked when symbol candles were updated.
+
+        Args:
+            instance_index: Index of an account instance connected.
+            candles: Updated MetaTrader symbol candles.
+            equity: Account liquidation value.
+            margin: Margin used.
+            free_margin: Free margin.
+            margin_level: Margin level calculated as % of equity/margin.
+            account_currency_exchange_rate: Current exchange rate of account currency into USD.
+
+        Returns:
+            A coroutine which resolves when the asynchronous event is processed.
+        """
+        pass
+
+    async def on_ticks_updated(self, instance_index: int, ticks: List[MetatraderTick], equity: float = None,
+                               margin: float = None, free_margin: float = None, margin_level: float = None,
+                               account_currency_exchange_rate: float = None):
+        """Invoked when symbol candles were updated.
+
+        Args:
+            instance_index: Index of an account instance connected.
+            ticks: Updated MetaTrader symbol ticks.
+            equity: Account liquidation value.
+            margin: Margin used.
+            free_margin: Free margin.
+            margin_level: Margin level calculated as % of equity/margin.
+            account_currency_exchange_rate: Current exchange rate of account currency into USD.
+
+        Returns:
+            A coroutine which resolves when the asynchronous event is processed.
+        """
+        pass
+
+    async def on_books_updated(self, instance_index: int, books: List[MetatraderBook], equity: float = None,
+                               margin: float = None, free_margin: float = None, margin_level: float = None,
+                               account_currency_exchange_rate: float = None):
+        """Invoked when symbol candles were updated.
+
+        Args:
+            instance_index: Index of an account instance connected.
+            books: Updated MetaTrader order books.
+            equity: Account liquidation value.
+            margin: Margin used.
+            free_margin: Free margin.
+            margin_level: Margin level calculated as % of equity/margin.
+            account_currency_exchange_rate: Current exchange rate of account currency into USD.
+
+        Returns:
+            A coroutine which resolves when the asynchronous event is processed.
+        """
+        pass
+
+    async def on_subscription_downgraded(self, instance_index: int, symbol: str,
+                                         updates: List[MarketDataSubscription] or None = None,
+                                         unsubscriptions: List[MarketDataUnsubscription] or None = None):
+        """Invoked when subscription downgrade has occurred.
+
+        Args:
+            instance_index: Index of an account instance connected.
+            symbol: Symbol to update subscriptions for.
+            updates: Array of market data subscription to update.
+            unsubscriptions: Array of subscriptions to cancel.
 
         Returns:
             A coroutine which resolves when the asynchronous event is processed.

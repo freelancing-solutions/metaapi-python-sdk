@@ -94,7 +94,7 @@ class ProvisioningProfile:
             file: Path to a file to upload or buffer containing file contents.
 
         Returns:
-            A coroutine which resolves when the file is uploaded.
+            A coroutine which resolves when the file was uploaded.
         """
         return await self._provisioningProfileClient.upload_provisioning_profile_file(self.id, file_name, file)
 

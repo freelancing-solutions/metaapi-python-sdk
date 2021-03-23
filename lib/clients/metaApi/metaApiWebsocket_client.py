@@ -7,7 +7,8 @@ from .synchronizationListener import SynchronizationListener
 from .reconnectListener import ReconnectListener
 from ...metaApi.models import MetatraderHistoryOrders, MetatraderDeals, date, random_id, \
     MetatraderSymbolSpecification, MetatraderTradeResponse, MetatraderSymbolPrice, MetatraderAccountInformation, \
-    MetatraderPosition, MetatraderOrder, format_date
+    MetatraderPosition, MetatraderOrder, format_date, MarketDataSubscription, MarketDataUnsubscription, \
+    MetatraderCandle, MetatraderTick, MetatraderBook
 from .latencyListener import LatencyListener
 from .packetOrderer import PacketOrderer
 from .packetLogger import PacketLogger
@@ -19,6 +20,7 @@ import re
 from random import random
 from datetime import datetime, timedelta
 from typing import Coroutine, List, Dict
+import json
 
 
 class MetaApiWebsocketClient:
@@ -524,7 +526,8 @@ class MetaApiWebsocketClient:
                                               'timeoutInSeconds': timeout_in_seconds, 'instanceIndex': instance_index},
                                  timeout_in_seconds + 1)
 
-    def subscribe_to_market_data(self, account_id: str, instance_index: int, symbol: str) -> Coroutine:
+    def subscribe_to_market_data(self, account_id: str, instance_index: int, symbol: str,
+                                 subscriptions: List[MarketDataSubscription] = None) -> Coroutine:
         """Subscribes on market data of specified symbol
         (see https://metaapi.cloud/docs/client/websocket/marketDataStreaming/subscribeToMarketData/).
 
@@ -532,6 +535,7 @@ class MetaApiWebsocketClient:
             account_id: Id of the MetaTrader account.
             instance_index: Instance index.
             symbol: Symbol (e.g. currency pair or an index).
+            subscriptions: Array of market data subscription to create or update.
 
         Returns:
             A coroutine which resolves when subscription request was processed.
@@ -539,9 +543,12 @@ class MetaApiWebsocketClient:
         packet = {'type': 'subscribeToMarketData', 'symbol': symbol}
         if instance_index is not None:
             packet['instanceIndex'] = instance_index
+        if subscriptions is not None:
+            packet['subscriptions'] = subscriptions
         return self._rpc_request(account_id, packet)
 
-    def unsubscribe_from_market_data(self, account_id: str, instance_index: int, symbol: str) -> Coroutine:
+    def unsubscribe_from_market_data(self, account_id: str, instance_index: int, symbol: str,
+                                     subscriptions: List[MarketDataUnsubscription] = None) -> Coroutine:
         """Unsubscribes from market data of specified symbol
         (see https://metaapi.cloud/docs/client/websocket/marketDataStreaming/unsubscribeFromMarketData/).
 
@@ -549,6 +556,7 @@ class MetaApiWebsocketClient:
             account_id: Id of the MetaTrader account.
             instance_index: Instance index.
             symbol: Symbol (e.g. currency pair or an index).
+            subscriptions: Array of subscriptions to cancel.
 
         Returns:
             A coroutine which resolves when unsubscription request was processed.
@@ -556,12 +564,14 @@ class MetaApiWebsocketClient:
         packet = {'type': 'unsubscribeFromMarketData', 'symbol': symbol}
         if instance_index is not None:
             packet['instanceIndex'] = instance_index
+        if subscriptions is not None:
+            packet['subscriptions'] = subscriptions
         return self._rpc_request(account_id, packet)
 
     async def get_symbol_specification(self, account_id: str, symbol: str) -> \
             'asyncio.Future[MetatraderSymbolSpecification]':
         """Retrieves specification for a symbol
-        (see https://metaapi.cloud/docs/client/websocket/api/retrieveMarketData/getSymbolSpecification/).
+        (see https://metaapi.cloud/docs/client/websocket/api/retrieveMarketData/readSymbolSpecification/).
 
         Args:
             account_id: Id of the MetaTrader account to retrieve symbol specification for.
@@ -576,7 +586,7 @@ class MetaApiWebsocketClient:
 
     async def get_symbol_price(self, account_id: str, symbol: str) -> 'asyncio.Future[MetatraderSymbolPrice]':
         """Retrieves price for a symbol
-        (see https://metaapi.cloud/docs/client/websocket/api/retrieveMarketData/getSymbolPrice/).
+        (see https://metaapi.cloud/docs/client/websocket/api/retrieveMarketData/readSymbolPrice/).
 
         Args:
             account_id: Id of the MetaTrader account to retrieve symbol price for.
@@ -588,6 +598,54 @@ class MetaApiWebsocketClient:
         response = await self._rpc_request(account_id, {'application': 'RPC', 'type': 'getSymbolPrice',
                                                         'symbol': symbol})
         return response['price']
+
+    async def get_candle(self, account_id: str, symbol: str, timeframe: str) -> 'asyncio.Future[MetatraderCandle]':
+        """Retrieves price for a symbol (see
+        https://metaapi.cloud/docs/client/websocket/api/retrieveMarketData/readCandle/).
+
+        Args:
+            account_id: Id of the MetaTrader account to retrieve candle for.
+            symbol: Symbol to retrieve candle for.
+            timeframe: Defines the timeframe according to which the candle must be generated. Allowed values for
+            MT5 are 1m, 2m, 3m, 4m, 5m, 6m, 10m, 12m, 15m, 20m, 30m, 1h, 2h, 3h, 4h, 6h, 8h, 12h, 1d, 1w, 1mn.
+            Allowed values for MT4 are 1m, 5m, 15m 30m, 1h, 4h, 1d, 1w, 1mn.
+
+        Returns:
+            A coroutine which resolves when candle is retrieved.
+        """
+        response = await self._rpc_request(account_id, {'application': 'RPC', 'type': 'getCandle',
+                                                        'symbol': symbol, 'timeframe': timeframe})
+        return response['candle']
+
+    async def get_tick(self, account_id: str, symbol: str) -> 'asyncio.Future[MetatraderTick]':
+        """Retrieves latest tick for a symbol (see
+        https://metaapi.cloud/docs/client/websocket/api/retrieveMarketData/readTick/).
+
+        Args:
+            account_id: Id of the MetaTrader account to retrieve symbol tick for.
+            symbol: Symbol to retrieve tick for.
+
+        Returns:
+            A coroutine which resolves when tick is retrieved.
+        """
+        response = await self._rpc_request(account_id, {'application': 'RPC', 'type': 'getTick',
+                                                        'symbol': symbol})
+        return response['tick']
+
+    async def get_book(self, account_id: str, symbol: str) -> 'asyncio.Future[MetatraderBook]':
+        """Retrieves latest order book for a symbol (see
+        https://metaapi.cloud/docs/client/websocket/api/retrieveMarketData/readBook/).
+
+        Args:
+            account_id: Id of the MetaTrader account to retrieve symbol order book for.
+            symbol: Symbol to retrieve order book for.
+
+        Returns:
+            A coroutine which resolves when order book is retrieved.
+        """
+        response = await self._rpc_request(account_id, {'application': 'RPC', 'type': 'getBook',
+                                                        'symbol': symbol})
+        return response['book']
 
     def save_uptime(self, account_id: str, uptime: Dict):
         """Sends client uptime stats to the server.
@@ -773,7 +831,7 @@ class MetaApiWebsocketClient:
             for field in packet:
                 value = packet[field]
                 if isinstance(value, str) and re.search('time|Time', field) and not \
-                        re.search('brokerTime|BrokerTime', field):
+                        re.search('brokerTime|BrokerTime|timeframe', field):
                     packet[field] = date(value)
                 if isinstance(value, list):
                     for item in value:
@@ -1115,7 +1173,7 @@ class MetaApiWebsocketClient:
                             await asyncio.wait(on_order_synchronization_finished_tasks)
                 elif data['type'] == 'status':
                     if instance_id not in self._connectedHosts:
-                        if instance_id in self._status_timers:
+                        if instance_id in self._status_timers and data['authenticated']:
                             self._subscriptionManager.cancel_subscribe(instance_id)
                             await asyncio.sleep(0.01)
                             print(f'[{datetime.now().isoformat()}] it seems like we are not connected to a ' +
@@ -1154,6 +1212,31 @@ class MetaApiWebsocketClient:
                                         asyncio.create_task(run_on_health_status(listener)))
                                 if len(on_health_status_tasks) > 0:
                                     await asyncio.wait(on_health_status_tasks)
+                elif data['type'] == 'downgradeSubscription':
+                    print(f'{data["accountId"]}: Market data subscriptions for symbol {data["symbol"]} were '
+                          f'downgraded by the server due to rate limits. Updated subscriptions: '
+                          f'{json.dumps(data["updates"])}, removed subscriptions: '
+                          f'{json.dumps(data["unsubscriptions"])}. Please read '
+                          'https://metaapi.cloud/docs/client/rateLimiting/ for more details.')
+
+                    on_subscription_downgrade_tasks = []
+
+                    async def run_on_subscription_downgraded(listener):
+                        try:
+                            await listener.on_subscription_downgraded(instance_index, data['symbol'],
+                                                                      data['updates'] if 'updates' in data else None,
+                                                                      data['unsubscriptions'] if 'unsubscriptions' in
+                                                                                                 data else None)
+                        except Exception as err:
+                            print(f'{data["accountId"]}: Failed to notify listener about ' +
+                                  'subscription downgrade event', err)
+
+                    if data['accountId'] in self._synchronizationListeners:
+                        for listener in self._synchronizationListeners[data['accountId']]:
+                            on_subscription_downgrade_tasks.append(
+                                asyncio.create_task(run_on_subscription_downgraded(listener)))
+                        if len(on_subscription_downgrade_tasks) > 0:
+                            await asyncio.wait(on_subscription_downgrade_tasks)
                 elif data['type'] == 'specifications':
                     if 'specifications' in data:
                         for specification in data['specifications']:
@@ -1172,60 +1255,122 @@ class MetaApiWebsocketClient:
                                         asyncio.create_task(run_on_symbol_specification_updated(listener)))
                                 if len(on_symbol_specification_updated_tasks) > 0:
                                     await asyncio.wait(on_symbol_specification_updated_tasks)
-                elif data['type'] == 'prices':
-                    if 'prices' in data:
-                        prices = data['prices']
-                        on_symbol_prices_updated_tasks: List[asyncio.Task] = []
 
-                        async def run_on_symbol_prices_updated(listener):
+                    if 'removedSymbols' in data:
+                        on_symbol_specification_removed_tasks = []
+
+                        async def run_on_symbol_specification_removed(listener):
                             try:
-                                equity = data['equity'] if 'equity' in data else None
-                                margin = data['margin'] if 'margin' in data else None
-                                free_margin = data['freeMargin'] if 'freeMargin' in data else None
-                                margin_level = data['marginLevel'] if 'marginLevel' in data else None
-                                await listener.on_symbol_prices_updated(instance_index, prices, equity, margin,
-                                                                        free_margin, margin_level)
+                                await listener.on_symbol_specifications_removed(instance_index, data['removedSymbols'])
                             except Exception as err:
-                                print(f'{data["accountId"]}: Failed to notify listener about prices event', err)
+                                print(f'{data["accountId"]}: Failed to notify listener about specifications ' +
+                                      'removed event', err)
 
                         if data['accountId'] in self._synchronizationListeners:
                             for listener in self._synchronizationListeners[data['accountId']]:
+                                on_symbol_specification_removed_tasks.append(
+                                    asyncio.create_task(run_on_symbol_specification_removed(listener)))
+                            if len(on_symbol_specification_removed_tasks) > 0:
+                                await asyncio.wait(on_symbol_specification_removed_tasks)
+                elif data['type'] == 'prices':
+                    prices = data['prices'] if 'prices' in data else []
+                    candles = data['candles'] if 'candles' in data else []
+                    ticks = data['ticks'] if 'ticks' in data else []
+                    books = data['books'] if 'books' in data else []
+                    on_symbol_prices_updated_tasks: List[asyncio.Task] = []
+                    if data['accountId'] in self._synchronizationListeners:
+                        equity = data['equity'] if 'equity' in data else None
+                        margin = data['margin'] if 'margin' in data else None
+                        free_margin = data['freeMargin'] if 'freeMargin' in data else None
+                        margin_level = data['marginLevel'] if 'marginLevel' in data else None
+                        account_currency_exchange_rate = data['accountCurrencyExchangeRate'] if \
+                            'accountCurrencyExchangeRate' in data else None
+
+                        for listener in self._synchronizationListeners[data['accountId']]:
+                            if len(prices):
+                                async def run_on_symbol_prices_updated(listener):
+                                    try:
+                                        await listener.on_symbol_prices_updated(instance_index, prices, equity, margin,
+                                                                                free_margin, margin_level,
+                                                                                account_currency_exchange_rate)
+                                    except Exception as err:
+                                        print(f'{data["accountId"]}: Failed to notify listener about prices event', err)
+
                                 on_symbol_prices_updated_tasks.append(
                                     asyncio.create_task(run_on_symbol_prices_updated(listener)))
-                            if len(on_symbol_prices_updated_tasks) > 0:
-                                await asyncio.wait(on_symbol_prices_updated_tasks)
-                        for price in data['prices']:
-                            on_symbol_price_updated_tasks: List[asyncio.Task] = []
 
-                            async def run_on_symbol_price_updated(listener):
-                                try:
-                                    await listener.on_symbol_price_updated(instance_index, price)
-                                except Exception as err:
-                                    print('Failed to notify listener about price event', err)
-                            if data['accountId'] in self._synchronizationListeners:
-                                for listener in self._synchronizationListeners[data['accountId']]:
-                                    on_symbol_price_updated_tasks.append(
-                                        asyncio.create_task(run_on_symbol_price_updated(listener)))
-                                if len(on_symbol_price_updated_tasks) > 0:
-                                    await asyncio.wait(on_symbol_price_updated_tasks)
-
-                        for price in data['prices']:
-                            if 'timestamps' in price:
-                                price['timestamps']['clientProcessingFinished'] = datetime.now()
-                                on_symbol_price_tasks: List[asyncio.Task] = []
-
-                                async def run_on_symbol_price(listener):
+                            if len(candles):
+                                async def run_on_candles_updated(listener):
                                     try:
-                                        await listener.on_symbol_price(data['accountId'], price['symbol'],
-                                                                       price['timestamps'])
+                                        await listener.on_candles_updated(instance_index, candles, equity, margin,
+                                                                          free_margin, margin_level,
+                                                                          account_currency_exchange_rate)
                                     except Exception as err:
-                                        print(f'{data["accountId"]}: Failed to notify latency listener about ' +
-                                              'update event', err)
-                                for listener in self._latencyListeners:
-                                    on_symbol_price_tasks.append(
-                                        asyncio.create_task(run_on_symbol_price(listener)))
-                                if len(on_symbol_price_tasks) > 0:
-                                    await asyncio.wait(on_symbol_price_tasks)
+                                        print(f'{data["accountId"]}: Failed to notify listener about candles event',
+                                              err)
+
+                                on_symbol_prices_updated_tasks.append(
+                                    asyncio.create_task(run_on_candles_updated(listener)))
+
+                            if len(ticks):
+                                async def run_on_ticks_updated(listener):
+                                    try:
+                                        await listener.on_ticks_updated(instance_index, ticks, equity, margin,
+                                                                        free_margin, margin_level,
+                                                                        account_currency_exchange_rate)
+                                    except Exception as err:
+                                        print(f'{data["accountId"]}: Failed to notify listener about ticks event', err)
+
+                                on_symbol_prices_updated_tasks.append(
+                                    asyncio.create_task(run_on_ticks_updated(listener)))
+
+                            if len(books):
+                                async def run_on_books_updated(listener):
+                                    try:
+                                        await listener.on_books_updated(instance_index, books, equity, margin,
+                                                                        free_margin, margin_level,
+                                                                        account_currency_exchange_rate)
+                                    except Exception as err:
+                                        print(f'{data["accountId"]}: Failed to notify listener about books event', err)
+
+                                on_symbol_prices_updated_tasks.append(
+                                    asyncio.create_task(run_on_books_updated(listener)))
+
+                        if len(on_symbol_prices_updated_tasks) > 0:
+                            await asyncio.wait(on_symbol_prices_updated_tasks)
+
+                    for price in prices:
+                        on_symbol_price_updated_tasks: List[asyncio.Task] = []
+
+                        async def run_on_symbol_price_updated(listener):
+                            try:
+                                await listener.on_symbol_price_updated(instance_index, price)
+                            except Exception as err:
+                                print('Failed to notify listener about price event', err)
+                        if data['accountId'] in self._synchronizationListeners:
+                            for listener in self._synchronizationListeners[data['accountId']]:
+                                on_symbol_price_updated_tasks.append(
+                                    asyncio.create_task(run_on_symbol_price_updated(listener)))
+                            if len(on_symbol_price_updated_tasks) > 0:
+                                await asyncio.wait(on_symbol_price_updated_tasks)
+
+                    for price in prices:
+                        if 'timestamps' in price:
+                            price['timestamps']['clientProcessingFinished'] = datetime.now()
+                            on_symbol_price_tasks: List[asyncio.Task] = []
+
+                            async def run_on_symbol_price(listener):
+                                try:
+                                    await listener.on_symbol_price(data['accountId'], price['symbol'],
+                                                                   price['timestamps'])
+                                except Exception as err:
+                                    print(f'{data["accountId"]}: Failed to notify latency listener about ' +
+                                          'update event', err)
+                            for listener in self._latencyListeners:
+                                on_symbol_price_tasks.append(
+                                    asyncio.create_task(run_on_symbol_price(listener)))
+                            if len(on_symbol_price_tasks) > 0:
+                                await asyncio.wait(on_symbol_price_tasks)
         except Exception as err:
             print('Failed to process incoming synchronization packet', err)
 

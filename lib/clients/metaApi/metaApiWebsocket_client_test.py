@@ -685,6 +685,92 @@ class TestMetaApiWebsocketClient:
         assert actual == price
 
     @pytest.mark.asyncio
+    async def test_retrieve_candle(self):
+        """Should retrieve candle from API."""
+
+        candle = {
+          'symbol': 'AUDNZD',
+          'timeframe': '15m',
+          'time': '2020-04-07T03:45:00.000Z',
+          'brokerTime': '2020-04-07 06:45:00.000',
+          'open': 1.03297,
+          'high': 1.06309,
+          'low': 1.02705,
+          'close': 1.043,
+          'tickVolume': 1435,
+          'spread': 17,
+          'volume': 345
+        }
+
+        @sio.on('request')
+        async def on_request(sid, data):
+            if data['type'] == 'getCandle' and data['accountId'] == 'accountId' and \
+                    data['symbol'] == 'AUDNZD' and data['application'] == 'RPC' and data['timeframe'] == '15m':
+                await sio.emit('response', {'type': 'response', 'accountId': data['accountId'],
+                                            'requestId': data['requestId'], 'candle': candle})
+
+        actual = await client.get_candle('accountId', 'AUDNZD', '15m')
+        candle['time'] = date(candle['time'])
+        assert actual == candle
+
+    @pytest.mark.asyncio
+    async def test_retrieve_tick(self):
+        """Should retrieve latest tick from API."""
+        tick = {
+            'symbol': 'AUDNZD',
+            'time': '2020-04-07T03:45:00.000Z',
+            'brokerTime': '2020-04-07 06:45:00.000',
+            'bid': 1.05297,
+            'ask': 1.05309,
+            'last': 0.5298,
+            'volume': 0.13,
+            'side': 'buy'
+        }
+
+        @sio.on('request')
+        async def on_request(sid, data):
+            if data['type'] == 'getTick' and data['accountId'] == 'accountId' and \
+                    data['symbol'] == 'AUDNZD' and data['application'] == 'RPC':
+                await sio.emit('response', {'type': 'response', 'accountId': data['accountId'],
+                                            'requestId': data['requestId'], 'tick': tick})
+
+        actual = await client.get_tick('accountId', 'AUDNZD')
+        tick['time'] = date(tick['time'])
+        assert actual == tick
+
+    @pytest.mark.asyncio
+    async def test_retrieve_book(self):
+        """Should retrieve latest order book from API."""
+        book = {
+            'symbol': 'AUDNZD',
+            'time': '2020-04-07T03:45:00.000Z',
+            'brokerTime': '2020-04-07 06:45:00.000',
+            'book': [
+                {
+                    'type': 'BOOK_TYPE_SELL',
+                    'price': 1.05309,
+                    'volume': 5.67
+                },
+                {
+                    'type': 'BOOK_TYPE_BUY',
+                    'price': 1.05297,
+                    'volume': 3.45
+                }
+            ]
+        }
+
+        @sio.on('request')
+        async def on_request(sid, data):
+            if data['type'] == 'getBook' and data['accountId'] == 'accountId' and \
+                    data['symbol'] == 'AUDNZD' and data['application'] == 'RPC':
+                await sio.emit('response', {'type': 'response', 'accountId': data['accountId'],
+                                            'requestId': data['requestId'], 'book': book})
+
+        actual = await client.get_book('accountId', 'AUDNZD')
+        book['time'] = date(book['time'])
+        assert actual == book
+
+    @pytest.mark.asyncio
     async def test_send_uptime_stats(self):
         """Should send uptime stats to the server."""
 
@@ -1324,13 +1410,14 @@ class TestMetaApiWebsocketClient:
         @sio.on('request')
         async def on_request(sid, data):
             if data['type'] == 'subscribeToMarketData' and data['accountId'] == 'accountId' and \
-                    data['symbol'] == 'EURUSD' and data['application'] == 'application' and data['instanceIndex'] == 1:
+                    data['symbol'] == 'EURUSD' and data['application'] == 'application' and \
+                    data['instanceIndex'] == 1 and data['subscriptions'] == [{'type': 'quotes'}]:
                 nonlocal request_received
                 request_received = True
                 await sio.emit('response', {'type': 'response', 'accountId': data['accountId'],
                                             'requestId': data['requestId']})
 
-        await client.subscribe_to_market_data('accountId', 1, 'EURUSD')
+        await client.subscribe_to_market_data('accountId', 1, 'EURUSD', [{'type': 'quotes'}])
         assert request_received
 
     @pytest.mark.asyncio
@@ -1342,13 +1429,14 @@ class TestMetaApiWebsocketClient:
         @sio.on('request')
         async def on_request(sid, data):
             if data['type'] == 'unsubscribeFromMarketData' and data['accountId'] == 'accountId' and \
-                    data['symbol'] == 'EURUSD' and data['application'] == 'application' and data['instanceIndex'] == 1:
+                    data['symbol'] == 'EURUSD' and data['application'] == 'application' and \
+                    data['instanceIndex'] == 1 and data['subscriptions'] == [{'type': 'quotes'}]:
                 nonlocal request_received
                 request_received = True
                 await sio.emit('response', {'type': 'response', 'accountId': data['accountId'],
                                             'requestId': data['requestId']})
 
-        await client.unsubscribe_from_market_data('accountId', 1, 'EURUSD')
+        await client.unsubscribe_from_market_data('accountId', 1, 'EURUSD', [{'type': 'quotes'}])
         assert request_received
 
     @pytest.mark.asyncio
@@ -1363,12 +1451,15 @@ class TestMetaApiWebsocketClient:
             'volumeStep': 0.01
         }]
         listener = MagicMock()
-        listener.on_symbol_specification_updated = FinalMock()
+        listener.on_symbol_specification_updated = AsyncMock()
+        listener.on_symbol_specifications_removed = FinalMock()
         client.add_synchronization_listener('accountId', listener)
         await sio.emit('synchronization', {'type': 'specifications', 'accountId': 'accountId',
-                                           'specifications': specifications, 'instanceIndex': 1})
+                                           'specifications': specifications, 'instanceIndex': 1,
+                                           'removedSymbols': ['AUDNZD']})
         await future_close
         listener.on_symbol_specification_updated.assert_called_with(1, specifications[0])
+        listener.on_symbol_specifications_removed.assert_called_with(1, ['AUDNZD'])
 
     @pytest.mark.asyncio
     async def test_synchronize_symbol_prices(self):
@@ -1381,15 +1472,65 @@ class TestMetaApiWebsocketClient:
             'profitTickValue': 0.602,
             'lossTickValue': 0.60203
         }]
+        ticks = [{
+            'symbol': 'AUDNZD',
+            'time': '2020-04-07T03:45:00.000Z',
+            'brokerTime': '2020-04-07 06:45:00.000',
+            'bid': 1.05297,
+            'ask': 1.05309,
+            'last': 0.5298,
+            'volume': 0.13,
+            'side': 'buy'
+        }]
+        candles = [{
+            'symbol': 'AUDNZD',
+            'timeframe': '15m',
+            'time': '2020-04-07T03:45:00.000Z',
+            'brokerTime': '2020-04-07 06:45:00.000',
+            'open': 1.03297,
+            'high': 1.06309,
+            'low': 1.02705,
+            'close': 1.043,
+            'tickVolume': 1435,
+            'spread': 17,
+            'volume': 345
+        }]
+        books = [{
+            'symbol': 'AUDNZD',
+            'time': '2020-04-07T03:45:00.000Z',
+            'brokerTime': '2020-04-07 06:45:00.000',
+            'book': [
+                {
+                    'type': 'BOOK_TYPE_SELL',
+                    'price': 1.05309,
+                    'volume': 5.67
+                },
+                {
+                    'type': 'BOOK_TYPE_BUY',
+                    'price': 1.05297,
+                    'volume': 3.45
+                }
+            ]
+        }]
         listener = MagicMock()
         listener.on_symbol_prices_updated = AsyncMock()
+        listener.on_candles_updated = AsyncMock()
+        listener.on_ticks_updated = AsyncMock()
+        listener.on_books_updated = AsyncMock()
         listener.on_symbol_price_updated = FinalMock()
         client.add_synchronization_listener('accountId', listener)
         await sio.emit('synchronization', {'type': 'prices', 'accountId': 'accountId', 'prices': prices,
+                                           'ticks': ticks, 'candles': candles, 'books': books,
                                            'equity': 100, 'margin': 200, 'freeMargin': 400, 'marginLevel': 40000,
                                            'instanceIndex': 1})
         await future_close
-        listener.on_symbol_prices_updated.assert_called_with(1, prices, 100, 200, 400, 40000)
+        ticks[0]['time'] = date(ticks[0]['time'])
+        candles[0]['time'] = date(candles[0]['time'])
+        books[0]['time'] = date(books[0]['time'])
+        listener.on_symbol_prices_updated.assert_called_with(1, prices, 100, 200, 400, 40000, None)
+        listener.on_candles_updated.assert_called_with(1, candles, 100, 200, 400, 40000, None)
+        listener.on_ticks_updated.assert_called_with(1, ticks, 100, 200, 400, 40000, None)
+        listener.on_books_updated.assert_called_with(1, books, 100, 200, 400, 40000, None)
         listener.on_symbol_price_updated.assert_called_with(1, prices[0])
 
     @pytest.mark.asyncio
