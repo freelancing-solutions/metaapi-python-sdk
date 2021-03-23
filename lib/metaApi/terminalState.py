@@ -314,9 +314,25 @@ class TerminalState(SynchronizationListener):
             state['specifications'].append(specification)
         state['specificationsBySymbol'][specification['symbol']] = specification
 
+    async def on_symbol_specifications_removed(self, instance_index: int, symbols: List[str]):
+        """Invoked when a symbol specifications was removed.
+
+        Args:
+            instance_index: Index of an account instance connected.
+            symbols: Removed symbols.
+
+        Returns:
+            A coroutine which resolves when the asynchronous event is processed.
+        """
+        state = self._get_state(instance_index)
+        state['specifications'] = list(filter(lambda s: s['symbol'] not in symbols, state['specifications']))
+        for symbol in symbols:
+            if symbol in state['specificationsBySymbol']:
+                del state['specificationsBySymbol'][symbol]
+
     async def on_symbol_prices_updated(self, instance_index: int, prices: List[MetatraderSymbolPrice],
                                        equity: float = None, margin: float = None, free_margin: float = None,
-                                       margin_level: float = None):
+                                       margin_level: float = None, account_currency_exchange_rate: float = None):
         """Invoked when prices for several symbols were updated.
 
         Args:
@@ -326,6 +342,7 @@ class TerminalState(SynchronizationListener):
             margin: Margin used.
             free_margin: Free margin.
             margin_level: Margin level calculated as % of equity/margin.
+            account_currency_exchange_rate: Current exchange rate of account currency into USD.
 
         Returns:
             A coroutine which resolves when the asynchronous event is processed.

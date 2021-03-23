@@ -178,6 +178,57 @@ Deploying, undeploying and redeploying an account (API server) via API
     await account.undeploy()
     await account.redeploy()
 
+Manage custom experts (EAs)
+---------------------------
+Custom expert advisors can only be used for MT4 accounts on g1 infrastructure
+
+Creating an expert advisor via API
+----------------------------------
+You can use the code below to create an EA. Please note that preset field is a base64-encoded preset file.
+
+.. code-block:: python
+
+    expert = await account.create_expert_advisor(expert_id='expertId', expert={
+        'period': '1h',
+        'symbol': 'EURUSD',
+        'preset': 'a2V5MT12YWx1ZTEKa2V5Mj12YWx1ZTIKa2V5Mz12YWx1ZTMKc3VwZXI9dHJ1ZQ'
+    })
+    await expert.upload_file('/path/to/custom-ea')
+
+Retrieving existing experts via API
+-----------------------------------
+
+.. code-block:: python
+
+    experts = await account.get_expert_advisors()
+
+Retrieving existing expert by id via API
+----------------------------------------
+
+.. code-block:: python
+
+    expert = await account.get_expert_advisor(expert_id='expertId')
+
+Updating existing expert via API
+--------------------------------
+You can use the code below to update an EA. Please note that preset field is a base64-encoded preset file.
+
+.. code-block:: python
+
+    await expert.update(expert={
+        'period': '4h',
+        'symbol': 'EURUSD',
+        'preset': 'a2V5MT12YWx1ZTEKa2V5Mj12YWx1ZTIKa2V5Mz12YWx1ZTMKc3VwZXI9dHJ1ZQ'
+    })
+    await expert.upload_file('/path/to/custom-ea')
+
+Removing expert via API
+-----------------------
+
+.. code-block:: python
+
+    await expert.remove()
+
 Access MetaTrader account via RPC API
 =====================================
 RPC API let you query the trading terminal state. You should use
@@ -442,10 +493,10 @@ Create a MetaTrader 5 demo account
 
 Rate limits & quotas
 ===========================================
-MetaApi applies rate limits to requests. See `MT account management API <https://metaapi.cloud/docs/provisioning/rateLimiting/>`_
-and `MetaApi API <https://metaapi.cloud/docs/client/restApi/rateLimiting/>`_ for details.
-Also, MetaApi applies quotas to limit the number of accounts and provisioning profiles,
-for more details see the `MT account management API quotas <https://metaapi.cloud/docs/provisioning/userQuota/>`_
+MetaApi applies rate limits to requests. See `MT account management API <https://metaapi.cloud/docs/provisioning/rateLimiting/>`_ and `MetaApi API <https://metaapi.cloud/docs/client/rateLimiting/>`_ for details.
+
+MetaApi applies quotas to limit the number of accounts and provisioning profiles, for more details see the `MT account management API quotas <https://metaapi.cloud/docs/provisioning/userQuota/>`_
+
 
 CopyFactory copy trading API
 ===========================================

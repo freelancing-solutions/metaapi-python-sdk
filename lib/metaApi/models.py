@@ -565,3 +565,91 @@ class ExceptionMessage(TypedDict):
     """Human-readable error message"""
     details: Optional[List[ValidationDetails]]
     """Additional information about error. Used to supply validation error details."""
+
+
+class MarketDataSubscription(TypedDict):
+    """Market data subscription."""
+    type: str
+    """Subscription type, one of quotes, candles, ticks, or marketDepth."""
+    timeframe: Optional[str]
+    """When subscription type is candles, defines the timeframe according to which the candles must be generated.
+    Allowed values for MT5 are 1m, 2m, 3m, 4m, 5m, 6m, 10m, 12m, 15m, 20m, 30m, 1h, 2h, 3h,
+    4h, 6h, 8h, 12h, 1d, 1w, 1mn. Allowed values for MT4 are 1m, 5m, 15m 30m, 1h, 4h, 1d, 1w, 1mn."""
+    intervalInMilliseconds: Optional[float]
+    """Defines how frequently the terminal will stream data to client. If not set, then the value configured in
+    account will be used."""
+
+
+class MarketDataUnsubscription(TypedDict):
+    """Market data subscription."""
+    type: str
+    """Subscription type, one of quotes, candles, ticks, or marketDepth."""
+
+
+class MetatraderCandle(TypedDict):
+    """MetaTrader candle."""
+    symbol: str
+    """Symbol (e.g. currency pair or an index)."""
+    timeframe: str
+    """Timeframe candle was generated for, e.g. 1h. One of 1m, 2m, 3m, 4m, 5m, 6m, 10m, 12m, 15m, 20m, 30m, 1h, 2h,
+    3h, 4h, 6h, 8h, 12h, 1d, 1w, 1mn."""
+    time: datetime
+    """Candle opening time."""
+    brokerTime: str
+    """Candle opening time, in broker timezone, YYYY-MM-DD HH:mm:ss.SSS format."""
+    open: float
+    """Open price."""
+    high: float
+    """High price."""
+    low: float
+    """Low price."""
+    close: float
+    """Close price."""
+    tickVolume: float
+    """Tick volume, i.e. number of ticks inside the candle."""
+    spread: float
+    """Spread in points."""
+    volume: float
+    """Trade volume."""
+
+
+class MetatraderTick(TypedDict):
+    """MetaTrader tick data."""
+    symbol: str
+    """Symbol (e.g. a currency pair or an index)."""
+    time: datetime
+    """Time."""
+    brokerTime: str
+    """Candle opening time, in broker timezone, YYYY-MM-DD HH:mm:ss.SSS format."""
+    bid: Optional[float]
+    """Bid price."""
+    ask: Optional[float]
+    """Ask price."""
+    last: Optional[float]
+    """Last deal price."""
+    volume: float
+    """Volume for the current last deal price."""
+    side: str
+    """Side is tick a result of buy or sell deal, one of buy or sell."""
+
+
+class MetatraderBookEntry(TypedDict):
+    """MetaTrader order book entry."""
+    type: str
+    """Entry type, one of BOOK_TYPE_SELL, BOOK_TYPE_BUY, BOOK_TYPE_SELL_MARKET, BOOK_TYPE_BUY_MARKET."""
+    price: float
+    """Price."""
+    volume: float
+    """Volume."""
+
+
+class MetatraderBook(TypedDict):
+    """MetaTrader order book."""
+    symbol: str
+    """Symbol (e.g. a currency pair or an index)."""
+    time: datetime
+    """Time."""
+    brokerTime: str
+    """Candle opening time, in broker timezone, YYYY-MM-DD HH:mm:ss.SSS format."""
+    book: List[MetatraderBookEntry]
+    """List of order book entries."""

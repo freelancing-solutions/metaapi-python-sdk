@@ -10,7 +10,8 @@ from .historyStorage import HistoryStorage
 from ..clients.timeoutException import TimeoutException
 from .models import random_id, MetatraderSymbolSpecification, MetatraderAccountInformation, \
     MetatraderPosition, MetatraderOrder, MetatraderHistoryOrders, MetatraderDeals, MetatraderTradeResponse, \
-    MetatraderSymbolPrice, MarketTradeOptions, PendingTradeOptions
+    MetatraderSymbolPrice, MarketTradeOptions, PendingTradeOptions, MarketDataSubscription, MarketDataUnsubscription, \
+    MetatraderCandle, MetatraderTick, MetatraderBook
 from datetime import datetime, timedelta
 from typing import Coroutine, List, Optional, Dict
 from typing_extensions import TypedDict
@@ -634,34 +635,77 @@ class MetaApiConnection(SynchronizationListener, ReconnectListener):
         """
         self._websocketClient.ensure_subscribe(self._account.id)
 
-    def subscribe_to_market_data(self, symbol: str, instance_index: int = None) -> Coroutine:
+    def subscribe_to_market_data(self, symbol: str, subscriptions: List[MarketDataSubscription] = None,
+                                 instance_index: int = None) -> Coroutine:
         """Subscribes on market data of specified symbol (see
         https://metaapi.cloud/docs/client/websocket/marketDataStreaming/subscribeToMarketData/).
 
         Args:
             symbol: Symbol (e.g. currency pair or an index).
+            subscriptions: Array of market data subscription to create or update. Please note that this feature is
+            not fully implemented on server-side yet.
             instance_index: Instance index.
 
         Returns:
             Promise which resolves when subscription request was processed.
         """
-        self._subscriptions[symbol] = True
-        return self._websocketClient.subscribe_to_market_data(self._account.id, instance_index, symbol)
+        self._subscriptions[symbol] = {'subscriptions': subscriptions or None}
+        return self._websocketClient.subscribe_to_market_data(self._account.id, instance_index, symbol,
+                                                              subscriptions)
 
-    def unsubscribe_from_market_data(self, symbol: str, instance_index: int = None) -> Coroutine:
+    def unsubscribe_from_market_data(self, symbol: str, subscriptions: List[MarketDataUnsubscription] = None,
+                                     instance_index: int = None) -> Coroutine:
         """Unsubscribes from market data of specified symbol (see
         https://metaapi.cloud/docs/client/websocket/marketDataStreaming/subscribeToMarketData/).
 
         Args:
             symbol: Symbol (e.g. currency pair or an index).
+            subscriptions: Array of subscriptions to cancel.
             instance_index: Instance index.
 
         Returns:
             Promise which resolves when subscription request was processed.
         """
-        if symbol in self._subscriptions:
+        if not subscriptions:
+            if symbol in self._subscriptions:
+                del self._subscriptions[symbol]
+        elif symbol in self._subscriptions:
+            self._subscriptions[symbol]['subscriptions'] = list(filter(
+                lambda s: not next((s2 for s2 in subscriptions if s['type'] == s2['type']), None),
+                self._subscriptions[symbol]['subscriptions']))
+            if not len(self._subscriptions[symbol]['subscriptions']):
+                del self._subscriptions[symbol]
+        return self._websocketClient.unsubscribe_from_market_data(self._account.id, instance_index, symbol,
+                                                                  subscriptions)
+
+    async def on_subscription_downgraded(self, instance_index: int, symbol: str,
+                                         updates: List[MarketDataSubscription] or None = None,
+                                         unsubscriptions: List[MarketDataUnsubscription] or None = None):
+        """Invoked when subscription downgrade has occurred.
+
+        Args:
+            instance_index: Index of an account instance connected.
+            symbol: Symbol to update subscriptions for.
+            updates: Array of market data subscription to update.
+            unsubscriptions: Array of subscriptions to cancel.
+
+        Returns:
+            A coroutine which resolves when the asynchronous event is processed.
+        """
+        subscriptions = self._subscriptions[symbol] if symbol in self._subscriptions else None
+        if unsubscriptions and len(unsubscriptions):
+            if subscriptions:
+                for subscription in unsubscriptions:
+                    subscriptions = list(filter(lambda s: s['type'] == subscription['type'], subscriptions))
+            await self.unsubscribe_from_market_data(symbol, unsubscriptions)
+        if updates and len(updates):
+            if subscriptions:
+                for subscription in updates:
+                    for s in list(filter(lambda s: s['type'] == subscription['type'], subscriptions)):
+                        s['intervalInMilliiseconds'] = subscription['intervalInMilliseconds']
+            await self.subscribe_to_market_data(symbol, updates)
+        if subscriptions and (not len(subscriptions)):
             del self._subscriptions[symbol]
-        return self._websocketClient.unsubscribe_from_market_data(self._account.id, instance_index, symbol)
 
     @property
     def subscribed_symbols(self) -> List[str]:
@@ -672,9 +716,20 @@ class MetaApiConnection(SynchronizationListener, ReconnectListener):
         """
         return list(self._subscriptions.keys())
 
+    def subscriptions(self, symbol) -> List[MarketDataSubscription]:
+        """Returns subscriptions for a symbol.
+
+        Args:
+            symbol: Symbol to retrieve subscriptions for.
+
+        Returns:
+            List of market data subscriptions for the symbol.
+        """
+        return self._subscriptions[symbol]['subscriptions'] if symbol in self._subscriptions else []
+
     def get_symbol_specification(self, symbol: str) -> 'Coroutine[asyncio.Future[MetatraderSymbolSpecification]]':
         """Retrieves specification for a symbol (see
-        https://metaapi.cloud/docs/client/websocket/api/retrieveMarketData/getSymbolSpecification/).
+        https://metaapi.cloud/docs/client/websocket/api/retrieveMarketData/readSymbolSpecification/).
 
         Args:
             symbol: Symbol to retrieve specification for.
@@ -685,8 +740,8 @@ class MetaApiConnection(SynchronizationListener, ReconnectListener):
         return self._websocketClient.get_symbol_specification(self._account.id, symbol)
 
     def get_symbol_price(self, symbol) -> 'Coroutine[asyncio.Future[MetatraderSymbolPrice]]':
-        """Retrieves specification for a symbol (see
-        https://metaapi.cloud/docs/client/websocket/api/retrieveMarketData/getSymbolPrice/).
+        """Retrieves latest price for a symbol (see
+        https://metaapi.cloud/docs/client/websocket/api/retrieveMarketData/readSymbolPrice/).
 
         Args:
             symbol: Symbol to retrieve price for.
@@ -695,6 +750,45 @@ class MetaApiConnection(SynchronizationListener, ReconnectListener):
             A coroutine which resolves when price MetatraderSymbolPrice is retrieved.
         """
         return self._websocketClient.get_symbol_price(self._account.id, symbol)
+
+    def get_candle(self, symbol: str, timeframe: str) -> 'Coroutine[asyncio.Future[MetatraderCandle]]':
+        """Retrieves latest candle for a symbol and timeframe (see
+        https://metaapi.cloud/docs/client/websocket/api/retrieveMarketData/readCandle/).
+
+        Args:
+            symbol: Symbol to retrieve candle for.
+            timeframe: Defines the timeframe according to which the candle must be generated. Allowed values for
+            MT5 are 1m, 2m, 3m, 4m, 5m, 6m, 10m, 12m, 15m, 20m, 30m, 1h, 2h, 3h, 4h, 6h, 8h, 12h, 1d, 1w, 1mn.
+            Allowed values for MT4 are 1m, 5m, 15m 30m, 1h, 4h, 1d, 1w, 1mn.
+
+        Returns:
+            A coroutine which resolves when candle is retrieved.
+        """
+        return self._websocketClient.get_candle(self._account.id, symbol, timeframe)
+
+    def get_tick(self, symbol: str) -> 'Coroutine[asyncio.Future[MetatraderTick]]':
+        """Retrieves latest tick for a symbol (see
+        https://metaapi.cloud/docs/client/websocket/api/retrieveMarketData/readTick/).
+
+        Args:
+            symbol: Symbol to retrieve tick for.
+
+        Returns:
+            A coroutine which resolves when tick is retrieved.
+        """
+        return self._websocketClient.get_tick(self._account.id, symbol)
+
+    def get_book(self, symbol: str) -> 'Coroutine[asyncio.Future[MetatraderBook]]':
+        """Retrieves latest order book for a symbol (see
+        https://metaapi.cloud/docs/client/websocket/api/retrieveMarketData/readBook/).
+
+        Args:
+            symbol: Symbol to retrieve order book for.
+
+        Returns:
+            A coroutine which resolves when order book is retrieved.
+        """
+        return self._websocketClient.get_book(self._account.id, symbol)
 
     def save_uptime(self, uptime: Dict):
         """Sends client uptime stats to the server.
@@ -927,7 +1021,8 @@ class MetaApiConnection(SynchronizationListener, ReconnectListener):
             try:
                 await self.synchronize(instance_index)
                 for symbol in self.subscribed_symbols:
-                    await self.subscribe_to_market_data(symbol, instance_index)
+                    await self.subscribe_to_market_data(symbol, self._subscriptions[symbol]['subscriptions'],
+                                                        instance_index)
                 state['synchronized'] = True
                 state['synchronizationRetryIntervalInSeconds'] = 1
             except Exception as err:

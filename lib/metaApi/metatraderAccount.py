@@ -7,6 +7,8 @@ from .metatraderAccountModel import MetatraderAccountModel
 from ..metaApi.historyFileManager import HistoryFileManager
 from .historyStorage import HistoryStorage
 from .connectionRegistryModel import ConnectionRegistryModel
+from .expertAdvisor import ExpertAdvisorClient, ExpertAdvisor, NewExpertAdvisorDto
+from ..clients.errorHandler import ValidationException
 from datetime import datetime, timedelta
 from typing import List, Dict
 import asyncio
@@ -16,7 +18,8 @@ class MetatraderAccount(MetatraderAccountModel):
     """Implements a MetaTrader account entity"""
 
     def __init__(self, data: MetatraderAccountDto, metatrader_account_client: MetatraderAccountClient,
-                 meta_api_websocket_client: MetaApiWebsocketClient, connection_registry: ConnectionRegistryModel):
+                 meta_api_websocket_client: MetaApiWebsocketClient, connection_registry: ConnectionRegistryModel,
+                 expert_advisor_client: ExpertAdvisorClient):
         """Inits a MetaTrader account entity.
 
         Args:
@@ -24,11 +27,13 @@ class MetatraderAccount(MetatraderAccountModel):
             metatrader_account_client: MetaTrader account REST API client.
             meta_api_websocket_client: MetaApi websocket client.
             connection_registry: Metatrader account connection registry.
+            expert_advisor_client: Expert advisor REST API client.
         """
         self._data = data
         self._metatraderAccountClient = metatrader_account_client
         self._metaApiWebsocketClient = meta_api_websocket_client
         self._connectionRegistry = connection_registry
+        self._expertAdvisorClient = expert_advisor_client
 
     @property
     def id(self) -> str:
@@ -50,7 +55,7 @@ class MetatraderAccount(MetatraderAccountModel):
 
     @property
     def type(self) -> str:
-        """Returns account type. Possible values are cloud and self-hosted.
+        """Returns account type. Possible values are cloud, cloud-g1, cloud-g2, and self-hosted.
 
         Returns:
             Account type.
@@ -223,6 +228,15 @@ class MetatraderAccount(MetatraderAccountModel):
         await self._metatraderAccountClient.redeploy_account(self.id)
         await self.reload()
 
+    async def increase_reliability(self):
+        """Increases MetaTrader account reliability. The account will be temporary stopped to perform this action.
+
+        Returns:
+            A coroutine resolving when account reliability is increased.
+        """
+        await self._metatraderAccountClient.increase_reliability(self.id)
+        await self.reload()
+
     async def wait_deployed(self, timeout_in_seconds=300, interval_in_milliseconds=1000):
         """Waits until API server has finished deployment and account reached the DEPLOYED state.
 
@@ -337,6 +351,46 @@ class MetatraderAccount(MetatraderAccountModel):
         """
         await self._metatraderAccountClient.update_account(self.id, account)
         await self.reload()
+
+    async def get_expert_advisors(self) -> List[ExpertAdvisor]:
+        """Retrieves expert advisors of current account.
+
+        Returns:
+            A coroutine resolving with an array of expert advisor entities.
+        """
+        if self.type != 'cloud-g1':
+            raise ValidationException('Custom expert advisor is available only for cloud-g1 accounts')
+        expert_advisors = await self._expertAdvisorClient.get_expert_advisors(self.id)
+        return list(map(lambda e: ExpertAdvisor(e, self.id, self._expertAdvisorClient), expert_advisors))
+
+    async def get_expert_advisor(self, expert_id: str) -> ExpertAdvisor:
+        """Retrieves a expert advisor of current account by id.
+
+        Args:
+            expert_id: Expert advisor id.
+
+        Returns:
+            A coroutine resolving with expert advisor entity.
+        """
+        if self.type != 'cloud-g1':
+            raise ValidationException('Custom expert advisor is available only for cloud-g1 accounts')
+        expert_advisor = await self._expertAdvisorClient.get_expert_advisor(self.id, expert_id)
+        return ExpertAdvisor(expert_advisor, self.id, self._expertAdvisorClient)
+
+    async def create_expert_advisor(self, expert_id: str, expert: NewExpertAdvisorDto) -> ExpertAdvisor:
+        """Creates an expert advisor.
+
+        Args:
+            expert_id: Expert advisor id.
+            expert: Expert advisor data.
+
+        Returns:
+            A coroutine resolving with expert advisor entity.
+        """
+        if self.type != 'cloud-g1':
+            raise ValidationException('Custom expert advisor is available only for cloud-g1 accounts')
+        await self._expertAdvisorClient.update_expert_advisor(self.id, expert_id, expert)
+        return await self.get_expert_advisor(expert_id)
 
     async def _delay(self, timeout_in_milliseconds):
         await asyncio.sleep(timeout_in_milliseconds / 1000)

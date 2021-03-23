@@ -11,6 +11,7 @@ from .metatraderDemoAccountApi import MetatraderDemoAccountApi
 from ..clients.metaApi.synchronizationThrottler import SynchronizationThrottlerOpts
 from ..clients.metaApi.metatraderDemoAccount_client import MetatraderDemoAccountClient
 from .latencyMonitor import LatencyMonitor
+from ..clients.metaApi.expertAdvisor_client import ExpertAdvisorClient
 import re
 import traceback
 from typing import Optional
@@ -82,7 +83,8 @@ class MetaApi:
         self._provisioningProfileApi = ProvisioningProfileApi(ProvisioningProfileClient(http_client, token, domain))
         self._connectionRegistry = ConnectionRegistry(self._metaApiWebsocketClient, application)
         self._metatraderAccountApi = MetatraderAccountApi(MetatraderAccountClient(http_client, token, domain),
-                                                          self._metaApiWebsocketClient, self._connectionRegistry)
+                                                          self._metaApiWebsocketClient, self._connectionRegistry,
+                                                          ExpertAdvisorClient(http_client, token, domain))
         self._metatraderDemoAccountApi = MetatraderDemoAccountApi(MetatraderDemoAccountClient(http_client, token,
                                                                                               domain))
         if ('enableLatencyTracking' in opts and opts['enableLatencyTracking']) or ('enableLatencyMonitor' in opts and
