@@ -160,7 +160,7 @@ class MetatraderAccount(MetatraderAccountModel):
         Returns:
             Extra information which can be stored together with your account.
         """
-        return self._data['metadata']
+        return self._data['metadata'] if 'metadata' in self._data else None
 
     @property
     def reliability(self) -> str:
