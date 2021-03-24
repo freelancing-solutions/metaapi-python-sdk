@@ -72,10 +72,10 @@ async def stream_quotes():
         # Please note that currently only MT5 G1 instances support extended subscription management
         # Other instances will only stream quotes in response
         await connection.subscribe_to_market_data(symbol, [
-            {type: 'quotes', 'intervalInMilliseconds': 5000},
-            {type: 'candles', 'timeframe': '1m', 'intervalInMilliseconds': 10000},
-            {type: 'ticks'},
-            {type: 'marketDepth', 'intervalInMilliseconds': 5000}
+            {'type': 'quotes', 'intervalInMilliseconds': 5000},
+            {'type': 'candles', 'timeframe': '1m', 'intervalInMilliseconds': 10000},
+            {'type': 'ticks'},
+            {'type': 'marketDepth', 'intervalInMilliseconds': 5000}
         ])
 
         print('Streaming ' + symbol + ' market data now...')

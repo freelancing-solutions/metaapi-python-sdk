@@ -901,6 +901,26 @@ class MetaApiConnection(SynchronizationListener, ReconnectListener):
         state = self._get_state(instance_index)
         state['ordersSynchronized'][synchronization_id] = True
 
+    async def on_account_information_updated(self, instance_index: int,
+                                             account_information: MetatraderAccountInformation):
+        """Invoked when MetaTrader position is updated.
+
+        Args:
+            instance_index: Index of an account instance connected.
+            account_information: Updated MetaTrader position.
+
+        Returns:
+            A coroutine which resolves when the asynchronous event is processed.
+        """
+        for symbol in self.subscribed_symbols:
+            if not self._terminalState.price(symbol):
+                try:
+                    await self.subscribe_to_market_data(symbol, self._subscriptions[symbol]['subscriptions'],
+                                                        instance_index)
+                except Exception as err:
+                    print(f'[{datetime.now().isoformat()}] MetaApi websocket client for account ' + self.account.id +
+                          ':' + str(instance_index) + ' failed to resubscribe to symbol ' + symbol, err)
+
     async def on_reconnected(self):
         """Invoked when connection to MetaApi websocket API restored after a disconnect.
 
@@ -1020,9 +1040,6 @@ class MetaApiConnection(SynchronizationListener, ReconnectListener):
         if state:
             try:
                 await self.synchronize(instance_index)
-                for symbol in self.subscribed_symbols:
-                    await self.subscribe_to_market_data(symbol, self._subscriptions[symbol]['subscriptions'],
-                                                        instance_index)
                 state['synchronized'] = True
                 state['synchronizationRetryIntervalInSeconds'] = 1
             except Exception as err:

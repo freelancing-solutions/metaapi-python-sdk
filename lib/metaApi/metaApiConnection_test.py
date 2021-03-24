@@ -919,18 +919,20 @@ class TestMetaApiConnection:
     @pytest.mark.asyncio
     async def test_restore_market_data_subs_on_sync(self):
         """Should restore market data subscriptions on synchronization."""
-        with patch('lib.metaApi.metaApiConnection.random_id', return_value='synchronizationId'):
-            client.synchronize = AsyncMock()
-            client.subscribe_to_market_data = AsyncMock()
-            api = MetaApiConnection(client, account, None, MagicMock())
-            await api.history_storage.on_history_order_added(1, {'doneTime': date('2020-01-01T00:00:00.000Z')})
-            await api.history_storage.on_deal_added(1, {'time': date('2020-01-02T00:00:00.000Z')})
-            await api.subscribe_to_market_data('EURUSD')
-            await api.on_connected(1, 1)
-            client.synchronize.assert_called_with('accountId', 1, 'synchronizationId', date('2020-01-01T00:00:00.000Z'),
-                                                  date('2020-01-02T00:00:00.000Z'))
-            client.subscribe_to_market_data.assert_called_with('accountId', 1, 'EURUSD', None)
-            assert client.subscribe_to_market_data.call_count == 2
+        def get_price(symbol):
+            if symbol == 'EURUSD':
+                return {'symbol': symbol}
+            else:
+                return None
+
+        client.subscribe_to_market_data = AsyncMock()
+        api.terminal_state.price = get_price
+        await api.subscribe_to_market_data('EURUSD')
+        await api.subscribe_to_market_data('AUDNZD')
+        client.subscribe_to_market_data = AsyncMock()
+        await api.on_account_information_updated(1, {})
+        assert client.subscribe_to_market_data.call_count == 1
+        client.subscribe_to_market_data.assert_called_with('accountId', 1, 'AUDNZD', None)
 
     @pytest.mark.asyncio
     async def test_unsubscribe_from_events_on_close(self):

@@ -1,5 +1,7 @@
+from ..clients.metaApi.metatraderAccount_client import MetatraderAccountUpdateDto
 from .historyStorage import HistoryStorage
-from typing import Optional
+from typing import Dict, List
+from .expertAdvisor import ExpertAdvisor, NewExpertAdvisorDto
 from abc import ABC, abstractmethod
 from datetime import datetime
 
@@ -107,6 +109,42 @@ class MetatraderAccountModel(ABC):
             Authorization token.
         """
 
+    @property
+    @abstractmethod
+    def manual_trades(self) -> bool:
+        """Returns flag indicating if trades should be placed as manual trades on this account.
+
+        Returns:
+            Flag indicating if trades should be placed as manual trades on this account.
+        """
+
+    @property
+    @abstractmethod
+    def extensions(self):
+        """Returns API extensions.
+
+        Returns:
+            API extensions.
+        """
+
+    @property
+    @abstractmethod
+    def metadata(self) -> Dict:
+        """Returns extra information which can be stored together with your account.
+
+        Returns:
+            Extra information which can be stored together with your account.
+        """
+
+    @property
+    @abstractmethod
+    def reliability(self) -> str:
+        """Returns reliability value. Possible values are regular and high.
+
+        Returns:
+            Reliability value.
+        """
+
     @abstractmethod
     async def reload(self):
         """Reloads MetaTrader account from API.
@@ -149,6 +187,14 @@ class MetatraderAccountModel(ABC):
 
         Returns:
             A coroutine resolving when account is scheduled for redeployment.
+        """
+
+    @abstractmethod
+    async def increase_reliability(self):
+        """Increases MetaTrader account reliability. The account will be temporary stopped to perform this action.
+
+        Returns:
+            A coroutine resolving when account reliability is increased.
         """
 
     @abstractmethod
@@ -221,6 +267,48 @@ class MetatraderAccountModel(ABC):
 
         Returns:
             MetaApi connection.
+        """
+
+    @abstractmethod
+    async def update(self, account: MetatraderAccountUpdateDto):
+        """Updates MetaTrader account data.
+
+        Args:
+            account: MetaTrader account update.
+
+        Returns:
+            A coroutine resolving when account is updated.
+        """
+
+    @abstractmethod
+    async def get_expert_advisors(self) -> List[ExpertAdvisor]:
+        """Retrieves expert advisors of current account.
+
+        Returns:
+            A coroutine resolving with an array of expert advisor entities.
+        """
+
+    @abstractmethod
+    async def get_expert_advisor(self, expert_id: str) -> ExpertAdvisor:
+        """Retrieves a expert advisor of current account by id.
+
+        Args:
+            expert_id: Expert advisor id.
+
+        Returns:
+            A coroutine resolving with expert advisor entity.
+        """
+
+    @abstractmethod
+    async def create_expert_advisor(self, expert_id: str, expert: NewExpertAdvisorDto) -> ExpertAdvisor:
+        """Creates an expert advisor.
+
+        Args:
+            expert_id: Expert advisor id.
+            expert: Expert advisor data.
+
+        Returns:
+            A coroutine resolving with expert advisor entity.
         """
 
     @abstractmethod

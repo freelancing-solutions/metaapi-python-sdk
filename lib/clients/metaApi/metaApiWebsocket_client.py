@@ -52,6 +52,7 @@ class MetaApiWebsocketClient:
         self._connected = False
         self._socket = None
         self._sessionId = None
+        self._isReconnecting = False
         self._reconnectListeners = []
         self._connectedHosts = {}
         self._synchronizationThrottler = SynchronizationThrottler(self, opts['synchronizationThrottler'])
@@ -740,24 +741,29 @@ class MetaApiWebsocketClient:
 
     async def _reconnect(self):
         reconnected = False
-        while self._connected and not reconnected:
-            try:
-                await self._socket.disconnect()
-                client_id = "{:01.10f}".format(random())
-                url = f'{self._url}?auth-token={self._token}&clientId={client_id}'
-                self._connectResult = asyncio.Future()
-                self._resolved = False
-                self._sessionId = random_id()
-                await asyncio.wait_for(self._socket.connect(url, socketio_path='ws', headers={'Client-Id': client_id}),
-                                       timeout=self._connect_timeout)
-                await self._connectResult
-                reconnected = True
-                await self._fire_reconnected()
-                await self._socket.wait()
-            except Exception:
-                self._connectResult.cancel()
-                self._connectResult = None
-                await asyncio.sleep(1)
+        prev_session_id = self._sessionId
+        if not self._isReconnecting:
+            self._isReconnecting = True
+            while self._connected and not reconnected:
+                try:
+                    await self._socket.disconnect()
+                    client_id = "{:01.10f}".format(random())
+                    url = f'{self._url}?auth-token={self._token}&clientId={client_id}'
+                    self._connectResult = asyncio.Future()
+                    self._resolved = False
+                    self._sessionId = random_id()
+                    await asyncio.wait_for(self._socket.connect(url, socketio_path='ws',
+                                                                headers={'Client-Id': client_id}),
+                                           timeout=self._connect_timeout)
+                    await asyncio.wait_for(self._connectResult, self._connect_timeout)
+                    reconnected = True
+                    self._isReconnecting = False
+                    await self._fire_reconnected()
+                    await self._socket.wait()
+                except Exception as err:
+                    self._connectResult.cancel()
+                    self._connectResult = None
+                    await asyncio.sleep(1)
 
     async def _rpc_request(self, account_id: str, request: dict, timeout_in_seconds: float = None) -> Coroutine:
         if not self._connected:
