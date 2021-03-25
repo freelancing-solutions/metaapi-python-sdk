@@ -1,6 +1,7 @@
 from ..timeoutException import TimeoutException
 from .tradeException import TradeException
-from ..errorHandler import ValidationException, NotFoundException, InternalException, UnauthorizedException
+from ..errorHandler import ValidationException, NotFoundException, InternalException, UnauthorizedException, \
+    TooManyRequestsException
 from .notSynchronizedException import NotSynchronizedException
 from .notConnectedException import NotConnectedException
 from .synchronizationListener import SynchronizationListener
@@ -460,6 +461,12 @@ class MetaApiWebsocketClient:
                                  response['response']['stringCode'])
 
     def ensure_subscribe(self, account_id: str, instance_index: int = None):
+        """Creates a subscription manager task to send subscription requests until cancelled.
+
+        Args:
+            account_id: Account id to subscribe.
+            instance_index: Instance index.
+        """
         asyncio.create_task(self._subscriptionManager.subscribe(account_id, instance_index))
 
     def subscribe(self, account_id: str, instance_index: int = None):
@@ -829,6 +836,8 @@ class MetaApiWebsocketClient:
         elif data['error'] == 'UnauthorizedError':
             self.close()
             return UnauthorizedException(data['message'])
+        elif data['error'] == 'TooManyRequestsError':
+            return TooManyRequestsException(data['message'], data['metadata'])
         else:
             return InternalException(data['message'])
 
