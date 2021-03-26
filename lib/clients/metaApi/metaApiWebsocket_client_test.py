@@ -11,7 +11,7 @@ from asyncio import sleep
 from urllib.parse import parse_qs
 from mock import MagicMock, AsyncMock
 from copy import deepcopy
-from datetime import datetime
+from datetime import datetime, timedelta
 from freezegun import freeze_time
 sio = None
 client: MetaApiWebsocketClient = None
@@ -574,7 +574,7 @@ class TestMetaApiWebsocketClient:
 
         try:
             await client.trade('accountId', trade)
-            Exception('TradeException expected')
+            raise Exception('TradeException expected')
         except Exception as err:
             assert err.__class__.__name__ == 'TradeException'
             assert err.__str__() == 'Request rejected'
@@ -814,7 +814,7 @@ class TestMetaApiWebsocketClient:
 
         try:
             await client.trade('accountId', trade)
-            Exception('ValidationError expected')
+            raise Exception('ValidationError expected')
         except Exception as err:
             assert err.__class__.__name__ == 'ValidationException'
 
@@ -830,7 +830,7 @@ class TestMetaApiWebsocketClient:
 
         try:
             await client.get_position('accountId', '1234')
-            Exception('NotFoundException expected')
+            raise Exception('NotFoundException expected')
         except Exception as err:
             assert err.__class__.__name__ == 'NotFoundException'
 
@@ -845,7 +845,7 @@ class TestMetaApiWebsocketClient:
 
         try:
             await client.get_position('accountId', '1234')
-            Exception('NotSynchronizedError expected')
+            raise Exception('NotSynchronizedError expected')
         except Exception as err:
             assert err.__class__.__name__ == 'NotSynchronizedException'
 
@@ -860,7 +860,7 @@ class TestMetaApiWebsocketClient:
 
         try:
             await client.get_position('accountId', '1234')
-            Exception('NotConnectedError expected')
+            raise Exception('NotConnectedError expected')
         except Exception as err:
             assert err.__class__.__name__ == 'NotConnectedException'
 
@@ -875,7 +875,7 @@ class TestMetaApiWebsocketClient:
 
         try:
             await client.get_position('accountId', '1234')
-            Exception('InternalError expected')
+            raise Exception('InternalError expected')
         except Exception as err:
             assert err.__class__.__name__ == 'InternalException'
 
@@ -1331,6 +1331,89 @@ class TestMetaApiWebsocketClient:
         assert actual == order
 
     @pytest.mark.asyncio
+    async def test_retry_too_many_requests(self):
+        """Should wait specified amount of time on too many requests exception."""
+        request_counter = 0
+        order = {
+            'id': '46871284',
+            'type': 'ORDER_TYPE_BUY_LIMIT',
+            'state': 'ORDER_STATE_PLACED',
+            'symbol': 'AUDNZD',
+            'magic': 123456,
+            'platform': 'mt5',
+            'time': '2020-04-20T08:38:58.270Z',
+            'openPrice': 1.03,
+            'currentPrice': 1.05206,
+            'volume': 0.01,
+            'currentVolume': 0.01,
+            'comment': 'COMMENT2'
+        }
+
+        @sio.on('request')
+        async def on_request(sid, data):
+            nonlocal request_counter
+            if request_counter > 0 and data['type'] == 'getOrder' and data['accountId'] == 'accountId' and \
+                    data['orderId'] == '46871284' and data['application'] == 'RPC':
+                await sio.emit('response', {'type': 'response', 'accountId': data['accountId'],
+                                            'requestId': data['requestId'], 'order': order})
+            else:
+                await sio.emit('processingError', {
+                    'id': 1, 'requestId': data['requestId'], 'error': 'TooManyRequestsError',
+                    'message': 'The API allows 10000 requests per 60 minutes ' +
+                    'to avoid overloading our servers.', 'status_code': 429, 'metadata': {
+                        'periodInMinutes': 60, 'maxRequestsForPeriod': 10000,
+                        'recommendedRetryTime': format_date(datetime.now() + timedelta(seconds=1))}})
+            request_counter += 1
+
+        start_time = datetime.now().timestamp()
+        actual = await client.get_order('accountId', '46871284')
+        order['time'] = date(order['time'])
+        assert actual == order
+        assert 0.9 < datetime.now().timestamp() - start_time < 1.1
+
+    @pytest.mark.asyncio
+    async def test_return_too_many_requests_if_long_wait(self):
+        """Should return too many requests exception if recommended time is beyond max request time."""
+        request_counter = 0
+        order = {
+            'id': '46871284',
+            'type': 'ORDER_TYPE_BUY_LIMIT',
+            'state': 'ORDER_STATE_PLACED',
+            'symbol': 'AUDNZD',
+            'magic': 123456,
+            'platform': 'mt5',
+            'time': '2020-04-20T08:38:58.270Z',
+            'openPrice': 1.03,
+            'currentPrice': 1.05206,
+            'volume': 0.01,
+            'currentVolume': 0.01,
+            'comment': 'COMMENT2'
+        }
+
+        @sio.on('request')
+        async def on_request(sid, data):
+            nonlocal request_counter
+            if request_counter > 0 and data['type'] == 'getOrder' and data['accountId'] == 'accountId' and \
+                    data['orderId'] == '46871284' and data['application'] == 'RPC':
+                await sio.emit('response', {'type': 'response', 'accountId': data['accountId'],
+                                            'requestId': data['requestId'], 'order': order})
+            else:
+                await sio.emit('processingError', {
+                    'id': 1, 'requestId': data['requestId'], 'error': 'TooManyRequestsError',
+                    'message': 'The API allows 10000 requests per 60 minutes ' +
+                    'to avoid overloading our servers.', 'status_code': 429, 'metadata': {
+                        'periodInMinutes': 60, 'maxRequestsForPeriod': 10000,
+                        'recommendedRetryTime': format_date(datetime.now() + timedelta(seconds=60))}})
+            request_counter += 1
+
+        try:
+            await client.get_order('accountId', '46871284')
+            raise Exception('TooManyRequestsException expected')
+        except Exception as err:
+            assert err.__class__.__name__ == 'TooManyRequestsException'
+            await client.close()
+
+    @pytest.mark.asyncio
     async def test_not_retry_on_failure(self):
         """Should not retry request on validation error."""
         request_counter = 0
@@ -1350,7 +1433,7 @@ class TestMetaApiWebsocketClient:
             request_counter += 1
             try:
                 await client.subscribe_to_market_data('accountId', 1, 'EURUSD')
-                Exception('ValidationException expected')
+                raise Exception('ValidationException expected')
             except Exception as err:
                 assert err.__class__.__name__ == 'ValidationException'
                 await client.close()
@@ -1375,7 +1458,7 @@ class TestMetaApiWebsocketClient:
 
         try:
             await client.trade('accountId', trade)
-            Exception('TimeoutException expected')
+            raise Exception('TimeoutException expected')
         except Exception as err:
             assert err.__class__.__name__ == 'TimeoutException'
             await client.close()
@@ -1396,7 +1479,7 @@ class TestMetaApiWebsocketClient:
 
         try:
             await client.trade('accountId', trade)
-            Exception('TimeoutException expected')
+            raise Exception('TimeoutException expected')
         except Exception as err:
             assert err.__class__.__name__ == 'TimeoutException'
             await client.close()

@@ -1,7 +1,10 @@
 from .subscriptionManager import SubscriptionManager
 from .metaApiWebsocket_client import MetaApiWebsocketClient
 from ..timeoutException import TimeoutException
+from ..errorHandler import TooManyRequestsException
 from mock import MagicMock, AsyncMock, patch
+from datetime import datetime, timedelta
+from ...metaApi.models import format_date
 import pytest
 import asyncio
 from asyncio import sleep
@@ -46,7 +49,7 @@ class TestSubscriptionManager:
     @pytest.mark.asyncio
     async def test_retry_subscribe(self):
         """Should retry subscribe if no response received."""
-        with patch('lib.metaApi.metaApiConnection.asyncio.sleep', new=lambda x: sleep(x / 10)):
+        with patch('lib.clients.metaApi.subscriptionManager.asyncio.sleep', new=lambda x: sleep(x / 10)):
             response = {'type': 'response', 'accountId': 'accountId', 'requestId': 'requestId'}
             client.subscribe = AsyncMock(side_effect=[TimeoutException('timeout'), response, response])
 
@@ -60,9 +63,26 @@ class TestSubscriptionManager:
             assert client.subscribe.call_count == 2
 
     @pytest.mark.asyncio
+    async def test_wait_on_too_many_requests_error(self):
+        """Should wait for recommended time if too many requests error received."""
+        with patch('lib.clients.metaApi.subscriptionManager.asyncio.sleep', new=lambda x: sleep(x / 10)):
+            response = {'type': 'response', 'accountId': 'accountId', 'requestId': 'requestId'}
+            client.subscribe = AsyncMock(side_effect=[TooManyRequestsException('timeout', {
+                'periodInMinutes': 60, 'maxRequestsForPeriod': 10000,
+                'recommendedRetryTime': format_date(datetime.now() + timedelta(seconds=5))}), response, response])
+
+            asyncio.create_task(manager.subscribe('accountId'))
+            await sleep(0.36)
+            assert client.subscribe.call_count == 1
+            await sleep(0.2)
+            manager.cancel_subscribe('accountId:0')
+            client.subscribe.assert_called_with('accountId', None)
+            assert client.subscribe.call_count == 2
+
+    @pytest.mark.asyncio
     async def test_cancel_on_reconnect(self):
         """Should cancel all subscriptions on reconnect."""
-        with patch('lib.metaApi.metaApiConnection.asyncio.sleep', new=lambda x: sleep(x / 10)):
+        with patch('lib.clients.metaApi.subscriptionManager.asyncio.sleep', new=lambda x: sleep(x / 10)):
             client.connect = AsyncMock()
             client.subscribe = AsyncMock()
             asyncio.create_task(manager.subscribe('accountId'))
@@ -75,7 +95,7 @@ class TestSubscriptionManager:
     @pytest.mark.asyncio
     async def test_no_multiple_subscribes(self):
         """Should not send multiple subscribe requests at the same time."""
-        with patch('lib.metaApi.metaApiConnection.asyncio.sleep', new=lambda x: sleep(x / 10)):
+        with patch('lib.clients.metaApi.subscriptionManager.asyncio.sleep', new=lambda x: sleep(x / 10)):
             client.subscribe = AsyncMock()
             asyncio.create_task(manager.subscribe('accountId'))
             asyncio.create_task(manager.subscribe('accountId'))
@@ -117,7 +137,7 @@ class TestSubscriptionManager:
     @pytest.mark.asyncio
     async def test_cancel_account(self):
         """Should cancel all subscriptions for an account."""
-        with patch('lib.metaApi.metaApiConnection.asyncio.sleep', new=lambda x: sleep(x / 10)):
+        with patch('lib.clients.metaApi.subscriptionManager.asyncio.sleep', new=lambda x: sleep(x / 10)):
             client.subscribe = AsyncMock()
             asyncio.create_task(manager.subscribe('accountId', 0))
             asyncio.create_task(manager.subscribe('accountId', 1))
