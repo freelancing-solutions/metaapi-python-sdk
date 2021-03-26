@@ -1,5 +1,8 @@
 import asyncio
 from random import uniform
+from ..errorHandler import TooManyRequestsException
+from ...metaApi.models import date
+from datetime import datetime
 
 
 class SubscriptionManager:
@@ -35,6 +38,12 @@ class SubscriptionManager:
                 async def subscribe_task():
                     try:
                         await self._websocketClient.subscribe(account_id, instance_index)
+                    except TooManyRequestsException as err:
+                        nonlocal subscribe_retry_interval_in_seconds
+                        retry_time = date(err.metadata['recommendedRetryTime']).timestamp()
+                        if datetime.now().timestamp() + subscribe_retry_interval_in_seconds < retry_time:
+                            await asyncio.sleep(retry_time - datetime.now().timestamp() -
+                                                subscribe_retry_interval_in_seconds)
                     except Exception as err:
                         pass
 

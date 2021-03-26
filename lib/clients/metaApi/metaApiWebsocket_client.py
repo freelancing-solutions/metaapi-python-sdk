@@ -779,7 +779,7 @@ class MetaApiWebsocketClient:
         while not self._resolved and (start_time + timedelta(seconds=self._connect_timeout) > datetime.now()):
             await asyncio.sleep(1)
         if not self._resolved:
-            raise TimeoutException(f"MetaApi websocket client request of account {account_id} timed because socket "
+            raise TimeoutException(f"MetaApi websocket client request of account {account_id} timed out because socket "
                                    f"client failed to connect to the server.")
         if request['type'] == 'subscribe':
             request['sessionId'] = self._sessionId
@@ -789,6 +789,22 @@ class MetaApiWebsocketClient:
         while True:
             try:
                 return await self._make_request(account_id, request, timeout_in_seconds)
+            except TooManyRequestsException as err:
+                calc_retry_counter = retry_counter
+                calc_request_time = 0
+                while calc_retry_counter < self._retries:
+                    calc_retry_counter += 1
+                    calc_request_time += min(pow(2, calc_retry_counter) * self._minRetryDelayInSeconds,
+                                             self._maxRetryDelayInSeconds)
+
+                retry_time = date(err.metadata['recommendedRetryTime']).timestamp()
+                if (datetime.now().timestamp() + calc_request_time) > retry_time and retry_counter < \
+                        self._retries:
+                    if datetime.now().timestamp() < retry_time:
+                        await asyncio.sleep(retry_time - datetime.now().timestamp())
+                    retry_counter += 1
+                else:
+                    raise err
             except Exception as err:
                 if err.__class__.__name__ in ['NotSynchronizedException', 'TimeoutException',
                                               'NotAuthenticatedException', 'InternalException'] and retry_counter < \
