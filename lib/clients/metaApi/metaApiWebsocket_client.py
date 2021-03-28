@@ -43,7 +43,7 @@ class MetaApiWebsocketClient:
         self._request_timeout = opts['requestTimeout'] if 'requestTimeout' in opts else 60
         self._connect_timeout = opts['connectTimeout'] if 'connectTimeout' in opts else 60
         retry_opts = opts['retryOpts'] if 'retryOpts' in opts else {}
-        self._retries = retry_opts['retries'] if 'retries' in opts else 5
+        self._retries = retry_opts['retries'] if 'retries' in retry_opts else 5
         self._minRetryDelayInSeconds = retry_opts['minDelayInSeconds'] if 'minDelayInSeconds' in retry_opts else 1
         self._maxRetryDelayInSeconds = retry_opts['maxDelayInSeconds'] if 'maxDelayInSeconds' in retry_opts else 30
         self._token = token

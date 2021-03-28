@@ -7,6 +7,9 @@
   - increase socket connection stability
   - added API for advanced market data subscriptions
   - added API to increase account reliability
+  - fixed retries option
+  - added subscription manager to handle account subscription process
+  - improved handling of too many requests error
 
 12.3.0
   - added credit account property
