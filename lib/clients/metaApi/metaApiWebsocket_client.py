@@ -667,7 +667,7 @@ class MetaApiWebsocketClient:
         """
         return self._rpc_request(account_id, {'type': 'saveUptime', 'uptime': uptime})
 
-    def unsubscribe(self, account_id: str):
+    async def unsubscribe(self, account_id: str):
         """Unsubscribe from account (see https://metaapi.cloud/docs/client/websocket/api/synchronizing/unsubscribe).
 
         Args:
@@ -676,7 +676,10 @@ class MetaApiWebsocketClient:
         Returns:
             A coroutine which resolves when socket is unsubscribed."""
         self._subscriptionManager.cancel_account(account_id)
-        return self._rpc_request(account_id, {'type': 'unsubscribe'})
+        try:
+            return await self._rpc_request(account_id, {'type': 'unsubscribe'})
+        except NotFoundException as err:
+            pass
 
     def add_synchronization_listener(self, account_id: str, listener):
         """Adds synchronization listener for specific account.
