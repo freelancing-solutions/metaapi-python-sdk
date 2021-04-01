@@ -727,6 +727,15 @@ class MetaApiConnection(SynchronizationListener, ReconnectListener):
         """
         return self._subscriptions[symbol]['subscriptions'] if symbol in self._subscriptions else []
 
+    def get_symbols(self) -> 'Coroutine[asyncio.Future[List[str]]]':
+        """Retrieves available symbols for an account (see
+        https://metaapi.cloud/docs/client/websocket/api/retrieveMarketData/readSymbols/).
+
+        Returns:
+            A coroutine which resolves when symbols are retrieved.
+        """
+        return self._websocketClient.get_symbols(self._account.id)
+
     def get_symbol_specification(self, symbol: str) -> 'Coroutine[asyncio.Future[MetatraderSymbolSpecification]]':
         """Retrieves specification for a symbol (see
         https://metaapi.cloud/docs/client/websocket/api/retrieveMarketData/readSymbolSpecification/).

@@ -10,6 +10,7 @@
   - fixed retries option
   - added subscription manager to handle account subscription process
   - improved handling of too many requests error
+  - added get_symbols RPC API
 
 12.3.0
   - added credit account property
