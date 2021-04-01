@@ -3,7 +3,6 @@ from ..clients.metaApi.metaApiWebsocket_client import MetaApiWebsocketClient
 from .models import MetatraderHistoryOrders, MetatraderDeals
 from ..clients.metaApi.reconnectListener import ReconnectListener
 from ..clients.metaApi.synchronizationListener import SynchronizationListener
-from ..clients.timeoutException import TimeoutException
 from .metatraderAccount import MetatraderAccount
 from datetime import datetime, timedelta
 from mock import MagicMock, AsyncMock, patch

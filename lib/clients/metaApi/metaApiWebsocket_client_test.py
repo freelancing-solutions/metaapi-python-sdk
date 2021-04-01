@@ -798,6 +798,29 @@ class TestMetaApiWebsocketClient:
         assert actual['accountId'] == response['accountId']
 
     @pytest.mark.asyncio
+    async def test_ignore_not_found_unsubscribe(self):
+        """Should ignore not found exception on unsubscribe."""
+
+        @sio.on('request')
+        async def on_request(sid, data):
+            await sio.emit('processingError', {'id': 1, 'error': 'ValidationError', 'message': 'Validation failed',
+                                               'details': [{'parameter': 'volume', 'message': 'Required value.'}],
+                                               'requestId': data['requestId']})
+
+        try:
+            await client.unsubscribe('accountId')
+            raise Exception('ValidationException expected')
+        except Exception as err:
+            assert err.__class__.__name__ == 'ValidationException'
+
+        @sio.on('request')
+        async def on_request(sid, data):
+            await sio.emit('processingError', {'id': 2, 'error': 'NotFoundError', 'message': 'Account not found',
+                                               'requestId': data['requestId']})
+
+        await client.unsubscribe('accountId')
+
+    @pytest.mark.asyncio
     async def test_handle_validation_exception(self):
         """Should handle ValidationError."""
 
