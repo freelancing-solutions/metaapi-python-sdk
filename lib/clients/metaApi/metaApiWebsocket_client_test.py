@@ -641,6 +641,20 @@ class TestMetaApiWebsocketClient:
         assert request_received
 
     @pytest.mark.asyncio
+    async def test_retrieve_symbols(self):
+        """Should retrieve symbols from API."""
+        symbols = ['EURUSD']
+
+        @sio.on('request')
+        async def on_request(sid, data):
+            if data['type'] == 'getSymbols' and data['accountId'] == 'accountId' and data['application'] == 'RPC':
+                await sio.emit('response', {'type': 'response', 'accountId': data['accountId'],
+                                            'requestId': data['requestId'], 'symbols': symbols})
+
+        actual = await client.get_symbols('accountId')
+        assert actual == symbols
+
+    @pytest.mark.asyncio
     async def test_retrieve_symbol_specification(self):
         """Should retrieve symbol specification from API."""
 

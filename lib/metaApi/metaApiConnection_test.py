@@ -758,6 +758,15 @@ class TestMetaApiConnection:
         api.unsubscribe_from_market_data.assert_not_called()
 
     @pytest.mark.asyncio
+    async def test_retrieve_symbols(self):
+        """Should retrieve symbols."""
+        symbols = ['EURUSD']
+        client.get_symbols = AsyncMock(return_value=symbols)
+        actual = await api.get_symbols()
+        assert actual == symbols
+        client.get_symbols.assert_called_with('accountId')
+
+    @pytest.mark.asyncio
     async def test_retrieve_symbol_specification(self):
         """Should retrieve symbol specification."""
         specification = {

@@ -277,6 +277,8 @@ Query contract specifications and quotes via RPC API
     # first, subscribe to market data
     await connection.subscribe_to_market_data(symbol='GBPUSD')
 
+    # read symbols available
+    print(await connection.get_symbols())
     # read contract specification
     print(await connection.get_symbol_specification(symbol='GBPUSD'))
     # read current price

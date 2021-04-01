@@ -576,6 +576,19 @@ class MetaApiWebsocketClient:
             packet['subscriptions'] = subscriptions
         return self._rpc_request(account_id, packet)
 
+    async def get_symbols(self, account_id: str) -> 'asyncio.Future[List[str]]':
+        """Retrieves symbols available on an account (see
+        https://metaapi.cloud/docs/client/websocket/api/retrieveMarketData/readSymbols/).
+
+        Args:
+            account_id: Id of the MetaTrader account to retrieve symbols for.
+
+        Returns:
+            A coroutine which resolves when symbols are retrieved.
+        """
+        response = await self._rpc_request(account_id, {'application': 'RPC', 'type': 'getSymbols'})
+        return response['symbols']
+
     async def get_symbol_specification(self, account_id: str, symbol: str) -> \
             'asyncio.Future[MetatraderSymbolSpecification]':
         """Retrieves specification for a symbol
