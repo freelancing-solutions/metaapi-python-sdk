@@ -1,3 +1,6 @@
+12.4.1
+  - handle TooManyRequestsException in HTTP client
+
 12.4.0
   - added clientId to query websocket url
   - added equity curve filter to CopyFactory
