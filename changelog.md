@@ -1,5 +1,6 @@
 12.4.1
   - handle TooManyRequestsException in HTTP client
+  - limit max concurrent synchronizations based on the number of subscribed accounts
 
 12.4.0
   - added clientId to query websocket url

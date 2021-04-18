@@ -101,6 +101,16 @@ class MetaApiWebsocketClient:
         """
         return self._socket.connected if self._socket else False
 
+    @property
+    def subscribed_account_ids(self) -> List[str]:
+        """Returns the list of subscribed account ids."""
+        connected_ids = []
+        for instance_id in self._connectedHosts.keys():
+            account_id = instance_id.split(':')[0]
+            if account_id not in connected_ids:
+                connected_ids.append(account_id)
+        return connected_ids
+
     async def connect(self) -> asyncio.Future:
         """Connects to MetaApi server via socket.io protocol
 
@@ -1262,8 +1272,8 @@ class MetaApiWebsocketClient:
                 elif data['type'] == 'downgradeSubscription':
                     print(f'{data["accountId"]}: Market data subscriptions for symbol {data["symbol"]} were '
                           f'downgraded by the server due to rate limits. Updated subscriptions: '
-                          f'{json.dumps(data["updates"])}, removed subscriptions: '
-                          f'{json.dumps(data["unsubscriptions"])}. Please read '
+                          f'{json.dumps(data["updates"]) if "updates" in data else ""}, removed subscriptions: '
+                          f'{json.dumps(data["unsubscriptions"]) if "unsubscriptions" in data else ""}. Please read '
                           'https://metaapi.cloud/docs/client/rateLimiting/ for more details.')
 
                     on_subscription_downgrade_tasks = []
