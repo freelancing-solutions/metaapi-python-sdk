@@ -8,9 +8,17 @@ from .synchronizationThrottler import SynchronizationThrottler
 
 
 class MockClient(MetaApiWebsocketClient):
+    def __init__(self, token):
+        super().__init__(token)
+        self._subscribed_account_ids = ['accountId1'] * 11
+
     async def _rpc_request(self, account_id: str, request: dict, timeout_in_seconds: float = None):
         await sleep(0.1)
         pass
+
+    @property
+    def subscribed_account_ids(self):
+        return self._subscribed_account_ids
 
 
 start_time = '2020-10-05 10:00:00.000'
@@ -25,7 +33,7 @@ async def run_around_tests():
         client = MockClient('token')
         client._rpc_request = AsyncMock()
         global throttler
-        throttler = SynchronizationThrottler(client, {'maxConcurrentSynchronizations': 2})
+        throttler = SynchronizationThrottler(client)
         throttler.start()
         yield
         throttler.stop()
@@ -59,6 +67,34 @@ class TestSynchronizationThrottler:
     @pytest.mark.asyncio
     async def test_sync_with_queue(self):
         """Should wait for other sync requests to finish if slots are full."""
+        await throttler.schedule_synchronize('accountId1', {'requestId': 'test1'})
+        await throttler.schedule_synchronize('accountId2', {'requestId': 'test2'})
+        client._rpc_request.assert_any_call('accountId1', {'requestId': 'test1'})
+        client._rpc_request.assert_any_call('accountId2', {'requestId': 'test2'})
+        asyncio.create_task(throttler.schedule_synchronize('accountId3', {'requestId': 'test3'}))
+        await sleep(0.1)
+        assert client._rpc_request.call_count == 2
+        throttler.remove_synchronization_id('test1')
+        await sleep(0.1)
+        assert client._rpc_request.call_count == 3
+
+    @pytest.mark.asyncio
+    async def test_increase_slots_with_more_accounts(self):
+        """Should increase slot amount with more subscribed accounts."""
+        client._subscribed_account_ids = ['accountId1'] * 21
+        await throttler.schedule_synchronize('accountId1', {'requestId': 'test1'})
+        await throttler.schedule_synchronize('accountId2', {'requestId': 'test2'})
+        await throttler.schedule_synchronize('accountId3', {'requestId': 'test3'})
+        client._rpc_request.assert_any_call('accountId1', {'requestId': 'test1'})
+        client._rpc_request.assert_any_call('accountId2', {'requestId': 'test2'})
+        client._rpc_request.assert_any_call('accountId3', {'requestId': 'test3'})
+        assert client._rpc_request.call_count == 3
+
+    @pytest.mark.asyncio
+    async def test_limit_slots_in_options(self):
+        """Should set hard limit for concurrent synchronizations via options."""
+        throttler = SynchronizationThrottler(client, {'maxConcurrentSynchronizations': 2})
+        client._subscribed_account_ids = ['accountId1'] * 21
         await throttler.schedule_synchronize('accountId1', {'requestId': 'test1'})
         await throttler.schedule_synchronize('accountId2', {'requestId': 'test2'})
         client._rpc_request.assert_any_call('accountId1', {'requestId': 'test1'})

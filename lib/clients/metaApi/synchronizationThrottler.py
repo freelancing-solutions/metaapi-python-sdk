@@ -4,6 +4,7 @@ from datetime import datetime
 import asyncio
 from typing_extensions import TypedDict
 from typing import Optional, List
+import math
 
 
 class SynchronizationThrottlerOpts(TypedDict):
@@ -29,7 +30,7 @@ class SynchronizationThrottler:
         """
         opts: SynchronizationThrottlerOpts = opts or {}
         self._maxConcurrentSynchronizations = opts['maxConcurrentSynchronizations'] if \
-            'maxConcurrentSynchronizations' in opts else 10
+            'maxConcurrentSynchronizations' in opts else None
         self._queueTimeoutInSeconds = opts['queueTimeoutInSeconds'] if 'queueTimeoutInSeconds' in opts else 300
         self._synchronizationTimeoutInSeconds = opts['synchronizationTimeoutInSeconds'] if \
             'synchronizationTimeoutInSeconds' in opts else 10
@@ -89,6 +90,13 @@ class SynchronizationThrottler:
         return list(self._accountsBySynchronizationIds.keys())
 
     @property
+    def max_concurrent_synchronizations(self) -> int:
+        """Returns the amount of maximum allowed concurrent synchronizations."""
+        calculated_max = max(math.ceil(len(self._client.subscribed_account_ids) / 10), 1)
+        return min(calculated_max, self._maxConcurrentSynchronizations) if self._maxConcurrentSynchronizations else \
+            calculated_max
+
+    @property
     def is_synchronization_available(self) -> bool:
         """Whether there are free slots for synchronization requests."""
         synchronizing_accounts = []
@@ -97,7 +105,7 @@ class SynchronizationThrottler:
                                                                       self._accountsBySynchronizationIds else None
             if account_data and (account_data['accountId'] not in synchronizing_accounts):
                 synchronizing_accounts.append(account_data['accountId'])
-        return len(synchronizing_accounts) < self._maxConcurrentSynchronizations
+        return len(synchronizing_accounts) < self.max_concurrent_synchronizations
 
     def remove_synchronization_id(self, synchronization_id: str):
         """Removes synchronization id from slots and removes ids for the same account from the queue.
@@ -137,7 +145,7 @@ class SynchronizationThrottler:
 
     async def _process_queue_job(self):
         while len(self._synchronizationQueue) and (len(self._synchronizationIds.values()) <
-                                                   self._maxConcurrentSynchronizations):
+                                                   self.max_concurrent_synchronizations):
             await self._synchronizationQueue[0]['promise']
             self._synchronizationQueue.popleft()
 
