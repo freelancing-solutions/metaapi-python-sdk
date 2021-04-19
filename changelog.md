@@ -1,4 +1,5 @@
-12.4.1
+12.5.0
+  - added baseCurrency field to the MetaTraderAccount model
   - handle TooManyRequestsException in HTTP client
   - limit max concurrent synchronizations based on the number of subscribed accounts
 

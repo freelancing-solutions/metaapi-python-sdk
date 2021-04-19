@@ -140,7 +140,7 @@ class MetatraderPosition(TypedDict):
     POSITION_REASON_WEB, POSITION_REASON_UNKNOWN. See
     https://www.mql5.com/en/docs/constants/tradingconstants/positionproperties#enum_position_reason"""
     accountCurrencyExchangeRate: Optional[float]
-    """Current exchange rate of account currency into USD."""
+    """Current exchange rate of account currency into account base currency (USD if you did not override it)."""
     originalComment: Optional[str]
     """Position original comment (present if possible to restore from history)."""
     updatePending: Optional[bool]
@@ -218,7 +218,7 @@ class MetatraderOrder(TypedDict):
     expirationTime: datetime
     """Optional order expiration time."""
     accountCurrencyExchangeRate: Optional[float]
-    """Current exchange rate of account currency into USD."""
+    """Current exchange rate of account currency into account base currency (USD if you did not override it)."""
     closeByPositionId: Optional[str]
     """Identifier of an opposite position used for closing by order ORDER_TYPE_CLOSE_BY"""
     stopLimitPrice: Optional[float]
@@ -293,7 +293,7 @@ class MetatraderDeal(TypedDict):
     DEAL_REASON_SPLIT, DEAL_REASON_UNKNOWN. See
     https://www.mql5.com/en/docs/constants/tradingconstants/dealproperties#enum_deal_reason."""
     accountCurrencyExchangeRate: Optional[float]
-    """Current exchange rate of account currency into USD."""
+    """Current exchange rate of account currency into account base currency (USD if you did not override it)."""
 
 
 class MetatraderDeals(TypedDict):
@@ -464,7 +464,7 @@ class MetatraderSymbolPrice(TypedDict):
     lossTickValue: float
     """Tick value for a loosing position."""
     accountCurrencyExchangeRate: float
-    """Current exchange rate of account currency into USD."""
+    """Current exchange rate of account currency into account base currency (USD if you did not override it)."""
     time: str
     """Quote time, in ISO format"""
     brokerTime: str

@@ -18,12 +18,6 @@ Please note that this SDK provides an abstraction over REST and websocket API to
 
 For more information about SDK APIs please check docstring documentation in source codes located inside lib folder of this package.
 
-Installation
-============
-.. code-block:: bash
-
-    pip install metaapi-cloud-sdk
-
 Working code examples
 =====================
 Please check `this short video <https://youtu.be/LIqFOOOLP-g>`_ to see how you can download samples via our web application.
@@ -31,6 +25,12 @@ Please check `this short video <https://youtu.be/LIqFOOOLP-g>`_ to see how you c
 You can find code examples at `examples folder of our github repo <https://github.com/agiliumtrade-ai/metaapi-python-sdk/tree/master/examples>`_ or in the examples folder of the pip package.
 
 We have composed a `short guide explaining how to use the example code <https://metaapi.cloud/docs/client/usingCodeExamples>`_
+
+Installation
+============
+.. code-block:: bash
+
+    pip install metaapi-cloud-sdk
 
 Connecting to MetaApi
 =====================
@@ -495,10 +495,9 @@ Create a MetaTrader 5 demo account
 
 Rate limits & quotas
 ===========================================
-MetaApi applies rate limits to requests. See `MT account management API <https://metaapi.cloud/docs/provisioning/rateLimiting/>`_ and `MetaApi API <https://metaapi.cloud/docs/client/rateLimiting/>`_ for details.
+API calls you make are subject to rate limits. See `MT account management API <https://metaapi.cloud/docs/provisioning/rateLimiting/>`_ and `MetaApi API <https://metaapi.cloud/docs/client/rateLimiting/>`_ for details.
 
-MetaApi applies quotas to limit the number of accounts and provisioning profiles, for more details see the `MT account management API quotas <https://metaapi.cloud/docs/provisioning/userQuota/>`_
-
+MetaApi applies quotas to the number of accounts and provisioning profiles, for more details see the `MT account management API quotas <https://metaapi.cloud/docs/provisioning/userQuota/>`_
 
 CopyFactory copy trading API
 ===========================================
