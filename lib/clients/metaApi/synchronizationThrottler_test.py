@@ -1,4 +1,4 @@
-from mock import AsyncMock, patch
+from mock import AsyncMock, patch, MagicMock
 import pytest
 from asyncio import sleep
 import asyncio
@@ -16,8 +16,7 @@ class MockClient(MetaApiWebsocketClient):
         await sleep(0.1)
         pass
 
-    @property
-    def subscribed_account_ids(self):
+    def subscribed_account_ids(self, socket_instance_index=None):
         return self._subscribed_account_ids
 
 
@@ -33,7 +32,7 @@ async def run_around_tests():
         client = MockClient('token')
         client._rpc_request = AsyncMock()
         global throttler
-        throttler = SynchronizationThrottler(client)
+        throttler = SynchronizationThrottler(client, 0)
         throttler.start()
         yield
         throttler.stop()
@@ -92,14 +91,15 @@ class TestSynchronizationThrottler:
 
     @pytest.mark.asyncio
     async def test_limit_slots_in_options(self):
-        """Should set hard limit for concurrent synchronizations via options."""
-        throttler = SynchronizationThrottler(client, {'maxConcurrentSynchronizations': 2})
+        """Should set hard limit for concurrent synchronizations across throttlers via options."""
         client._subscribed_account_ids = ['accountId1'] * 21
+        throttler = SynchronizationThrottler(client, 0, {'maxConcurrentSynchronizations': 3})
+        client._socketInstances = [{'synchronizationThrottler': throttler}, {'synchronizationThrottler': MagicMock()}]
+        client._socketInstances[1]['synchronizationThrottler'].synchronizing_accounts = ['accountId4']
         await throttler.schedule_synchronize('accountId1', {'requestId': 'test1'})
         await throttler.schedule_synchronize('accountId2', {'requestId': 'test2'})
-        client._rpc_request.assert_any_call('accountId1', {'requestId': 'test1'})
-        client._rpc_request.assert_any_call('accountId2', {'requestId': 'test2'})
         asyncio.create_task(throttler.schedule_synchronize('accountId3', {'requestId': 'test3'}))
+        asyncio.create_task(throttler.schedule_synchronize('accountId4', {'requestId': 'test4'}))
         await sleep(0.1)
         assert client._rpc_request.call_count == 2
         throttler.remove_synchronization_id('test1')

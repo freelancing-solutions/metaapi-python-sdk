@@ -46,21 +46,21 @@ class MetaApiWebsocketClient:
         self._retries = retry_opts['retries'] if 'retries' in retry_opts else 5
         self._minRetryDelayInSeconds = retry_opts['minDelayInSeconds'] if 'minDelayInSeconds' in retry_opts else 1
         self._maxRetryDelayInSeconds = retry_opts['maxDelayInSeconds'] if 'maxDelayInSeconds' in retry_opts else 30
+        self._maxAccountsPerInstance = 100
+        self._subscribeCooldownInSeconds = retry_opts['subscribeCooldownInSeconds'] if 'subscribeCooldownInSeconds' \
+            in retry_opts else 600
         self._token = token
-        self._requestResolves = {}
         self._synchronizationListeners = {}
         self._latencyListeners = []
-        self._connected = False
-        self._socket = None
-        self._sessionId = None
-        self._isReconnecting = False
         self._reconnectListeners = []
         self._connectedHosts = {}
-        self._synchronizationThrottler = SynchronizationThrottler(self, opts['synchronizationThrottler'])
-        self._synchronizationThrottler.start()
+        self._socketInstances = []
+        self._socketInstancesByAccounts = {}
+        self._synchronizationThrottlerOpts = opts['synchronizationThrottler']
         self._subscriptionManager = SubscriptionManager(self)
         self._packetOrderer = PacketOrderer(self, opts['packetOrderingTimeout'])
         self._status_timers = {}
+        self._subscribeLock = None
         if 'packetLogger' in opts and 'enabled' in opts['packetLogger'] and opts['packetLogger']['enabled']:
             self._packetLogger = PacketLogger(opts['packetLogger'])
             self._packetLogger.start()
@@ -93,23 +93,76 @@ class MetaApiWebsocketClient:
         self._url = url
 
     @property
-    def connected(self) -> bool:
-        """Returns websocket client connection status.
-
-        Returns:
-            Websocket client connection status.
-        """
-        return self._socket.connected if self._socket else False
+    def socket_instances(self):
+        """Returns the list of socket instance dictionaries."""
+        return self._socketInstances
 
     @property
-    def subscribed_account_ids(self) -> List[str]:
-        """Returns the list of subscribed account ids."""
+    def socket_instances_by_accounts(self):
+        """Returns the dictionary of socket instances by account ids"""
+        return self._socketInstancesByAccounts
+
+    def subscribed_account_ids(self, socket_instance_index: int = None) -> List[str]:
+        """Returns the list of subscribed account ids.
+
+        Args:
+            socket_instance_index: Socket instance index.
+        """
         connected_ids = []
         for instance_id in self._connectedHosts.keys():
             account_id = instance_id.split(':')[0]
-            if account_id not in connected_ids:
+            if account_id not in connected_ids and account_id in self._socketInstancesByAccounts and \
+                    (self._socketInstancesByAccounts[account_id] == socket_instance_index or
+                     socket_instance_index is None):
                 connected_ids.append(account_id)
         return connected_ids
+
+    def connected(self, socket_instance_index: int) -> bool:
+        """Returns websocket client connection status.
+
+        Args:
+            socket_instance_index: Socket instance index.
+        """
+        instance = self._socketInstances[socket_instance_index] if len(self._socketInstances) > \
+            socket_instance_index else None
+        return instance['socket'].connected if instance else False
+
+    def get_assigned_accounts(self, socket_instance_index: int):
+        """Returns list of accounts assigned to instance.
+
+        Args:
+            socket_instance_index: Socket instance index.
+        """
+        account_ids = []
+        for key in self._socketInstancesByAccounts.keys():
+            if self._socketInstancesByAccounts[key] == socket_instance_index:
+                account_ids.append(key)
+        return account_ids
+
+    async def lock_socket_instance(self, socket_instance_index: int, metadata: Dict):
+        """Locks subscription for a socket instance based on TooManyRequestsException metadata.
+
+        Args:
+            socket_instance_index: Socket instance index.
+            metadata: TooManyRequestsException metadata.
+        """
+        if metadata['type'] == 'LIMIT_ACCOUNT_SUBSCRIPTIONS_PER_USER':
+            self._subscribeLock = {
+                'recommendedRetryTime': metadata['recommendedRetryTime'],
+                'lockedAtAccounts': len(self.subscribed_account_ids()),
+                'lockedAtTime': datetime.now().timestamp()
+            }
+        else:
+            subscribed_accounts = self.subscribed_account_ids(socket_instance_index)
+            if len(subscribed_accounts) == 0:
+                await self._reconnect(socket_instance_index)
+            else:
+                instance = self.socket_instances[socket_instance_index]
+                instance['subscribeLock'] = {
+                    'recommendedRetryTime': metadata['recommendedRetryTime'],
+                    'type': metadata['type'],
+                    'lockedAtAccounts': len(subscribed_accounts)
+                }
 
     async def connect(self) -> asyncio.Future:
         """Connects to MetaApi server via socket.io protocol
@@ -117,114 +170,131 @@ class MetaApiWebsocketClient:
         Returns:
             A coroutine which resolves when connection is established.
         """
-        if not self._connected:
-            self._connected = True
-            self._requestResolves = {}
-            self._resolved = False
-            self._connectResult = asyncio.Future()
+        socket_instance_index = len(self._socketInstances)
+        instance = {
+            'id': socket_instance_index,
+            'connected': False,
+            'requestResolves': {},
+            'resolved': False,
+            'connectResult': asyncio.Future(),
+            'sessionId': random_id(),
+            'isReconnecting': False,
+            'socket': socketio.AsyncClient(reconnection=False, request_timeout=self._request_timeout),
+            'synchronizationThrottler': SynchronizationThrottler(self, socket_instance_index,
+                                                                 self._synchronizationThrottlerOpts),
+            'subscribeLock': None
+        }
+        instance['synchronizationThrottler'].start()
+        socket_instance = instance['socket']
+        self._socketInstances.append(instance)
+        instance['connected'] = True
+        if len(self._socketInstances) == 1:
             self._packetOrderer.start()
-            self._socket = socketio.AsyncClient(reconnection=False, request_timeout=self._request_timeout)
 
-            while not self._socket.connected:
-                try:
-                    client_id = "{:01.10f}".format(random())
-                    url = f'{self._url}?auth-token={self._token}&clientId={client_id}'
-                    self._sessionId = random_id()
-                    await asyncio.wait_for(self._socket.connect(url, socketio_path='ws',
-                                                                headers={'Client-Id': client_id}),
-                                           timeout=self._connect_timeout)
-                except Exception:
-                    pass
+        @socket_instance.on('connect')
+        async def on_connect():
+            print(f'[{datetime.now().isoformat()}] MetaApi websocket client connected to the MetaApi server')
+            if not instance['resolved']:
+                instance['resolved'] = True
+                instance['connectResult'].set_result(None)
 
-            @self._socket.on('connect')
-            async def on_connect():
-                print(f'[{datetime.now().isoformat()}] MetaApi websocket client connected to the MetaApi server')
-                if not self._resolved:
-                    self._resolved = True
-                    self._connectResult.set_result(None)
+            if not instance['connected']:
+                await instance['socket'].disconnect()
 
-                if not self._connected:
-                    self._socket.disconnect()
+        @socket_instance.on('connect_error')
+        def on_connect_error(err):
+            print(f'[{datetime.now().isoformat()}] MetaApi websocket client connection error', err)
+            if not instance['resolved']:
+                instance['resolved'] = True
+                instance['connectResult'].set_exception(Exception(err))
 
-            @self._socket.on('connect_error')
-            def on_connect_error(err):
-                print(f'[{datetime.now().isoformat()}] MetaApi websocket client connection error', err)
-                if not self._resolved:
-                    self._resolved = True
-                    self._connectResult.set_exception(Exception(err))
+        @socket_instance.on('connect_timeout')
+        def on_connect_timeout(timeout):
+            print(f'[{datetime.now().isoformat()}] MetaApi websocket client connection timeout')
+            if not instance['resolved']:
+                instance['resolved'] = True
+                instance['connectResult'].set_exception(TimeoutException(
+                    'MetaApi websocket client connection timed out'))
 
-            @self._socket.on('connect_timeout')
-            def on_connect_timeout(timeout):
-                print(f'[{datetime.now().isoformat()}] MetaApi websocket client connection timeout')
-                if not self._resolved:
-                    self._resolved = True
-                    self._connectResult.set_exception(TimeoutException('MetaApi websocket client connection timed out'))
+        @socket_instance.on('disconnect')
+        async def on_disconnect():
+            instance['synchronizationThrottler'].on_disconnect()
+            print(f'[{datetime.now().isoformat()}] MetaApi websocket client disconnected from the MetaApi server')
+            await self._reconnect(instance['id'])
 
-            @self._socket.on('disconnect')
-            async def on_disconnect():
-                self._synchronizationThrottler.on_disconnect()
-                print(f'[{datetime.now().isoformat()}] MetaApi websocket client disconnected from the MetaApi server')
-                await self._reconnect()
+        @socket_instance.on('error')
+        async def on_error(error):
+            print(f'[{datetime.now().isoformat()}] MetaApi websocket client error', error)
+            await self._reconnect(instance['id'])
 
-            @self._socket.on('error')
-            async def on_error(error):
-                print(f'[{datetime.now().isoformat()}] MetaApi websocket client error', error)
-                await self._reconnect()
+        @socket_instance.on('response')
+        async def on_response(data):
+            if data['requestId'] in instance['requestResolves']:
+                request_resolve = instance['requestResolves'][data['requestId']]
+                del instance['requestResolves'][data['requestId']]
+            else:
+                request_resolve = asyncio.Future()
+            self._convert_iso_time_to_date(data)
+            if not request_resolve.done():
+                request_resolve.set_result(data)
+            if 'timestamps' in data and hasattr(request_resolve, 'type'):
+                data['timestamps']['clientProcessingFinished'] = datetime.now()
+                for listener in self._latencyListeners:
+                    try:
+                        if request_resolve.type == 'trade':
+                            await listener.on_trade(data['accountId'], data['timestamps'])
+                        else:
+                            await listener.on_response(data['accountId'], request_resolve.type, data['timestamps'])
+                    except Exception as error:
+                        print(f'[{datetime.now().isoformat()}] Failed to process on_response event for account ' +
+                              data['accountId'] + ', request type ' + request_resolve.type, error)
 
-            @self._socket.on('response')
-            async def on_response(data):
-                if data['requestId'] in self._requestResolves:
-                    request_resolve = self._requestResolves[data['requestId']]
-                    del self._requestResolves[data['requestId']]
-                else:
-                    request_resolve = asyncio.Future()
-                self._convert_iso_time_to_date(data)
+        @socket_instance.on('processingError')
+        def on_processing_error(data):
+            if data['requestId'] in instance['requestResolves']:
+                request_resolve = instance['requestResolves'][data['requestId']]
+                del instance['requestResolves'][data['requestId']]
                 if not request_resolve.done():
-                    request_resolve.set_result(data)
-                if 'timestamps' in data and hasattr(request_resolve, 'type'):
-                    data['timestamps']['clientProcessingFinished'] = datetime.now()
-                    for listener in self._latencyListeners:
-                        try:
-                            if request_resolve.type == 'trade':
-                                await listener.on_trade(data['accountId'], data['timestamps'])
-                            else:
-                                await listener.on_response(data['accountId'], request_resolve.type, data['timestamps'])
-                        except Exception as error:
-                            print(f'[{datetime.now().isoformat()}] Failed to process on_response event for account ' +
-                                  data['accountId'] + ', request type ' + request_resolve.type, error)
+                    request_resolve.set_exception(self._convert_error(data))
 
-            @self._socket.on('processingError')
-            def on_processing_error(data):
-                if data['requestId'] in self._requestResolves:
-                    request_resolve = self._requestResolves[data['requestId']]
-                    del self._requestResolves[data['requestId']]
-                    if not request_resolve.done():
-                        request_resolve.set_exception(self._convert_error(data))
+        @socket_instance.on('synchronization')
+        async def on_synchronization(data):
+            if ('synchronizationId' not in data) or \
+                    (data['synchronizationId'] in instance['synchronizationThrottler'].active_synchronization_ids):
+                if self._packetLogger:
+                    self._packetLogger.log_packet(data)
+                self._convert_iso_time_to_date(data)
+                await self._process_synchronization_packet(data)
 
-            @self._socket.on('synchronization')
-            async def on_synchronization(data):
-                if ('synchronizationId' not in data) or \
-                        (data['synchronizationId'] in self._synchronizationThrottler.active_synchronization_ids):
-                    if self._packetLogger:
-                        self._packetLogger.log_packet(data)
-                    self._convert_iso_time_to_date(data)
-                    await self._process_synchronization_packet(data)
+        while not socket_instance.connected:
+            try:
+                client_id = "{:01.10f}".format(random())
+                url = f'{self._url}?auth-token={self._token}&clientId={client_id}'
+                instance['sessionId'] = random_id()
+                await asyncio.wait_for(socket_instance.connect(url, socketio_path='ws',
+                                                               headers={'Client-Id': client_id}),
+                                       timeout=self._connect_timeout)
+            except Exception:
+                pass
 
-            return self._connectResult
+        return instance['connectResult']
 
     async def close(self):
         """Closes connection to MetaApi server"""
-        if self._connected:
-            self._connected = False
-            await self._socket.disconnect()
-            for request_resolve in self._requestResolves:
-                if not self._requestResolves[request_resolve].done():
-                    self._requestResolves[request_resolve].set_exception(Exception('MetaApi connection closed'))
-            self._requestResolves = {}
-            self._synchronizationListeners = {}
-            self._latencyListeners = []
-            self._reconnectListeners = []
-            self._packetOrderer.stop()
+        for instance in self._socketInstances:
+            if instance['connected']:
+                instance['connected'] = False
+                await instance['socket'].disconnect()
+                for request_resolve in instance['requestResolves']:
+                    if not instance['requestResolves'][request_resolve].done():
+                        instance['requestResolves'][request_resolve]\
+                            .set_exception(Exception('MetaApi connection closed'))
+                instance['requestResolves'] = {}
+        self._synchronizationListeners = {}
+        self._latencyListeners = []
+        self._socketInstancesByAccounts = {}
+        self._socketInstances = []
+        self._packetOrderer.stop()
 
     async def get_account_information(self, account_id: str) -> 'asyncio.Future[MetatraderAccountInformation]':
         """Returns account information for a specified MetaTrader account
@@ -523,7 +593,9 @@ class MetaApiWebsocketClient:
         Returns:
             A coroutine which resolves when synchronization is started.
         """
-        return self._synchronizationThrottler.schedule_synchronize(account_id, {
+        sync_throttler = self._socketInstances[
+            self.socket_instances_by_accounts[account_id]]['synchronizationThrottler']
+        return sync_throttler.schedule_synchronize(account_id, {
             'requestId': synchronization_id, 'type': 'synchronize',
             'startingHistoryOrderTime': format_date(starting_history_order_time),
             'startingDealTime': format_date(starting_deal_time),
@@ -700,7 +772,8 @@ class MetaApiWebsocketClient:
             A coroutine which resolves when socket is unsubscribed."""
         self._subscriptionManager.cancel_account(account_id)
         try:
-            return await self._rpc_request(account_id, {'type': 'unsubscribe'})
+            await self._rpc_request(account_id, {'type': 'unsubscribe'})
+            del self._socketInstancesByAccounts[account_id]
         except NotFoundException as err:
             pass
 
@@ -747,14 +820,15 @@ class MetaApiWebsocketClient:
             listener: Latency listener to remove."""
         self._latencyListeners = list(filter(lambda l: l != listener, self._latencyListeners))
 
-    def add_reconnect_listener(self, listener: ReconnectListener):
+    def add_reconnect_listener(self, listener: ReconnectListener, account_id: str):
         """Adds reconnect listener.
 
         Args:
             listener: Reconnect listener to add.
+            account_id: Account id of listener.
         """
 
-        self._reconnectListeners.append(listener)
+        self._reconnectListeners.append({'accountId': account_id, 'listener': listener})
 
     def remove_reconnect_listener(self, listener: ReconnectListener):
         """Removes reconnect listener.
@@ -772,43 +846,74 @@ class MetaApiWebsocketClient:
         self._synchronizationListeners = {}
         self._reconnectListeners = []
 
-    async def _reconnect(self):
+    async def _reconnect(self, socket_instance_index: int):
         reconnected = False
-        prev_session_id = self._sessionId
-        if not self._isReconnecting:
-            self._isReconnecting = True
-            while self._connected and not reconnected:
+        instance = self._socketInstances[socket_instance_index]
+        if not instance['isReconnecting']:
+            instance['isReconnecting'] = True
+            while instance['connected'] and not reconnected:
                 try:
-                    await self._socket.disconnect()
+                    await instance['socket'].disconnect()
                     client_id = "{:01.10f}".format(random())
                     url = f'{self._url}?auth-token={self._token}&clientId={client_id}'
-                    self._connectResult = asyncio.Future()
-                    self._resolved = False
-                    self._sessionId = random_id()
-                    await asyncio.wait_for(self._socket.connect(url, socketio_path='ws',
-                                                                headers={'Client-Id': client_id}),
+                    instance['connectResult'] = asyncio.Future()
+                    instance['resolved'] = False
+                    instance['sessionId'] = random_id()
+                    await asyncio.wait_for(instance['socket'].connect(url, socketio_path='ws',
+                                                                      headers={'Client-Id': client_id}),
                                            timeout=self._connect_timeout)
-                    await asyncio.wait_for(self._connectResult, self._connect_timeout)
+                    await asyncio.wait_for(instance['connectResult'], self._connect_timeout)
                     reconnected = True
-                    self._isReconnecting = False
-                    await self._fire_reconnected()
-                    await self._socket.wait()
+                    instance['isReconnecting'] = False
+                    await self._fire_reconnected(socket_instance_index)
+                    await instance['socket'].wait()
                 except Exception as err:
-                    self._connectResult.cancel()
-                    self._connectResult = None
+                    instance['connectResult'].cancel()
+                    instance['connectResult'] = None
                     await asyncio.sleep(1)
 
     async def _rpc_request(self, account_id: str, request: dict, timeout_in_seconds: float = None) -> Coroutine:
-        if not self._connected:
-            await self.connect()
+        if account_id in self._socketInstancesByAccounts:
+            socket_instance_index = self._socketInstancesByAccounts[account_id]
+        else:
+            socket_instance_index = None
+            while self._subscribeLock and \
+                    ((date(self._subscribeLock['recommendedRetryTime']).timestamp() > datetime.now().timestamp() and
+                     len(self.subscribed_account_ids()) < self._subscribeLock['lockedAtAccounts']) or
+                     (date(self._subscribeLock['lockedAtTime']).timestamp() + self._subscribeCooldownInSeconds >
+                      datetime.now().timestamp() and
+                      len(self.subscribed_account_ids()) >= self._subscribeLock['lockedAtAccounts'])):
+                await asyncio.sleep(1)
+            for index in range(len(self._socketInstances)):
+                account_counter = len(self.get_assigned_accounts(index))
+                instance = self.socket_instances[index]
+                if instance['subscribeLock']:
+                    if instance['subscribeLock']['type'] == 'LIMIT_ACCOUNT_SUBSCRIPTIONS_PER_USER_PER_SERVER' and \
+                            (date(instance['subscribeLock']['recommendedRetryTime']).timestamp() >
+                             datetime.now().timestamp() or len(self.subscribed_account_ids(index)) >=
+                             instance['subscribeLock']['lockedAtAccounts']):
+                        continue
+                    if instance['subscribeLock']['type'] == 'LIMIT_ACCOUNT_SUBSCRIPTIONS_PER_SERVER' and \
+                            (date(instance['subscribeLock']['recommendedRetryTime']).timestamp() >
+                             datetime.now().timestamp() and len(self.subscribed_account_ids(index)) >=
+                             instance['subscribeLock']['lockedAtAccounts']):
+                        continue
+                if account_counter < self._maxAccountsPerInstance:
+                    socket_instance_index = index
+                    break
+            if socket_instance_index is None:
+                socket_instance_index = len(self._socketInstances)
+                await self.connect()
+            self._socketInstancesByAccounts[account_id] = socket_instance_index
+        instance = self._socketInstances[socket_instance_index]
         start_time = datetime.now()
-        while not self._resolved and (start_time + timedelta(seconds=self._connect_timeout) > datetime.now()):
+        while not instance['resolved'] and (start_time + timedelta(seconds=self._connect_timeout) > datetime.now()):
             await asyncio.sleep(1)
-        if not self._resolved:
+        if not instance['resolved']:
             raise TimeoutException(f"MetaApi websocket client request of account {account_id} timed out because socket "
                                    f"client failed to connect to the server.")
         if request['type'] == 'subscribe':
-            request['sessionId'] = self._sessionId
+            request['sessionId'] = instance['sessionId']
         if request['type'] in ['trade', 'subscribe']:
             return await self._make_request(account_id, request, timeout_in_seconds)
         retry_counter = 0
@@ -842,20 +947,21 @@ class MetaApiWebsocketClient:
                     raise err
 
     async def _make_request(self, account_id: str, request: dict, timeout_in_seconds: float = None):
+        socket_instance = self._socketInstances[self._socketInstancesByAccounts[account_id]]
         if 'requestId' in request:
             request_id = request['requestId']
         else:
             request_id = random_id()
             request['requestId'] = request_id
         request['timestamps'] = {'clientProcessingStarted': format_date(datetime.now())}
-        self._requestResolves[request_id] = asyncio.Future()
-        self._requestResolves[request_id].type = request['type']
+        socket_instance['requestResolves'][request_id] = asyncio.Future()
+        socket_instance['requestResolves'][request_id].type = request['type']
         request['accountId'] = account_id
         request['application'] = request['application'] if 'application' in request else self._application
-        await self._socket.emit('request', request)
+        await socket_instance['socket'].emit('request', request)
         try:
-            resolve = await asyncio.wait_for(self._requestResolves[request_id], timeout=timeout_in_seconds or
-                                             self._request_timeout)
+            resolve = await asyncio.wait_for(socket_instance['requestResolves'][request_id],
+                                             timeout=timeout_in_seconds or self._request_timeout)
         except asyncio.TimeoutError:
             raise TimeoutException(f"MetaApi websocket client request {request['requestId']} of type "
                                    f"{request['type']} timed out. Please make sure your account is connected "
@@ -864,7 +970,7 @@ class MetaApiWebsocketClient:
 
     def _convert_error(self, data) -> Exception:
         if data['error'] == 'ValidationError':
-            return ValidationException(data['message'], data['details'])
+            return ValidationException(data['message'], data['details'] if 'details' in data else None)
         elif data['error'] == 'NotFoundError':
             return NotFoundException(data['message'])
         elif data['error'] == 'NotSynchronizedError':
@@ -910,8 +1016,10 @@ class MetaApiWebsocketClient:
         try:
             packets = self._packetOrderer.restore_order(packet)
             for data in packets:
-                if 'synchronizationId' in data:
-                    self._synchronizationThrottler.update_synchronization_id(data['synchronizationId'])
+                socket_instance = self._socketInstances[self._socketInstancesByAccounts[data['accountId']]] if \
+                    data['accountId'] in self._socketInstancesByAccounts else None
+                if 'synchronizationId' in data and socket_instance:
+                    socket_instance['synchronizationThrottler'].update_synchronization_id(data['synchronizationId'])
                 instance_id = data['accountId'] + ':' + str(data['instanceIndex'] if 'instanceIndex' in data else 0)
                 instance_index = data['instanceIndex'] if 'instanceIndex' in data else 0
 
@@ -947,7 +1055,7 @@ class MetaApiWebsocketClient:
 
                 if data['type'] == 'authenticated':
                     reset_disconnect_timer()
-                    if 'sessionId' not in data or data['sessionId'] == self._sessionId:
+                    if 'sessionId' not in data or data['sessionId'] == socket_instance['sessionId']:
                         if 'host' in data:
                             self._connectedHosts[instance_id] = data['host']
 
@@ -1198,7 +1306,9 @@ class MetaApiWebsocketClient:
                         on_deal_synchronization_finished_tasks: List[asyncio.Task] = []
 
                         async def run_on_deal_synchronization_finished(listener):
-                            self._synchronizationThrottler.remove_synchronization_id(data['synchronizationId'])
+                            if socket_instance:
+                                socket_instance['synchronizationThrottler']\
+                                    .remove_synchronization_id(data['synchronizationId'])
                             try:
                                 await listener.on_deal_synchronization_finished(instance_index,
                                                                                 data['synchronizationId'])
@@ -1431,10 +1541,11 @@ class MetaApiWebsocketClient:
         except Exception as err:
             print('Failed to process incoming synchronization packet', err)
 
-    async def _fire_reconnected(self):
-        self._subscriptionManager.on_reconnected()
+    async def _fire_reconnected(self, socket_instance_index: int):
+        self._subscriptionManager.on_reconnected(socket_instance_index)
         for listener in self._reconnectListeners:
-            try:
-                await listener.on_reconnected()
-            except Exception as err:
-                print(f'[{datetime.now().isoformat()}] Failed to notify reconnect listener', err)
+            if self._socketInstancesByAccounts[listener['accountId']] == socket_instance_index:
+                try:
+                    await listener['listener'].on_reconnected()
+                except Exception as err:
+                    print(f'[{datetime.now().isoformat()}] Failed to notify reconnect listener', err)

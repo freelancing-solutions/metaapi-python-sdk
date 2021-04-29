@@ -6,6 +6,7 @@ import random
 import string
 import pytz
 import re
+import traceback
 
 
 def date(date_time: str or float or int) -> datetime:
@@ -47,6 +48,25 @@ def convert_iso_time_to_date(packet):
                     for field in price['timestamps']:
                         if isinstance(price['timestamps'][field], str):
                             price['timestamps'][field] = date(price['timestamps'][field])
+
+
+def format_error(err: Exception):
+    """Formats and outputs metaApi errors with additional information.
+
+    Args:
+        err: Exception to process.
+    """
+    error = {'name': err.__class__.__name__, 'message': err.args[0]}
+    if hasattr(err, 'status_code'):
+        error['status_code'] = err.status_code
+    if err.__class__.__name__ == 'ValidationException':
+        error['details'] = err.details
+    if err.__class__.__name__ == 'TradeException':
+        error['string_code'] = err.stringCode
+    if err.__class__.__name__ == 'TooManyRequestsException':
+        error['metadata'] = err.metadata
+    error['trace'] = traceback.format_exc()
+    return error
 
 
 class MetatraderAccountInformation(TypedDict):

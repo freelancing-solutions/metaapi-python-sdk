@@ -150,6 +150,8 @@ class TooManyRequestsErrorMetadata(TypedDict):
     """Available requests for periodInMinutes."""
     recommendedRetryTime: str
     """Recommended date to retry request."""
+    type: str
+    """Error type"""
 
 
 class TooManyRequestsException(ApiException):

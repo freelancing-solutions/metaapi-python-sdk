@@ -35,8 +35,9 @@ class PacketOrderer:
 
     def stop(self):
         """Deinitializes the packet orderer."""
-        self._outOfOrderInterval.cancel()
-        self._outOfOrderInterval = None
+        if self._outOfOrderInterval is not None:
+            self._outOfOrderInterval.cancel()
+            self._outOfOrderInterval = None
 
     def restore_order(self, packet: Dict) -> List[Dict]:
         """Processes the packet and resolves in the order of packet sequence number.

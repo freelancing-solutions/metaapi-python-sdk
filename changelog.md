@@ -1,7 +1,8 @@
 12.5.0
   - added baseCurrency field to the MetaTraderAccount model
-  - handle TooManyRequestsException in HTTP client
+  - handle TooManyRequestsException in HTTP and websocket clients
   - limit max concurrent synchronizations based on the number of subscribed accounts
+  - added support for multiple socket connections from one client
 
 12.4.0
   - added clientId to query websocket url

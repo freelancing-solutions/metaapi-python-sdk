@@ -61,6 +61,7 @@ async def run_around_tests():
                                                                                  'minDelayInSeconds': 0.1,
                                                                                  'maxDelayInSeconds': 0.5}})
     client.set_url('http://localhost:8080')
+    client._socketInstancesByAccounts = {'accountId': 0}
     await client.connect()
     client._resolved = True
     global future_close
@@ -599,6 +600,23 @@ class TestMetaApiWebsocketClient:
         assert request_received
 
     @pytest.mark.asyncio
+    async def test_create_new_instance(self):
+        """Should create new instance when account limit is reached."""
+        assert len(client.socket_instances) == 1
+        for i in range(100):
+            client._socketInstancesByAccounts['accountId' + str(i)] = 0
+
+        @sio.on('request')
+        async def on_request(sid, data):
+            if data['type'] == 'subscribe' and data['accountId'] == 'accountId101' \
+                    and data['application'] == 'application' and data['instanceIndex'] == 1:
+                await sio.emit('response', {'type': 'response', 'accountId': data['accountId'],
+                                            'requestId': data['requestId']})
+
+        await client.subscribe('accountId101', 1)
+        assert len(client.socket_instances) == 2
+
+    @pytest.mark.asyncio
     async def test_return_error_if_failed(self):
         """Should return error if connect to MetaTrader terminal failed."""
         request_received = False
@@ -799,17 +817,21 @@ class TestMetaApiWebsocketClient:
     @pytest.mark.asyncio
     async def test_unsubscribe(self):
         """Should unsubscribe from account data."""
+        request_received = False
 
         response = {'type': 'response', 'accountId': 'accountId'}
+        assert 'accountId' in client.socket_instances_by_accounts
 
         @sio.on('request')
         async def on_request(sid, data):
             if data['type'] == 'unsubscribe' and data['accountId'] == 'accountId':
+                nonlocal request_received
+                request_received = True
                 await sio.emit('response', {'requestId': data['requestId'], **response})
 
-        actual = await client.unsubscribe('accountId')
-        assert actual['type'] == response['type']
-        assert actual['accountId'] == response['accountId']
+        await client.unsubscribe('accountId')
+        assert request_received
+        assert 'accountId' not in client.socket_instances_by_accounts
 
     @pytest.mark.asyncio
     async def test_ignore_not_found_unsubscribe(self):
@@ -936,7 +958,7 @@ class TestMetaApiWebsocketClient:
         await sio.emit('synchronization', {'type': 'authenticated', 'accountId': 'accountId', 'instanceIndex': 2,
                                            'replicas': 4, 'sessionId': 'wrong'})
         await sio.emit('synchronization', {'type': 'authenticated', 'accountId': 'accountId', 'instanceIndex': 1,
-                                           'replicas': 2, 'sessionId': client._sessionId})
+                                           'replicas': 2, 'sessionId': client._socketInstances[0]['sessionId']})
         await future_close
         assert listener.on_connected.call_count == 1
         listener.on_connected.assert_called_with(1, 2)
@@ -945,10 +967,11 @@ class TestMetaApiWebsocketClient:
     async def test_process_broker_connection_status_event(self):
         """Should process broker connection status event."""
         listener = MagicMock()
+        listener.on_connected = AsyncMock()
         listener.on_broker_connection_status_changed = FinalMock()
         client.add_synchronization_listener('accountId', listener)
         await sio.emit('synchronization', {'type': 'authenticated', 'accountId': 'accountId', 'host': 'ps-mpa-1',
-                                           'instanceIndex': 1})
+                                           'instanceIndex': 1, 'replicas': 1})
         await sio.emit('synchronization', {'type': 'status', 'accountId': 'accountId', 'host': 'ps-mpa-1',
                                            'connected': True, 'instanceIndex': 1})
         await future_close
@@ -983,11 +1006,12 @@ class TestMetaApiWebsocketClient:
     async def test_process_server_health_status(self):
         """Should process server-side health status event."""
         listener = MagicMock()
+        listener.on_connected = AsyncMock()
         listener.on_broker_connection_status_changed = AsyncMock()
         listener.on_health_status = FinalMock()
         client.add_synchronization_listener('accountId', listener)
         await sio.emit('synchronization', {'type': 'authenticated', 'accountId': 'accountId', 'host': 'ps-mpa-1',
-                                           'instanceIndex': 1})
+                                           'instanceIndex': 1, 'replicas': 1})
         await sio.emit('synchronization', {'type': 'status', 'accountId': 'accountId', 'host': 'ps-mpa-1',
                                            'connected': True, 'healthStatus': {'restApiHealthy': True},
                                            'instanceIndex': 1})
@@ -999,10 +1023,11 @@ class TestMetaApiWebsocketClient:
         """Should process disconnected synchronization event."""
 
         listener = MagicMock()
+        listener.on_connected = AsyncMock()
         listener.on_disconnected = FinalMock()
         client.add_synchronization_listener('accountId', listener)
         await sio.emit('synchronization', {'type': 'authenticated', 'accountId': 'accountId', 'host': 'ps-mpa-1',
-                                           'instanceIndex': 1})
+                                           'instanceIndex': 1, 'replicas': 1})
         await sio.emit('synchronization', {'type': 'disconnected', 'accountId': 'accountId', 'host': 'ps-mpa-1',
                                            'instanceIndex': 1})
         await future_close
@@ -1025,8 +1050,8 @@ class TestMetaApiWebsocketClient:
 
         listener = MagicMock()
         listener.on_account_information_updated = AsyncMock()
-        client._synchronizationThrottler = MagicMock()
-        client._synchronizationThrottler.active_synchronization_ids = ['synchronizationId']
+        client._socketInstances[0]['synchronizationThrottler'] = MagicMock()
+        client._socketInstances[0]['synchronizationThrottler'].active_synchronization_ids = ['synchronizationId']
         client.add_synchronization_listener('accountId', listener)
         await sio.emit('synchronization', {'type': 'accountInformation', 'accountId': 'accountId',
                                            'accountInformation': account_information, 'instanceIndex': 1})
@@ -1680,7 +1705,7 @@ class TestMetaApiWebsocketClient:
         request_type = None
         actual_timestamps = None
 
-        def on_response(aid, type, ts):
+        async def on_response(aid, type, ts):
             nonlocal account_id
             account_id = aid
             nonlocal request_type
@@ -1809,7 +1834,7 @@ class TestMetaApiWebsocketClient:
         actual_timestamps = None
         listener = MagicMock()
 
-        def on_trade(aid, ts):
+        async def on_trade(aid, ts):
             nonlocal account_id
             account_id = aid
             nonlocal actual_timestamps
@@ -1854,8 +1879,8 @@ class TestMetaApiWebsocketClient:
             'orderId': '46870472'
         }
         listener = MagicMock()
-        listener.on_reconnected = MagicMock()
-        client.add_reconnect_listener(listener)
+        listener.on_reconnected = AsyncMock()
+        client.add_reconnect_listener(listener, 'accountId')
         request_counter = 0
 
         @sio.on('request')

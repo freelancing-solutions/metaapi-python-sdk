@@ -1,10 +1,13 @@
 from .. import MetaApi
+from ..metaApi.models import format_date
 from socketio import AsyncServer
 from aiohttp import web
 import pytest
 import asyncio
 from asyncio import sleep
 from mock import patch, AsyncMock, MagicMock
+from datetime import datetime, timedelta
+
 sio: AsyncServer = None
 client_sid: str = ''
 api: MetaApi = None
@@ -19,6 +22,45 @@ account_information = {
     'leverage': 100,
     'marginLevel': 3967.58283542
 }
+errors = [
+    {
+        "id": 1,
+        "error": "TooManyRequestsError",
+        "message": "One user can connect to one server no more than 300 accounts. Current number of connected "
+                   "accounts 300. For more information see https://metaapi.cloud/docs/client/rateLimiting/",
+        "metadata": {
+            "maxAccountsPerUserPerServer": 300,
+            "accountsCount":  300,
+            "recommendedRetryTime": format_date(datetime.now() + timedelta(seconds=20)),
+            "type": "LIMIT_ACCOUNT_SUBSCRIPTIONS_PER_USER_PER_SERVER"
+        }
+    },
+    {
+        "id": 1,
+        "error": "TooManyRequestsError",
+        "message": "You have used all your account subscriptions quota. You have 50 account subscriptions available "
+                   "and have used 50 subscriptions. Please deploy more accounts to get more subscriptions. For more "
+                   "information see https://metaapi.cloud/docs/client/rateLimiting/",
+        "metadata": {
+            "maxAccountsPerUser":  50,
+            "accountsCount": 50,
+            "recommendedRetryTime": format_date(datetime.now() + timedelta(seconds=20)),
+            "type": "LIMIT_ACCOUNT_SUBSCRIPTIONS_PER_USER"
+        }
+    },
+    {
+        "id": 1,
+        "error": "TooManyRequestsError",
+        "message": "You can not subscribe to more accounts on this connection because server is out of capacity. "
+                   "Please establish a new connection with a different client-id header value to switch to a "
+                   "different server. For more information see https://metaapi.cloud/docs/client/rateLimiting/",
+        "metadata": {
+            "changeClientIdHeader": True,
+            "recommendedRetryTime": format_date(datetime.now() + timedelta(seconds=20)),
+            "type": "LIMIT_ACCOUNT_SUBSCRIPTIONS_PER_SERVER"
+        }
+    }
+]
 
 
 class FakeServer:
@@ -29,6 +71,7 @@ class FakeServer:
         self.runner = None
         self.stopped = False
         self.status_task: asyncio.Task = None
+        self.client_ids = []
 
     async def authenticate(self, data):
         await self.sio.emit('synchronization', {'type': 'authenticated', 'accountId': data['accountId'],
@@ -54,10 +97,10 @@ class FakeServer:
                                                 'instanceIndex': 0, 'synchronizationId': data['requestId'],
                                                 'host': 'ps-mpa-0'})
         await sleep(0.1)
-        await self.sio.emit('synchronization', {'type': 'accountInformation', 'accountId': 'accountId',
+        await self.sio.emit('synchronization', {'type': 'accountInformation', 'accountId': data['accountId'],
                                                 'accountInformation': account_information, 'instanceIndex': 0,
                                                 'host': 'ps-mpa-0'})
-        await self.sio.emit('synchronization', {'type': 'specifications', 'accountId': 'accountId',
+        await self.sio.emit('synchronization', {'type': 'specifications', 'accountId': data['accountId'],
                                                 'specifications': [], 'instanceIndex': 0, 'host': 'ps-mpa-0'})
         await self.sio.emit('synchronization', {'type': 'orderSynchronizationFinished',
                                                 'accountId': data['accountId'], 'instanceIndex': 0,
@@ -70,6 +113,12 @@ class FakeServer:
     async def respond(self, data):
         await self.sio.emit('response', {'type': 'response', 'accountId': data['accountId'],
                                          'requestId': data['requestId']})
+
+    async def emit_error(self, data, error_index, retry_after_seconds):
+        error = errors[error_index]
+        error['metadata']['recommendedRetryTime'] = format_date(datetime.now() +
+                                                                timedelta(seconds=retry_after_seconds))
+        await sio.emit('processingError', {**error, 'requestId': data['requestId']})
 
     def enable_sync(self):
         @self.sio.on('request')
@@ -99,6 +148,7 @@ class FakeServer:
 
         @sio.event
         async def connect(sid, environ):
+            self.client_ids.append(environ['aiohttp.request'].headers['Client-Id'])
             global client_sid
             client_sid = sid
             await sio.emit('response', {'type': 'response'})
@@ -127,9 +177,12 @@ async def run_around_tests():
     global api
     api = MetaApi('token', {'application': 'application', 'domain': 'project-stock.agiliumlabs.cloud',
                             'requestTimeout': 3, 'retryOpts': {'retries': 3, 'minDelayInSeconds': 0.1,
-                                                               'maxDelayInSeconds': 0.5}})
-    api.metatrader_account_api._metatraderAccountClient.get_account = AsyncMock(return_value={
-            '_id': 'accountId',
+                                                               'maxDelayInSeconds': 0.5,
+                                                               'subscribeCooldownInSeconds': 6}})
+
+    async def side_effect_get_account(account_id):
+        return {
+            '_id': account_id,
             'login': '50194988',
             'name': 'mt5a',
             'server': 'ICMarketsSC-Demo',
@@ -140,7 +193,9 @@ async def run_around_tests():
             'state': 'DEPLOYED',
             'type': 'cloud',
             'accessToken': '2RUnoH1ldGbnEneCoqRTgI4QO1XOmVzbH5EVoQsA'
-        })
+        }
+
+    api.metatrader_account_api._metatraderAccountClient.get_account = side_effect_get_account
     api._metaApiWebsocketClient.set_url('http://localhost:8080')
     await api._metaApiWebsocketClient.connect()
     api._metaApiWebsocketClient._resolved = True
@@ -284,3 +339,272 @@ class TestSyncStability:
             await sleep(0.4)
             assert connection.synchronized and connection.terminal_state.connected and \
                    connection.terminal_state.connected_to_broker
+
+    @pytest.mark.asyncio
+    async def test_429_per_user_limit_subscriptions(self):
+        """Should limit subscriptions during per user 429 error."""
+        subscribed_accounts = {}
+
+        @sio.on('request')
+        async def on_request(sid, data):
+            nonlocal subscribed_accounts
+            if data['type'] == 'subscribe':
+                if len(subscribed_accounts.keys()) < 2:
+                    subscribed_accounts[data['accountId']] = True
+                    await sleep(0.2)
+                    await fake_server.respond(data)
+                    fake_server.status_task = asyncio.create_task(fake_server.create_status_task(data['accountId']))
+                    await fake_server.authenticate(data)
+                else:
+                    await fake_server.emit_error(data, 1, 2)
+            elif data['type'] == 'synchronize':
+                await fake_server.respond(data)
+                await fake_server.sync_account(data)
+            elif data['type'] == 'waitSynchronized':
+                await fake_server.respond(data)
+            elif data['type'] == 'getAccountInformation':
+                await fake_server.respond_account_information(data)
+            elif data['type'] == 'unsubscribe':
+                del subscribed_accounts[data['accountId']]
+                await fake_server.respond(data)
+
+        with patch('lib.clients.metaApi.metaApiWebsocket_client.asyncio.sleep', new=lambda x: sleep(x / 50)):
+            account = await api.metatrader_account_api.get_account('accountId')
+            connection = await account.connect()
+            await connection.wait_synchronized({'timeoutInSeconds': 3})
+            account2 = await api.metatrader_account_api.get_account('accountId2')
+            connection2 = await account2.connect()
+            await connection2.wait_synchronized({'timeoutInSeconds': 3})
+            account3 = await api.metatrader_account_api.get_account('accountId3')
+            connection3 = await account3.connect()
+            try:
+                await connection3.wait_synchronized({'timeoutInSeconds': 3})
+                raise Exception('TimeoutException expected')
+            except Exception as err:
+                assert err.__class__.__name__ == 'TimeoutException'
+            await connection2.close()
+            await sleep(2)
+            assert connection3.synchronized
+
+    @pytest.mark.asyncio
+    async def test_429_per_user_retry_after_time(self):
+        """Should wait for retry time after per user 429 error."""
+        request_timestamp = 0
+        subscribed_accounts = {}
+
+        @sio.on('request')
+        async def on_request(sid, data):
+            nonlocal subscribed_accounts
+            nonlocal request_timestamp
+            if data['type'] == 'subscribe':
+                if len(subscribed_accounts.keys()) < 2 or (request_timestamp != 0 and datetime.now().timestamp() - 2 >
+                                                           request_timestamp):
+                    subscribed_accounts[data['accountId']] = True
+                    await sleep(0.2)
+                    await fake_server.respond(data)
+                    fake_server.status_task = asyncio.create_task(fake_server.create_status_task(data['accountId']))
+                    await fake_server.authenticate(data)
+                else:
+                    request_timestamp = datetime.now().timestamp()
+                    await fake_server.emit_error(data, 1, 3)
+            elif data['type'] == 'synchronize':
+                await fake_server.respond(data)
+                await fake_server.sync_account(data)
+            elif data['type'] == 'waitSynchronized':
+                await fake_server.respond(data)
+            elif data['type'] == 'getAccountInformation':
+                await fake_server.respond_account_information(data)
+            elif data['type'] == 'unsubscribe':
+                del subscribed_accounts[data['accountId']]
+                await fake_server.respond(data)
+
+        with patch('lib.clients.metaApi.metaApiWebsocket_client.asyncio.sleep', new=lambda x: sleep(x / 50)):
+            account = await api.metatrader_account_api.get_account('accountId')
+            connection = await account.connect()
+            await connection.wait_synchronized({'timeoutInSeconds': 3})
+            account2 = await api.metatrader_account_api.get_account('accountId2')
+            connection2 = await account2.connect()
+            await connection2.wait_synchronized({'timeoutInSeconds': 3})
+            account3 = await api.metatrader_account_api.get_account('accountId3')
+            connection3 = await account3.connect()
+            try:
+                await connection3.wait_synchronized({'timeoutInSeconds': 3})
+                raise Exception('TimeoutException expected')
+            except Exception as err:
+                assert err.__class__.__name__ == 'TimeoutException'
+            await sleep(2)
+            assert not connection3.synchronized
+            await sleep(2.5)
+            assert connection3.synchronized
+
+    @pytest.mark.asyncio
+    async def test_429_per_server_retry_after_time(self):
+        """Should wait for retry time after per server 429 error."""
+        sid_by_accounts = {}
+        request_timestamp = 0
+
+        @sio.on('request')
+        async def on_request(sid, data):
+            nonlocal request_timestamp
+            if data['type'] == 'subscribe':
+                if len(list(filter(lambda account_sid: account_sid == sid, sid_by_accounts.values()))) >= 2 and \
+                        (request_timestamp == 0 or datetime.now().timestamp() - 2 < request_timestamp):
+                    request_timestamp = datetime.now().timestamp()
+                    await fake_server.emit_error(data, 2, 2)
+                else:
+                    sid_by_accounts[data['accountId']] = sid
+                    await sleep(0.2)
+                    await fake_server.respond(data)
+                    fake_server.status_task = asyncio.create_task(fake_server.create_status_task(data['accountId']))
+                    await fake_server.authenticate(data)
+            elif data['type'] == 'synchronize':
+                await fake_server.respond(data)
+                await fake_server.sync_account(data)
+            elif data['type'] == 'waitSynchronized':
+                await fake_server.respond(data)
+            elif data['type'] == 'getAccountInformation':
+                await fake_server.respond_account_information(data)
+
+        with patch('lib.clients.metaApi.metaApiWebsocket_client.asyncio.sleep', new=lambda x: sleep(x / 50)):
+            account = await api.metatrader_account_api.get_account('accountId')
+            connection = await account.connect()
+            await connection.wait_synchronized({'timeoutInSeconds': 3})
+            account2 = await api.metatrader_account_api.get_account('accountId2')
+            connection2 = await account2.connect()
+            await connection2.wait_synchronized({'timeoutInSeconds': 3})
+            account3 = await api.metatrader_account_api.get_account('accountId3')
+            connection3 = await account3.connect()
+            await connection3.wait_synchronized({'timeoutInSeconds': 3})
+            assert sid_by_accounts['accountId'] == sid_by_accounts['accountId2'] != sid_by_accounts['accountId3']
+            await sleep(2)
+            account4 = await api.metatrader_account_api.get_account('accountId4')
+            connection4 = await account4.connect()
+            await connection4.wait_synchronized({'timeoutInSeconds': 3})
+            assert sid_by_accounts['accountId'] == sid_by_accounts['accountId4']
+
+    @pytest.mark.asyncio
+    async def test_429_per_server_reconnect(self):
+        """Should reconnect after per server 429 error if connection has no subscribed accounts."""
+        sids = []
+
+        @sio.on('request')
+        async def on_request(sid, data):
+            if data['type'] == 'subscribe':
+                sids.append(sid)
+                if len(sids) == 1:
+                    await fake_server.emit_error(data, 2, 2)
+                else:
+                    await sleep(0.2)
+                    await fake_server.respond(data)
+                    fake_server.status_task = asyncio.create_task(fake_server.create_status_task(data['accountId']))
+                    await fake_server.authenticate(data)
+            elif data['type'] == 'synchronize':
+                await fake_server.respond(data)
+                await fake_server.sync_account(data)
+            elif data['type'] == 'waitSynchronized':
+                await fake_server.respond(data)
+            elif data['type'] == 'getAccountInformation':
+                await fake_server.respond_account_information(data)
+
+        with patch('lib.clients.metaApi.metaApiWebsocket_client.asyncio.sleep', new=lambda x: sleep(x / 50)):
+            account = await api.metatrader_account_api.get_account('accountId')
+            connection = await account.connect()
+            await connection.wait_synchronized({'timeoutInSeconds': 3})
+            assert sids[0] != sids[1]
+
+    @pytest.mark.asyncio
+    async def test_429_per_server_unsubscribe(self):
+        """Should free a subscribe slot on unsubscribe after per server 429 error."""
+        sid_by_accounts = {}
+
+        @sio.on('request')
+        async def on_request(sid, data):
+            if data['type'] == 'subscribe':
+                if len(list(filter(lambda account_sid: account_sid == sid, sid_by_accounts.values()))) >= 2:
+                    await fake_server.emit_error(data, 2, 200)
+                else:
+                    sid_by_accounts[data['accountId']] = sid
+                    await sleep(0.2)
+                    await fake_server.respond(data)
+                    fake_server.status_task = asyncio.create_task(fake_server.create_status_task(data['accountId']))
+                    await fake_server.authenticate(data)
+            elif data['type'] == 'synchronize':
+                await fake_server.respond(data)
+                await fake_server.sync_account(data)
+            elif data['type'] == 'waitSynchronized':
+                await fake_server.respond(data)
+            elif data['type'] == 'getAccountInformation':
+                await fake_server.respond_account_information(data)
+            elif data['type'] == 'unsubscribe':
+                del sid_by_accounts[data['accountId']]
+                await fake_server.respond(data)
+
+        with patch('lib.clients.metaApi.metaApiWebsocket_client.asyncio.sleep', new=lambda x: sleep(x / 50)):
+            account = await api.metatrader_account_api.get_account('accountId')
+            connection = await account.connect()
+            await connection.wait_synchronized({'timeoutInSeconds': 3})
+            account2 = await api.metatrader_account_api.get_account('accountId2')
+            connection2 = await account2.connect()
+            await connection2.wait_synchronized({'timeoutInSeconds': 3})
+            account3 = await api.metatrader_account_api.get_account('accountId3')
+            connection3 = await account3.connect()
+            await connection3.wait_synchronized({'timeoutInSeconds': 3})
+            assert sid_by_accounts['accountId'] == sid_by_accounts['accountId2'] != sid_by_accounts['accountId3']
+            await connection2.close()
+            account4 = await api.metatrader_account_api.get_account('accountId4')
+            connection4 = await account4.connect()
+            await connection4.wait_synchronized({'timeoutInSeconds': 3})
+            assert sid_by_accounts['accountId'] == sid_by_accounts['accountId4']
+
+    @pytest.mark.asyncio
+    async def test_429_per_server_per_user_retry_after_time(self):
+        """Should wait for retry time after per server per user 429 error."""
+        sid_by_accounts = {}
+        request_timestamp = 0
+
+        @sio.on('request')
+        async def on_request(sid, data):
+            nonlocal request_timestamp
+            if data['type'] == 'subscribe':
+                if len(list(filter(lambda account_sid: account_sid == sid, sid_by_accounts.values()))) >= 2 and \
+                        (request_timestamp == 0 or datetime.now().timestamp() - 2 < request_timestamp):
+                    request_timestamp = datetime.now().timestamp()
+                    await fake_server.emit_error(data, 0, 2)
+                else:
+                    sid_by_accounts[data['accountId']] = sid
+                    await sleep(0.2)
+                    await fake_server.respond(data)
+                    fake_server.status_task = asyncio.create_task(fake_server.create_status_task(data['accountId']))
+                    await fake_server.authenticate(data)
+            elif data['type'] == 'synchronize':
+                await fake_server.respond(data)
+                await fake_server.sync_account(data)
+            elif data['type'] == 'waitSynchronized':
+                await fake_server.respond(data)
+            elif data['type'] == 'getAccountInformation':
+                await fake_server.respond_account_information(data)
+            elif data['type'] == 'unsubscribe':
+                del sid_by_accounts[data['accountId']]
+                await fake_server.respond(data)
+
+        with patch('lib.clients.metaApi.metaApiWebsocket_client.asyncio.sleep', new=lambda x: sleep(x / 50)):
+            account = await api.metatrader_account_api.get_account('accountId')
+            connection = await account.connect()
+            await connection.wait_synchronized({'timeoutInSeconds': 3})
+            account2 = await api.metatrader_account_api.get_account('accountId2')
+            connection2 = await account2.connect()
+            await connection2.wait_synchronized({'timeoutInSeconds': 3})
+            account3 = await api.metatrader_account_api.get_account('accountId3')
+            connection3 = await account3.connect()
+            await connection3.wait_synchronized({'timeoutInSeconds': 3})
+            assert sid_by_accounts['accountId'] == sid_by_accounts['accountId2'] != sid_by_accounts['accountId3']
+            await sleep(2)
+            account4 = await api.metatrader_account_api.get_account('accountId4')
+            connection4 = await account4.connect()
+            await connection4.wait_synchronized({'timeoutInSeconds': 3})
+            assert sid_by_accounts['accountId'] != sid_by_accounts['accountId4']
+            await connection2.close()
+            account5 = await api.metatrader_account_api.get_account('accountId5')
+            connection5 = await account5.connect()
+            await connection5.wait_synchronized({'timeoutInSeconds': 3})
+            assert sid_by_accounts['accountId'] == sid_by_accounts['accountId5']
