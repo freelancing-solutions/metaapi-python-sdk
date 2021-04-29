@@ -4,6 +4,7 @@ from datetime import datetime
 import asyncio
 from typing_extensions import TypedDict
 from typing import Optional, List
+from functools import reduce
 import math
 
 
@@ -21,20 +22,22 @@ class SynchronizationThrottler:
     """Synchronization throttler used to limit the amount of concurrent synchronizations to prevent application
     from being overloaded due to excessive number of synchronisation responses being sent."""
 
-    def __init__(self, client, opts: SynchronizationThrottlerOpts = None):
+    def __init__(self, client, socket_instance_index: int, opts: SynchronizationThrottlerOpts = None):
         """Inits the synchronization throttler.
 
         Args:
             client: Websocket client.
+            socket_instance_index: Index of socket instance that uses the throttler.
             opts: Synchronization throttler options.
         """
         opts: SynchronizationThrottlerOpts = opts or {}
         self._maxConcurrentSynchronizations = opts['maxConcurrentSynchronizations'] if \
-            'maxConcurrentSynchronizations' in opts else None
+            'maxConcurrentSynchronizations' in opts else 15
         self._queueTimeoutInSeconds = opts['queueTimeoutInSeconds'] if 'queueTimeoutInSeconds' in opts else 300
         self._synchronizationTimeoutInSeconds = opts['synchronizationTimeoutInSeconds'] if \
             'synchronizationTimeoutInSeconds' in opts else 10
         self._client = client
+        self._socketInstanceIndex = socket_instance_index
         self._synchronizationIds = {}
         self._accountsBySynchronizationIds = {}
         self._synchronizationQueue = deque([])
@@ -85,6 +88,17 @@ class SynchronizationThrottler:
             self._synchronizationIds[synchronization_id] = datetime.now().timestamp()
 
     @property
+    def synchronizing_accounts(self) -> List[str]:
+        """Returns the list of currently synchronizing account ids."""
+        synchronizing_accounts = []
+        for key in self._synchronizationIds:
+            account_data = self._accountsBySynchronizationIds[key] if key in \
+                                                                      self._accountsBySynchronizationIds else None
+            if account_data and (account_data['accountId'] not in synchronizing_accounts):
+                synchronizing_accounts.append(account_data['accountId'])
+        return synchronizing_accounts
+
+    @property
     def active_synchronization_ids(self) -> List[str]:
         """Returns the list of currently active synchronization ids."""
         return list(self._accountsBySynchronizationIds.keys())
@@ -92,20 +106,19 @@ class SynchronizationThrottler:
     @property
     def max_concurrent_synchronizations(self) -> int:
         """Returns the amount of maximum allowed concurrent synchronizations."""
-        calculated_max = max(math.ceil(len(self._client.subscribed_account_ids) / 10), 1)
-        return min(calculated_max, self._maxConcurrentSynchronizations) if self._maxConcurrentSynchronizations else \
-            calculated_max
+        calculated_max = max(math.ceil(len(self._client.subscribed_account_ids(self._socketInstanceIndex)) / 10), 1)
+        return min(calculated_max, self._maxConcurrentSynchronizations)
 
     @property
     def is_synchronization_available(self) -> bool:
         """Whether there are free slots for synchronization requests."""
-        synchronizing_accounts = []
-        for key in self._synchronizationIds:
-            account_data = self._accountsBySynchronizationIds[key] if key in \
-                                                                      self._accountsBySynchronizationIds else None
-            if account_data and (account_data['accountId'] not in synchronizing_accounts):
-                synchronizing_accounts.append(account_data['accountId'])
-        return len(synchronizing_accounts) < self.max_concurrent_synchronizations
+
+        def reducer_func(acc, socket_instance):
+            return acc + len(socket_instance['synchronizationThrottler'].synchronizing_accounts)
+
+        if reduce(reducer_func, self._client.socket_instances, 0) >= self._maxConcurrentSynchronizations:
+            return False
+        return len(self.synchronizing_accounts) < self.max_concurrent_synchronizations
 
     def remove_synchronization_id(self, synchronization_id: str):
         """Removes synchronization id from slots and removes ids for the same account from the queue.

@@ -23,12 +23,13 @@ manager: SubscriptionManager = None
 async def run_around_tests():
     global client
     client = MockClient('token')
-    client._socket = MagicMock()
-    client._socket.connected = True
+    client._socketInstances = [{'socket': MagicMock()}, {'socket': MagicMock()}]
+    client._socketInstances[0]['socket'].connected = True
+    client._socketInstances[1]['socket'].connected = False
+    client._socketInstancesByAccounts = {'accountId': 0}
     global manager
     manager = SubscriptionManager(client)
     yield
-    client._synchronizationThrottler.stop()
 
 
 class TestSubscriptionManager:
@@ -69,6 +70,7 @@ class TestSubscriptionManager:
             response = {'type': 'response', 'accountId': 'accountId', 'requestId': 'requestId'}
             client.subscribe = AsyncMock(side_effect=[TooManyRequestsException('timeout', {
                 'periodInMinutes': 60, 'maxRequestsForPeriod': 10000,
+                "type": "LIMIT_REQUEST_RATE_PER_USER",
                 'recommendedRetryTime': format_date(datetime.now() + timedelta(seconds=5))}), response, response])
 
             asyncio.create_task(manager.subscribe('accountId'))
@@ -85,12 +87,14 @@ class TestSubscriptionManager:
         with patch('lib.clients.metaApi.subscriptionManager.asyncio.sleep', new=lambda x: sleep(x / 10)):
             client.connect = AsyncMock()
             client.subscribe = AsyncMock()
+            client._socketInstancesByAccounts = {'accountId': 0, 'accountId2': 0, 'accountId3': 1}
             asyncio.create_task(manager.subscribe('accountId'))
             asyncio.create_task(manager.subscribe('accountId2'))
+            asyncio.create_task(manager.subscribe('accountId3'))
             await sleep(0.1)
-            manager.on_reconnected()
+            manager.on_reconnected(0)
             await sleep(0.5)
-            assert client.subscribe.call_count == 2
+            assert client.subscribe.call_count == 4
 
     @pytest.mark.asyncio
     async def test_no_multiple_subscribes(self):
@@ -107,23 +111,28 @@ class TestSubscriptionManager:
 
     @pytest.mark.asyncio
     async def test_resubscribe_on_timeout(self):
+        """Should resubscribe on timeout."""
         client.subscribe = AsyncMock()
-        client._socket.connected = True
+        client._socketInstances[0]['socket'].connected = True
+        client._socketInstancesByAccounts['accountId2'] = 1
 
         async def delay_connect():
             await sleep(0.1)
             await manager.cancel_subscribe('accountId:0')
+            await manager.cancel_subscribe('accountId2:0')
 
         asyncio.create_task(delay_connect())
         manager.on_timeout('accountId')
+        manager.on_timeout('accountId2')
         await sleep(0.05)
         client.subscribe.assert_called_with('accountId', None)
+        assert client.subscribe.call_count == 1
 
     @pytest.mark.asyncio
     async def test_not_subscribe_if_disconnected(self):
         """Should not retry subscribe to terminal if connection is closed."""
         client.subscribe = AsyncMock()
-        client._socket.connected = False
+        client._socketInstances[0]['socket'].connected = False
 
         async def delay_connect():
             await sleep(0.1)

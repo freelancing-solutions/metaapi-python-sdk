@@ -13,8 +13,8 @@ from ..clients.metaApi.metatraderDemoAccount_client import MetatraderDemoAccount
 from .latencyMonitor import LatencyMonitor
 from ..clients.metaApi.expertAdvisor_client import ExpertAdvisorClient
 import re
-import traceback
 from typing import Optional
+from ..metaApi.models import format_error
 from typing_extensions import TypedDict
 
 
@@ -25,6 +25,8 @@ class RetryOpts(TypedDict):
     """Minimum delay in seconds until request retry, default value is 1."""
     maxDelayInSeconds: Optional[float]
     """Maximum delay in seconds until request retry, default value is 30."""
+    subscribeCooldownInSeconds: Optional[float]
+    """Time to disable new subscriptions for """
 
 
 class MetaApiOpts(TypedDict):
@@ -134,17 +136,7 @@ class MetaApi:
         Args:
             err: Exception to process.
         """
-        error = {'name': err.__class__.__name__, 'message': err.args[0]}
-        if hasattr(err, 'status_code'):
-            error['status_code'] = err.status_code
-        if err.__class__.__name__ == 'ValidationException':
-            error['details'] = err.details
-        if err.__class__.__name__ == 'TradeException':
-            error['string_code'] = err.stringCode
-        if err.__class__.__name__ == 'TooManyRequestsException':
-            error['metadata'] = err.metadata
-        error['trace'] = traceback.format_exc()
-        return error
+        return format_error(err)
 
     def close(self):
         """Closes all clients and connections"""

@@ -74,7 +74,7 @@ class MetaApiConnection(SynchronizationListener, ReconnectListener):
         self._websocketClient.add_synchronization_listener(account.id, self._terminalState)
         self._websocketClient.add_synchronization_listener(account.id, self._historyStorage)
         self._websocketClient.add_synchronization_listener(account.id, self._healthMonitor)
-        self._websocketClient.add_reconnect_listener(self)
+        self._websocketClient.add_reconnect_listener(self, account.id)
         self._subscriptions = {}
         self._stateByInstanceIndex = {}
         self._synchronized = False

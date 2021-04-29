@@ -1,7 +1,7 @@
 import asyncio
 from random import uniform
 from ..errorHandler import TooManyRequestsException
-from ...metaApi.models import date
+from ...metaApi.models import date, format_error
 from datetime import datetime
 
 
@@ -39,11 +39,20 @@ class SubscriptionManager:
                     try:
                         await self._websocketClient.subscribe(account_id, instance_index)
                     except TooManyRequestsException as err:
-                        nonlocal subscribe_retry_interval_in_seconds
-                        retry_time = date(err.metadata['recommendedRetryTime']).timestamp()
-                        if datetime.now().timestamp() + subscribe_retry_interval_in_seconds < retry_time:
-                            await asyncio.sleep(retry_time - datetime.now().timestamp() -
-                                                subscribe_retry_interval_in_seconds)
+                        socket_instance_index = self._websocketClient.socket_instances_by_accounts[account_id]
+                        if err.metadata['type'] == 'LIMIT_ACCOUNT_SUBSCRIPTIONS_PER_USER':
+                            print(format_error(err))
+                        if err.metadata['type'] in ['LIMIT_ACCOUNT_SUBSCRIPTIONS_PER_USER',
+                                                    'LIMIT_ACCOUNT_SUBSCRIPTIONS_PER_SERVER',
+                                                    'LIMIT_ACCOUNT_SUBSCRIPTIONS_PER_USER_PER_SERVER']:
+                            del self._websocketClient.socket_instances_by_accounts[account_id]
+                            await self._websocketClient.lock_socket_instance(socket_instance_index, err.metadata)
+                        else:
+                            nonlocal subscribe_retry_interval_in_seconds
+                            retry_time = date(err.metadata['recommendedRetryTime']).timestamp()
+                            if datetime.now().timestamp() + subscribe_retry_interval_in_seconds < retry_time:
+                                await asyncio.sleep(retry_time - datetime.now().timestamp() -
+                                                    subscribe_retry_interval_in_seconds)
                     except Exception as err:
                         pass
 
@@ -98,7 +107,7 @@ class SubscriptionManager:
             account_id: Id of the MetaTrader account.
             instance_index: Instance index.
         """
-        if self._websocketClient.connected:
+        if self._websocketClient.connected(self._websocketClient.socket_instances_by_accounts[account_id]):
             asyncio.create_task(self.subscribe(account_id, instance_index))
 
     async def on_disconnected(self, account_id: str, instance_index: int = None):
@@ -111,7 +120,15 @@ class SubscriptionManager:
         await asyncio.sleep(uniform(1, 5))
         asyncio.create_task(self.subscribe(account_id, instance_index))
 
-    def on_reconnected(self):
-        """Invoked when connection to MetaApi websocket API restored after a disconnect."""
+    def on_reconnected(self, socket_instance_index: int):
+        """Invoked when connection to MetaApi websocket API restored after a disconnect.
+
+        Args:
+            socket_instance_index: Socket instance index.
+        """
+        socket_instances_by_accounts = self._websocketClient.socket_instances_by_accounts
         for instance_id in self._subscriptions.keys():
-            self.cancel_subscribe(instance_id)
+            account_id = instance_id.split(':')[0]
+            if account_id in socket_instances_by_accounts and \
+                    socket_instances_by_accounts[account_id] == socket_instance_index:
+                self.cancel_subscribe(instance_id)

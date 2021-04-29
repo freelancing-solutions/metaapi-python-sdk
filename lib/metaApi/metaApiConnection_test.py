@@ -74,7 +74,7 @@ class MockClient(MetaApiWebsocketClient):
     def add_synchronization_listener(self, account_id: str, listener):
         pass
 
-    def add_reconnect_listener(self, listener: ReconnectListener):
+    def add_reconnect_listener(self, listener: ReconnectListener, account_id: str):
         pass
 
     def remove_synchronization_listener(self, account_id: str, listener: SynchronizationListener):
@@ -146,7 +146,6 @@ async def run_around_tests():
     api = MetaApiConnection(client, account, storage, MagicMock())
     yield
     api.health_monitor.stop()
-    client._synchronizationThrottler.stop()
 
 
 class TestMetaApiConnection:

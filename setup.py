@@ -10,7 +10,7 @@ install_requires = [
 ]
 
 tests_require = [
-      'pytest', 'pytest-mock', 'pytest-asyncio', 'asynctest', 'aiohttp', 'mock', 'freezegun==1.0.0', 'respx'
+      'pytest', 'pytest-mock', 'pytest-asyncio', 'asynctest', 'mock', 'freezegun==1.0.0', 'respx==0.16.3'
 ]
 
 setuptools.setup(
