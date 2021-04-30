@@ -2,7 +2,7 @@ from .errorHandler import UnauthorizedException, ForbiddenException, ApiExceptio
     ValidationException, InternalException, NotFoundException, TooManyRequestsException
 from typing_extensions import TypedDict
 from typing import Optional
-from ..metaApi.models import ExceptionMessage, date
+from ..metaApi.models import ExceptionMessage, date, format_error
 from .timeoutException import TimeoutException
 import json
 import asyncio
@@ -65,7 +65,7 @@ class HttpClient:
                 try:
                     response = response.json()
                 except Exception as err:
-                    print('Error parsing json', err)
+                    print('Error parsing json', format_error(err))
         except HTTPError as err:
             retry_counter = await self._handle_error(err, retry_counter, end_time)
             return await self.request(options, retry_counter, end_time)

@@ -68,7 +68,7 @@ class TestReservoir:
                 frozen_datetime.tick(1.001)
             assert res['size']() == 15
             max_item = res['max']()
-            assert max_item['index'] == 999
+            assert max_item['index'] == pytest.approx(999, abs=2)
             frozen_datetime.tick(60)
             res['getPercentile'](50)
             assert res['size']() == 0

@@ -8,7 +8,7 @@ import asyncio
 import functools
 import shutil
 from copy import deepcopy
-from ...metaApi.models import date
+from ...metaApi.models import date, format_error
 
 
 class PacketLoggerOpts(TypedDict):
@@ -209,7 +209,7 @@ class PacketLogger:
                     f.write(write_string)
                     f.close()
                 except Exception as err:
-                    print('Error writing log', err)
+                    print('Error writing log', format_error(err))
                 queue['isWriting'] = False
 
     async def _delete_old_data(self):
