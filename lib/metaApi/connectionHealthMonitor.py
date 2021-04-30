@@ -1,6 +1,6 @@
 from ..clients.metaApi.synchronizationListener import SynchronizationListener, HealthStatus
 from .reservoir.reservoir import Reservoir
-from .models import MetatraderSymbolPrice, date
+from .models import MetatraderSymbolPrice, date, format_error
 from typing_extensions import TypedDict
 import asyncio
 from datetime import datetime
@@ -78,7 +78,7 @@ class ConnectionHealthMonitor(SynchronizationListener):
 
         except Exception as err:
             print(f'[{datetime.now().isoformat()}] failed to update quote streaming health status on price ' +
-                  'update for account ' + self._connection.account.id, err)
+                  'update for account ' + self._connection.account.id, format_error(err))
 
     async def on_health_status(self, instance_index: int, status: HealthStatus):
         """Invoked when a server-side application health status is received from MetaApi.
@@ -174,7 +174,7 @@ class ConnectionHealthMonitor(SynchronizationListener):
                     and self._connection.synchronized and self._quotesHealthy) else 0)
         except Exception as err:
             print(f'[{datetime.now().isoformat()}] failed to measure uptime for account ' +
-                  self._connection.account.id, err)
+                  self._connection.account.id, format_error(err))
 
     def _update_quote_health_status(self):
         try:
@@ -208,4 +208,4 @@ class ConnectionHealthMonitor(SynchronizationListener):
                                    self._minQuoteInterval)
         except Exception as err:
             print(f'[{datetime.now().isoformat()}] failed to update quote streaming health status for account ' +
-                  self._connection.account.id, err)
+                  self._connection.account.id, format_error(err))

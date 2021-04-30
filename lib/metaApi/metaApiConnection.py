@@ -8,7 +8,7 @@ from .metatraderAccountModel import MetatraderAccountModel
 from .connectionRegistryModel import ConnectionRegistryModel
 from .historyStorage import HistoryStorage
 from ..clients.timeoutException import TimeoutException
-from .models import random_id, MetatraderSymbolSpecification, MetatraderAccountInformation, \
+from .models import random_id, format_error, MetatraderSymbolSpecification, MetatraderAccountInformation, \
     MetatraderPosition, MetatraderOrder, MetatraderHistoryOrders, MetatraderDeals, MetatraderTradeResponse, \
     MetatraderSymbolPrice, MarketTradeOptions, PendingTradeOptions, MarketDataSubscription, MarketDataUnsubscription, \
     MetatraderCandle, MetatraderTick, MetatraderBook
@@ -928,7 +928,7 @@ class MetaApiConnection(SynchronizationListener, ReconnectListener):
                                                         instance_index)
                 except Exception as err:
                     print(f'[{datetime.now().isoformat()}] MetaApi websocket client for account ' + self.account.id +
-                          ':' + str(instance_index) + ' failed to resubscribe to symbol ' + symbol, err)
+                          ':' + str(instance_index) + ' failed to resubscribe to symbol ' + symbol, format_error(err))
 
     async def on_reconnected(self):
         """Invoked when connection to MetaApi websocket API restored after a disconnect.
@@ -1053,7 +1053,7 @@ class MetaApiConnection(SynchronizationListener, ReconnectListener):
                 state['synchronizationRetryIntervalInSeconds'] = 1
             except Exception as err:
                 print(f'[{datetime.now().isoformat()}] MetaApi websocket client for account ' + self.account.id +
-                      ':' + str(instance_index) + ' failed to synchronize', err)
+                      ':' + str(instance_index) + ' failed to synchronize', format_error(err))
                 if state['shouldSynchronize'] == key:
 
                     async def restart_ensure_sync():
