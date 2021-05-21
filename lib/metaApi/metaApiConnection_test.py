@@ -687,15 +687,6 @@ class TestMetaApiConnection:
         client.ensure_subscribe.assert_called_with('accountId')
 
     @pytest.mark.asyncio
-    async def test_subscribe_after_reconnect(self):
-        """Should subscribe after reconnect."""
-        with patch('lib.metaApi.metaApiConnection.asyncio.sleep', new=lambda x: sleep(x / 10)):
-            client.connect = AsyncMock()
-            client.ensure_subscribe = AsyncMock()
-            await api.on_reconnected()
-            client.ensure_subscribe.assert_called_with('accountId')
-
-    @pytest.mark.asyncio
     async def test_synchronize_state_with_terminal(self):
         """Should synchronize state with terminal."""
         client.synchronize = AsyncMock()
@@ -985,13 +976,6 @@ class TestMetaApiConnection:
         except Exception as err:
             assert err.__class__.__name__ == 'TimeoutException'
         assert not (await api.is_synchronized(1, 'synchronizationId'))
-
-    @pytest.mark.asyncio
-    async def test_subscribe_to_terminal_on_reconnect(self):
-        """Should subscribe to terminal on reconnect."""
-        api.subscribe = AsyncMock()
-        await api.on_reconnected()
-        api.subscribe.assert_called_with()
 
     @pytest.mark.asyncio
     async def test_load_history_storage_from_disk(self):
