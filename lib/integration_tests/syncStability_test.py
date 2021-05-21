@@ -70,7 +70,7 @@ class FakeServer:
         self.sio: AsyncServer = None
         self.runner = None
         self.stopped = False
-        self.status_task: asyncio.Task = None
+        self.status_tasks = {}
         self.client_ids = []
 
     async def authenticate(self, data):
@@ -87,6 +87,11 @@ class FakeServer:
         while True:
             await self.emit_status(account_id)
             await sleep(1)
+
+    def delete_status_task(self, account_id: str):
+        if account_id in self.status_tasks:
+            self.status_tasks[account_id].cancel()
+            del self.status_tasks[account_id]
 
     async def respond_account_information(self, data):
         await self.sio.emit('response', {'type': 'response', 'accountId': data['accountId'],
@@ -126,7 +131,7 @@ class FakeServer:
             if data['type'] == 'subscribe':
                 await sleep(0.2)
                 await self.respond(data)
-                self.status_task = asyncio.create_task(self.create_status_task(data['accountId']))
+                self.status_tasks[data['accountId']] = asyncio.create_task(self.create_status_task(data['accountId']))
                 await self.authenticate(data)
             elif data['type'] == 'synchronize':
                 await self.respond(data)
@@ -135,6 +140,9 @@ class FakeServer:
                 await self.respond(data)
             elif data['type'] == 'getAccountInformation':
                 await self.respond_account_information(data)
+            elif data['type'] == 'unsubscribe':
+                fake_server.delete_status_task(data['accountId'])
+                await fake_server.respond(data)
 
     def disable_sync(self):
         @self.sio.on('request')
@@ -239,7 +247,7 @@ class TestSyncStability:
             account = await api.metatrader_account_api.get_account('accountId')
             connection = await account.connect()
             await connection.wait_synchronized({'timeoutInSeconds': 10})
-            fake_server.status_task.cancel()
+            fake_server.delete_status_task('accountId')
 
             @sio.event
             async def connect(sid, environ):
@@ -258,7 +266,7 @@ class TestSyncStability:
             account = await api.metatrader_account_api.get_account('accountId')
             connection = await account.connect()
             await connection.wait_synchronized({'timeoutInSeconds': 10})
-            fake_server.status_task.cancel()
+            fake_server.status_tasks['accountId'].cancel()
             await sleep(1.5)
             response = await connection.get_account_information()
             assert response == account_information
@@ -273,7 +281,8 @@ class TestSyncStability:
         async def on_request(sid, data):
             if data['type'] == 'subscribe':
                 await sleep(0.2)
-                fake_server.status_task = asyncio.create_task(fake_server.create_status_task(data['accountId']))
+                fake_server.status_tasks[data['accountId']] = \
+                    asyncio.create_task(fake_server.create_status_task(data['accountId']))
                 await fake_server.authenticate(data)
                 await sleep(0.4)
                 await fake_server.respond(data)
@@ -300,7 +309,7 @@ class TestSyncStability:
             account = await api.metatrader_account_api.get_account('accountId')
             connection = await account.connect()
             await connection.wait_synchronized({'timeoutInSeconds': 10})
-            fake_server.status_task.cancel()
+            fake_server.delete_status_task('accountId')
             await sio.emit('synchronization', {'type': 'disconnected', 'accountId': 'accountId', 'host': 'ps-mpa-0',
                                                'instanceIndex': 0})
             fake_server.disable_sync()
@@ -325,7 +334,7 @@ class TestSyncStability:
             account = await api.metatrader_account_api.get_account('accountId')
             connection = await account.connect()
             await connection.wait_synchronized({'timeoutInSeconds': 10})
-            fake_server.status_task.cancel()
+            fake_server.delete_status_task('accountId')
             await sio.emit('synchronization', {'type': 'disconnected', 'accountId': 'accountId', 'host': 'ps-mpa-0',
                                                'instanceIndex': 0})
             fake_server.disable_sync()
@@ -341,6 +350,34 @@ class TestSyncStability:
                    connection.terminal_state.connected_to_broker
 
     @pytest.mark.asyncio
+    async def test_resubscribe_on_reconnected_after_connection_closed(self):
+        """Should resubscribe other accounts after one of connections is closed"""
+        with patch('lib.clients.metaApi.metaApiWebsocket_client.asyncio.sleep', new=lambda x: sleep(x / 50)):
+            account = await api.metatrader_account_api.get_account('accountId')
+            connection = await account.connect()
+            await connection.wait_synchronized({'timeoutInSeconds': 10})
+            account2 = await api.metatrader_account_api.get_account('accountId2')
+            connection2 = await account2.connect()
+            await connection2.wait_synchronized({'timeoutInSeconds': 10})
+            account3 = await api.metatrader_account_api.get_account('accountId3')
+            connection3 = await account3.connect()
+            await connection3.wait_synchronized({'timeoutInSeconds': 10})
+            await connection.close()
+            fake_server.delete_status_task('accountId2')
+            fake_server.delete_status_task('accountId3')
+            fake_server.disable_sync()
+            await sio.disconnect(client_sid)
+            await sleep(2)
+            fake_server.enable_sync()
+            await sio.disconnect(client_sid)
+            await sleep(3)
+            assert not connection.synchronized
+            assert connection2.synchronized and connection2.terminal_state.connected and \
+                   connection2.terminal_state.connected_to_broker
+            assert connection3.synchronized and connection3.terminal_state.connected and \
+                   connection3.terminal_state.connected_to_broker
+
+    @pytest.mark.asyncio
     async def test_429_per_user_limit_subscriptions(self):
         """Should limit subscriptions during per user 429 error."""
         subscribed_accounts = {}
@@ -353,7 +390,8 @@ class TestSyncStability:
                     subscribed_accounts[data['accountId']] = True
                     await sleep(0.2)
                     await fake_server.respond(data)
-                    fake_server.status_task = asyncio.create_task(fake_server.create_status_task(data['accountId']))
+                    fake_server.status_tasks[data['accountId']] = \
+                        asyncio.create_task(fake_server.create_status_task(data['accountId']))
                     await fake_server.authenticate(data)
                 else:
                     await fake_server.emit_error(data, 1, 2)
@@ -402,7 +440,8 @@ class TestSyncStability:
                     subscribed_accounts[data['accountId']] = True
                     await sleep(0.2)
                     await fake_server.respond(data)
-                    fake_server.status_task = asyncio.create_task(fake_server.create_status_task(data['accountId']))
+                    fake_server.status_tasks[data['accountId']] = \
+                        asyncio.create_task(fake_server.create_status_task(data['accountId']))
                     await fake_server.authenticate(data)
                 else:
                     request_timestamp = datetime.now().timestamp()
@@ -455,7 +494,8 @@ class TestSyncStability:
                     sid_by_accounts[data['accountId']] = sid
                     await sleep(0.2)
                     await fake_server.respond(data)
-                    fake_server.status_task = asyncio.create_task(fake_server.create_status_task(data['accountId']))
+                    fake_server.status_tasks[data['accountId']] = \
+                        asyncio.create_task(fake_server.create_status_task(data['accountId']))
                     await fake_server.authenticate(data)
             elif data['type'] == 'synchronize':
                 await fake_server.respond(data)
@@ -496,7 +536,8 @@ class TestSyncStability:
                 else:
                     await sleep(0.2)
                     await fake_server.respond(data)
-                    fake_server.status_task = asyncio.create_task(fake_server.create_status_task(data['accountId']))
+                    fake_server.status_tasks[data['accountId']] = \
+                        asyncio.create_task(fake_server.create_status_task(data['accountId']))
                     await fake_server.authenticate(data)
             elif data['type'] == 'synchronize':
                 await fake_server.respond(data)
@@ -505,6 +546,9 @@ class TestSyncStability:
                 await fake_server.respond(data)
             elif data['type'] == 'getAccountInformation':
                 await fake_server.respond_account_information(data)
+            elif data['type'] == 'unsubscribe':
+                fake_server.delete_status_task(data['accountId'])
+                await fake_server.respond(data)
 
         with patch('lib.clients.metaApi.metaApiWebsocket_client.asyncio.sleep', new=lambda x: sleep(x / 50)):
             account = await api.metatrader_account_api.get_account('accountId')
@@ -526,7 +570,8 @@ class TestSyncStability:
                     sid_by_accounts[data['accountId']] = sid
                     await sleep(0.2)
                     await fake_server.respond(data)
-                    fake_server.status_task = asyncio.create_task(fake_server.create_status_task(data['accountId']))
+                    fake_server.status_tasks[data['accountId']] = \
+                        asyncio.create_task(fake_server.create_status_task(data['accountId']))
                     await fake_server.authenticate(data)
             elif data['type'] == 'synchronize':
                 await fake_server.respond(data)
@@ -574,7 +619,8 @@ class TestSyncStability:
                     sid_by_accounts[data['accountId']] = sid
                     await sleep(0.2)
                     await fake_server.respond(data)
-                    fake_server.status_task = asyncio.create_task(fake_server.create_status_task(data['accountId']))
+                    fake_server.status_tasks[data['accountId']] = \
+                        asyncio.create_task(fake_server.create_status_task(data['accountId']))
                     await fake_server.authenticate(data)
             elif data['type'] == 'synchronize':
                 await fake_server.respond(data)

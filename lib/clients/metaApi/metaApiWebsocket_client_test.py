@@ -1881,11 +1881,11 @@ class TestMetaApiWebsocketClient:
         listener = MagicMock()
         listener.on_reconnected = AsyncMock()
         client.add_reconnect_listener(listener, 'accountId')
+        client._subscriptionManager.on_reconnected = MagicMock()
         request_counter = 0
 
         @sio.on('request')
         async def on_request(sid, data):
-            print(data)
             if data['type'] == 'trade':
                 nonlocal request_counter
                 request_counter += 1
@@ -1896,6 +1896,46 @@ class TestMetaApiWebsocketClient:
         await client.trade('accountId', trade)
         await asyncio.sleep(0.1)
         listener.on_reconnected.assert_called_once()
+        client._subscriptionManager.on_reconnected.assert_called_with(0, ['accountId'])
         await client.trade('accountId', trade)
         assert request_counter == 2
         await client.close()
+
+    @pytest.mark.asyncio
+    async def test_remove_reconnect_listener(self):
+        """Should remove reconnect listener"""
+
+        trade = {
+            'actionType': 'ORDER_TYPE_SELL',
+            'symbol': 'AUDNZD',
+            'volume': 0.07
+        }
+        response = {
+            'numericCode': 10009,
+            'stringCode': 'TRADE_RETCODE_DONE',
+            'message': 'Request completed',
+            'orderId': '46870472'
+        }
+        listener = MagicMock()
+        listener.on_reconnected = AsyncMock()
+        client.add_reconnect_listener(listener, 'accountId')
+        client._subscriptionManager.on_reconnected = MagicMock()
+        request_counter = 0
+
+        @sio.on('request')
+        async def on_request(sid, data):
+            if data['type'] == 'trade':
+                nonlocal request_counter
+                request_counter += 1
+                await sio.emit('response', {'type': 'response', 'accountId': data['accountId'],
+                                            'requestId': data['requestId'], 'response': response})
+            await sio.disconnect(sid)
+
+        await client.trade('accountId', trade)
+        await asyncio.sleep(0.1)
+        listener.on_reconnected.assert_called_once()
+        client.remove_reconnect_listener(listener)
+        await client.trade('accountId', trade)
+        await asyncio.sleep(0.1)
+        listener.on_reconnected.assert_called_once()
+        assert request_counter == 2

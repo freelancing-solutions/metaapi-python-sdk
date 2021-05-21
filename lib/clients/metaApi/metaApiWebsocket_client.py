@@ -836,9 +836,10 @@ class MetaApiWebsocketClient:
         Args:
             listener: Listener to remove.
         """
-
-        if self._reconnectListeners.__contains__(listener):
-            self._reconnectListeners.remove(listener)
+        for i in range(len(self._reconnectListeners)):
+            if self._reconnectListeners[i]['listener'] == listener:
+                self._reconnectListeners.remove(self._reconnectListeners[i])
+                break
 
     def remove_all_listeners(self):
         """Removes all listeners. Intended for use in unit tests."""
@@ -1052,7 +1053,8 @@ class MetaApiWebsocketClient:
                                 on_disconnected_tasks.append(asyncio.create_task(run_on_disconnected(listener)))
                         if len(on_disconnected_tasks) > 0:
                             await asyncio.wait(on_disconnected_tasks)
-                        del self._connectedHosts[instance_id]
+                        if instance_id in self._connectedHosts:
+                            del self._connectedHosts[instance_id]
 
                 if data['type'] == 'authenticated':
                     reset_disconnect_timer()
@@ -1353,7 +1355,7 @@ class MetaApiWebsocketClient:
                             await asyncio.wait(on_order_synchronization_finished_tasks)
                 elif data['type'] == 'status':
                     if instance_id not in self._connectedHosts:
-                        if instance_id in self._status_timers and data['authenticated']:
+                        if instance_id in self._status_timers and 'authenticated' in data and data['authenticated']:
                             self._subscriptionManager.cancel_subscribe(instance_id)
                             await asyncio.sleep(0.01)
                             print(f'[{datetime.now().isoformat()}] it seems like we are not connected to a ' +
@@ -1558,10 +1560,27 @@ class MetaApiWebsocketClient:
             print('Failed to process incoming synchronization packet', format_error(err))
 
     async def _fire_reconnected(self, socket_instance_index: int):
-        self._subscriptionManager.on_reconnected(socket_instance_index)
-        for listener in self._reconnectListeners:
-            if self._socketInstancesByAccounts[listener['accountId']] == socket_instance_index:
-                try:
-                    await listener['listener'].on_reconnected()
-                except Exception as err:
-                    print(f'[{datetime.now().isoformat()}] Failed to notify reconnect listener', format_error(err))
+        try:
+            reconnect_listeners = []
+            for listener in self._reconnectListeners:
+                if listener['accountId'] in self._socketInstancesByAccounts and \
+                        self._socketInstancesByAccounts[listener['accountId']] == socket_instance_index:
+                    reconnect_listeners.append(listener)
+
+            self._subscriptionManager.on_reconnected(socket_instance_index,
+                                                     list(map(lambda listener: listener['accountId'],
+                                                              reconnect_listeners)))
+            on_reconnected_tasks = []
+            for listener in reconnect_listeners:
+                async def on_reconnected_task(listener):
+                    try:
+                        await listener['listener'].on_reconnected()
+                    except Exception as err:
+                        print(f'[{datetime.now().isoformat()}] Failed to notify reconnect listener',
+                              format_error(err))
+
+                on_reconnected_tasks.append(asyncio.create_task(on_reconnected_task(listener)))
+
+            await asyncio.gather(*on_reconnected_tasks)
+        except Exception as err:
+            print(f'[{datetime.now().isoformat()}] Failed to process reconnected event', format_error(err))

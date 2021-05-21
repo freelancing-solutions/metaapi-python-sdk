@@ -3,6 +3,7 @@ from random import uniform
 from ..errorHandler import TooManyRequestsException
 from ...metaApi.models import date, format_error
 from datetime import datetime
+from typing import List
 
 
 class SubscriptionManager:
@@ -16,6 +17,14 @@ class SubscriptionManager:
         """
         self._websocketClient = websocket_client
         self._subscriptions = {}
+        self._awaitingResubscribe = {}
+
+    def is_account_subscribing(self, account_id: str):
+        """Returns whether an account is currently subscribing."""
+        for key in self._subscriptions.keys():
+            if key.startswith(account_id):
+                return True
+        return False
 
     async def subscribe(self, account_id: str, instance_index: int = None):
         """Schedules to send subscribe requests to an account until cancelled.
@@ -46,7 +55,8 @@ class SubscriptionManager:
                                                     'LIMIT_ACCOUNT_SUBSCRIPTIONS_PER_SERVER',
                                                     'LIMIT_ACCOUNT_SUBSCRIPTIONS_PER_USER_PER_SERVER']:
                             del self._websocketClient.socket_instances_by_accounts[account_id]
-                            await self._websocketClient.lock_socket_instance(socket_instance_index, err.metadata)
+                            asyncio.create_task(self._websocketClient.lock_socket_instance(socket_instance_index,
+                                                                                           err.metadata))
                         else:
                             nonlocal subscribe_retry_interval_in_seconds
                             retry_time = date(err.metadata['recommendedRetryTime']).timestamp()
@@ -120,15 +130,29 @@ class SubscriptionManager:
         await asyncio.sleep(uniform(1, 5))
         asyncio.create_task(self.subscribe(account_id, instance_index))
 
-    def on_reconnected(self, socket_instance_index: int):
+    def on_reconnected(self, socket_instance_index: int, reconnect_account_ids: List[str]):
         """Invoked when connection to MetaApi websocket API restored after a disconnect.
 
         Args:
             socket_instance_index: Socket instance index.
+            reconnect_account_ids: Account ids to reconnect.
         """
+
+        async def wait_resubscribe(account_id):
+            if account_id not in self._awaitingResubscribe:
+                self._awaitingResubscribe[account_id] = True
+                while self.is_account_subscribing(account_id):
+                    await asyncio.sleep(1)
+                if account_id in self._awaitingResubscribe:
+                    del self._awaitingResubscribe[account_id]
+                await self.subscribe(account_id)
+
         socket_instances_by_accounts = self._websocketClient.socket_instances_by_accounts
         for instance_id in self._subscriptions.keys():
             account_id = instance_id.split(':')[0]
             if account_id in socket_instances_by_accounts and \
                     socket_instances_by_accounts[account_id] == socket_instance_index:
                 self.cancel_subscribe(instance_id)
+
+        for account_id in reconnect_account_ids:
+            asyncio.create_task(wait_resubscribe(account_id))

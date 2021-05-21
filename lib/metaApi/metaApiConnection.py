@@ -936,8 +936,7 @@ class MetaApiConnection(SynchronizationListener, ReconnectListener):
         Returns:
             A coroutine which resolves when connection to MetaApi websocket API restored after a disconnect.
         """
-        await asyncio.sleep(0.05)
-        await self.subscribe()
+        pass
 
     async def is_synchronized(self, instance_index: int, synchronization_id: str = None) -> bool:
         """Returns flag indicating status of state synchronization with MetaTrader terminal.
@@ -1013,6 +1012,7 @@ class MetaApiConnection(SynchronizationListener, ReconnectListener):
             self._websocketClient.remove_synchronization_listener(self._account.id, self._terminalState)
             self._websocketClient.remove_synchronization_listener(self._account.id, self._historyStorage)
             self._websocketClient.remove_synchronization_listener(self._account.id, self._healthMonitor)
+            self._websocketClient.remove_reconnect_listener(self)
             self._connection_registry.remove(self._account.id)
             self._healthMonitor.stop()
             self._closed = True

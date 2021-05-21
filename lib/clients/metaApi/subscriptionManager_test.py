@@ -92,9 +92,40 @@ class TestSubscriptionManager:
             asyncio.create_task(manager.subscribe('accountId2'))
             asyncio.create_task(manager.subscribe('accountId3'))
             await sleep(0.1)
-            manager.on_reconnected(0)
+            manager.on_reconnected(0, [])
             await sleep(0.5)
             assert client.subscribe.call_count == 4
+
+    @pytest.mark.asyncio
+    async def test_restart_on_reconnect(self):
+        """Should restart subscriptions on reconnect."""
+        with patch('lib.clients.metaApi.subscriptionManager.asyncio.sleep', new=lambda x: sleep(x / 10)):
+            client.connect = AsyncMock()
+            client.subscribe = AsyncMock()
+            client._socketInstancesByAccounts = {'accountId': 0, 'accountId2': 0, 'accountId3': 0}
+            asyncio.create_task(manager.subscribe('accountId'))
+            asyncio.create_task(manager.subscribe('accountId2'))
+            asyncio.create_task(manager.subscribe('accountId3'))
+            await sleep(0.1)
+            manager.on_reconnected(0, ['accountId', 'accountId2'])
+            await sleep(0.1)
+            assert client.subscribe.call_count == 5
+
+    @pytest.mark.asyncio
+    async def test_wait_for_stop_on_reconnect(self):
+        """Should wait until previous subscription ends on reconnect."""
+        with patch('lib.clients.metaApi.subscriptionManager.asyncio.sleep', new=lambda x: sleep(x / 10)):
+            async def delay_subscribe(account_id: str, instance_index: int = None):
+                await sleep(0.2)
+
+            client.connect = AsyncMock()
+            client.subscribe = AsyncMock(side_effect=delay_subscribe)
+            client._socketInstancesByAccounts = {'accountId': 0}
+            asyncio.create_task(manager.subscribe('accountId'))
+            await sleep(0.1)
+            manager.on_reconnected(0, ['accountId'])
+            await sleep(0.2)
+            assert client.subscribe.call_count == 2
 
     @pytest.mark.asyncio
     async def test_no_multiple_subscribes(self):
