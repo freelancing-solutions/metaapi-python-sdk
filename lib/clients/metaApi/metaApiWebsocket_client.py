@@ -1570,7 +1570,6 @@ class MetaApiWebsocketClient:
             self._subscriptionManager.on_reconnected(socket_instance_index,
                                                      list(map(lambda listener: listener['accountId'],
                                                               reconnect_listeners)))
-            on_reconnected_tasks = []
             for listener in reconnect_listeners:
                 async def on_reconnected_task(listener):
                     try:
@@ -1579,8 +1578,6 @@ class MetaApiWebsocketClient:
                         print(f'[{datetime.now().isoformat()}] Failed to notify reconnect listener',
                               format_error(err))
 
-                on_reconnected_tasks.append(asyncio.create_task(on_reconnected_task(listener)))
-
-            await asyncio.gather(*on_reconnected_tasks)
+                asyncio.create_task(on_reconnected_task(listener))
         except Exception as err:
             print(f'[{datetime.now().isoformat()}] Failed to process reconnected event', format_error(err))

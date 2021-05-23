@@ -139,20 +139,28 @@ class SubscriptionManager:
         """
 
         async def wait_resubscribe(account_id):
-            if account_id not in self._awaitingResubscribe:
-                self._awaitingResubscribe[account_id] = True
-                while self.is_account_subscribing(account_id):
-                    await asyncio.sleep(1)
-                if account_id in self._awaitingResubscribe:
-                    del self._awaitingResubscribe[account_id]
-                await self.subscribe(account_id)
+            try:
+                if account_id not in self._awaitingResubscribe:
+                    self._awaitingResubscribe[account_id] = True
+                    while self.is_account_subscribing(account_id):
+                        await asyncio.sleep(1)
+                    if account_id in self._awaitingResubscribe:
+                        del self._awaitingResubscribe[account_id]
+                    asyncio.create_task(self.subscribe(account_id))
+            except Exception as err:
+                print(f'[{datetime.now().isoformat()}] Account {account_id} resubscribe task failed',
+                      format_error(err))
 
-        socket_instances_by_accounts = self._websocketClient.socket_instances_by_accounts
-        for instance_id in self._subscriptions.keys():
-            account_id = instance_id.split(':')[0]
-            if account_id in socket_instances_by_accounts and \
-                    socket_instances_by_accounts[account_id] == socket_instance_index:
-                self.cancel_subscribe(instance_id)
+        try:
+            socket_instances_by_accounts = self._websocketClient.socket_instances_by_accounts
+            for instance_id in self._subscriptions.keys():
+                account_id = instance_id.split(':')[0]
+                if account_id in socket_instances_by_accounts and \
+                        socket_instances_by_accounts[account_id] == socket_instance_index:
+                    self.cancel_subscribe(instance_id)
 
-        for account_id in reconnect_account_ids:
-            asyncio.create_task(wait_resubscribe(account_id))
+            for account_id in reconnect_account_ids:
+                asyncio.create_task(wait_resubscribe(account_id))
+        except Exception as err:
+            print(f'[{datetime.now().isoformat()}] Failed to process subscribe manager reconnected event',
+                  format_error(err))
