@@ -204,7 +204,8 @@ class TestPacketOrderer:
         out_of_order_listener.on_out_of_order_packet = MagicMock()
         timed_out_packet = {
             'accountId': 'accountId',
-            'instanceId': 'accountId:0',
+            'instanceId': 'accountId:0:ps-mpa-1',
+            'host': 'ps-mpa-1',
             'instanceIndex': 0,
             'sequenceNumber': 11,
             'packet': {},
@@ -212,14 +213,15 @@ class TestPacketOrderer:
         }
         not_timed_out_packet = {
             'accountId': 'accountId',
-            'instanceId': 'accountId:0',
+            'instanceId': 'accountId:0:ps-mpa-1',
+            'host': 'ps-mpa-1',
             'instanceIndex': 0,
             'sequenceNumber': 15,
             'packet': {},
             'receivedAt': datetime.fromtimestamp(10000000000)
         }
-        packet_orderer._sequenceNumberByInstance['accountId:0'] = 1
-        packet_orderer._packetsByInstance['accountId:0'] = [
+        packet_orderer._sequenceNumberByInstance['accountId:0:ps-mpa-1'] = 1
+        packet_orderer._packetsByInstance['accountId:0:ps-mpa-1'] = [
             timed_out_packet,
             not_timed_out_packet
         ]
@@ -285,20 +287,22 @@ class TestPacketOrderer:
             'type': 'prices',
             'sequenceTimestamp': 1603124267180,
             'sequenceNumber': 14,
-            'accountId': 'accountId'
+            'accountId': 'accountId',
+            'host': 'ps-mpa-1'
         }
         third_packet = {
             'type': 'accountInformation',
             'sequenceTimestamp': 1603124267187,
             'sequenceNumber': 15,
-            'accountId': 'accountId'
+            'accountId': 'accountId',
+            'host': 'ps-mpa-1'
         }
         packet_orderer.restore_order(second_packet)
-        assert len(packet_orderer._packetsByInstance['accountId:0']) == 1
-        assert packet_orderer._packetsByInstance['accountId:0'][0]['packet'] == second_packet
+        assert len(packet_orderer._packetsByInstance['accountId:0:ps-mpa-1']) == 1
+        assert packet_orderer._packetsByInstance['accountId:0:ps-mpa-1'][0]['packet'] == second_packet
         packet_orderer.restore_order(third_packet)
-        assert len(packet_orderer._packetsByInstance['accountId:0']) == 1
-        assert packet_orderer._packetsByInstance['accountId:0'][0]['packet'] == third_packet
+        assert len(packet_orderer._packetsByInstance['accountId:0:ps-mpa-1']) == 1
+        assert packet_orderer._packetsByInstance['accountId:0:ps-mpa-1'][0]['packet'] == third_packet
 
     @pytest.mark.asyncio
     async def test_count_start_packets_with_no_sync_id_as_out_of_order(self):
@@ -307,8 +311,9 @@ class TestPacketOrderer:
             'type': 'synchronizationStarted',
             'sequenceTimestamp': 1603124267198,
             'sequenceNumber': 16,
-            'accountId': 'accountId'
+            'accountId': 'accountId',
+            'host': 'ps-mpa-1'
         }
         assert packet_orderer.restore_order(start_packet) == []
-        assert len(packet_orderer._packetsByInstance['accountId:0']) == 1
-        assert packet_orderer._packetsByInstance['accountId:0'][0]['packet'] == start_packet
+        assert len(packet_orderer._packetsByInstance['accountId:0:ps-mpa-1']) == 1
+        assert packet_orderer._packetsByInstance['accountId:0:ps-mpa-1'][0]['packet'] == start_packet

@@ -11,7 +11,7 @@ async def run_around_tests(mocker):
     with patch('lib.metaApi.memoryHistoryStorage.HistoryFileManager.start_update_job', new_callable=MagicMock):
         global storage
         storage = MemoryHistoryStorage('accountId')
-        await storage.on_connected(1, 1)
+        await storage.on_connected('1:ps-mpa-1', 1)
         yield
 
 
@@ -45,36 +45,45 @@ class TestMemoryHistoryStorage:
     async def test_return_last_history_order_time(self):
         """Should return last history order time."""
 
-        await storage.on_history_order_added(1, {'id': '1'})
-        await storage.on_history_order_added(1, {'id': '2', 'doneTime': date('2020-01-01T00:00:00.000Z')})
-        await storage.on_history_order_added(1, {'id': '3', 'doneTime': date('2020-01-02T00:00:00.000Z')})
+        await storage.on_history_order_added('1:ps-mpa-1', {'id': '1'})
+        await storage.on_history_order_added('1:ps-mpa-1', {'id': '2', 'doneTime': date('2020-01-01T00:00:00.000Z')})
+        await storage.on_history_order_added('1:ps-mpa-1', {'id': '3', 'doneTime': date('2020-01-02T00:00:00.000Z')})
         assert await storage.last_history_order_time() == date('2020-01-02T00:00:00.000Z')
 
     @pytest.mark.asyncio
     async def test_return_last_deal_time(self):
         """Should return last deal time."""
 
-        await storage.on_deal_added(1, {'id': '1'})
-        await storage.on_deal_added(1, {'id': '2', 'time': date('2020-01-01T00:00:00.000Z')})
-        await storage.on_deal_added(1, {'id': '3', 'time': date('2020-01-02T00:00:00.000Z')})
+        await storage.on_deal_added('1:ps-mpa-1', {'id': '1'})
+        await storage.on_deal_added('1:ps-mpa-1', {'id': '2', 'time': date('2020-01-01T00:00:00.000Z')})
+        await storage.on_deal_added('1:ps-mpa-1', {'id': '3', 'time': date('2020-01-02T00:00:00.000Z')})
         assert await storage.last_deal_time() == date('2020-01-02T00:00:00.000Z',)
 
     @pytest.mark.asyncio
     async def test_return_saved_deals(self):
         """Should return saved deals."""
 
-        await storage.on_deal_added(1, {'id': '1', 'time': date('2020-01-01T00:00:00.000Z'), 'type': 'DEAL_TYPE_SELL'})
-        await storage.on_deal_added(1, {'id': '7', 'time': date('2020-05-01T00:00:00.000Z'), 'type': 'DEAL_TYPE_BUY'})
-        await storage.on_deal_added(1, {'id': '8', 'time': date('2020-02-01T00:00:00.000Z'), 'type': 'DEAL_TYPE_SELL'})
-        await storage.on_deal_added(1, {'id': '6', 'time': date('2020-10-01T00:00:00.000Z'), 'type': 'DEAL_TYPE_BUY'})
-        await storage.on_deal_added(1, {'id': '4', 'time': date('2020-02-01T00:00:00.000Z'), 'type': 'DEAL_TYPE_SELL'})
-        await storage.on_deal_added(1, {'id': '5', 'time': date('2020-06-01T00:00:00.000Z'), 'type': 'DEAL_TYPE_BUY'})
-        await storage.on_deal_added(1, {'id': '11', 'type': 'DEAL_TYPE_SELL'})
-        await storage.on_deal_added(1, {'id': '3', 'time': date('2020-09-01T00:00:00.000Z'), 'type': 'DEAL_TYPE_BUY'})
-        await storage.on_deal_added(1, {'id': '5', 'time': date('2020-06-01T00:00:00.000Z'), 'type': 'DEAL_TYPE_BUY'})
-        await storage.on_deal_added(1, {'id': '2', 'time': date('2020-08-01T00:00:00.000Z'), 'type': 'DEAL_TYPE_SELL'})
-        await storage.on_deal_added(1, {'id': '10', 'type': 'DEAL_TYPE_SELL'})
-        await storage.on_deal_added(1, {'id': '12', 'type': 'DEAL_TYPE_BUY'})
+        await storage.on_deal_added('1:ps-mpa-1', {'id': '1', 'time': date('2020-01-01T00:00:00.000Z'),
+                                                   'type': 'DEAL_TYPE_SELL'})
+        await storage.on_deal_added('1:ps-mpa-1', {'id': '7', 'time': date('2020-05-01T00:00:00.000Z'),
+                                                   'type': 'DEAL_TYPE_BUY'})
+        await storage.on_deal_added('1:ps-mpa-1', {'id': '8', 'time': date('2020-02-01T00:00:00.000Z'),
+                                                   'type': 'DEAL_TYPE_SELL'})
+        await storage.on_deal_added('1:ps-mpa-1', {'id': '6', 'time': date('2020-10-01T00:00:00.000Z'),
+                                                   'type': 'DEAL_TYPE_BUY'})
+        await storage.on_deal_added('1:ps-mpa-1', {'id': '4', 'time': date('2020-02-01T00:00:00.000Z'),
+                                                   'type': 'DEAL_TYPE_SELL'})
+        await storage.on_deal_added('1:ps-mpa-1', {'id': '5', 'time': date('2020-06-01T00:00:00.000Z'),
+                                                   'type': 'DEAL_TYPE_BUY'})
+        await storage.on_deal_added('1:ps-mpa-1', {'id': '11', 'type': 'DEAL_TYPE_SELL'})
+        await storage.on_deal_added('1:ps-mpa-1', {'id': '3', 'time': date('2020-09-01T00:00:00.000Z'),
+                                                   'type': 'DEAL_TYPE_BUY'})
+        await storage.on_deal_added('1:ps-mpa-1', {'id': '5', 'time': date('2020-06-01T00:00:00.000Z'),
+                                                   'type': 'DEAL_TYPE_BUY'})
+        await storage.on_deal_added('1:ps-mpa-1', {'id': '2', 'time': date('2020-08-01T00:00:00.000Z'),
+                                                   'type': 'DEAL_TYPE_SELL'})
+        await storage.on_deal_added('1:ps-mpa-1', {'id': '10', 'type': 'DEAL_TYPE_SELL'})
+        await storage.on_deal_added('1:ps-mpa-1', {'id': '12', 'type': 'DEAL_TYPE_BUY'})
 
         assert storage.deals == [
             {'id': '10', 'type': 'DEAL_TYPE_SELL'},
@@ -94,27 +103,27 @@ class TestMemoryHistoryStorage:
     async def test_return_saved_history_orders(self):
         """Should return saved historyOrders."""
 
-        await storage.on_history_order_added(1, {'id': '1', 'doneTime': date('2020-01-01T00:00:00.000Z'),
+        await storage.on_history_order_added('1:ps-mpa-1', {'id': '1', 'doneTime': date('2020-01-01T00:00:00.000Z'),
                                              'type': 'ORDER_TYPE_SELL'})
-        await storage.on_history_order_added(1, {'id': '7', 'doneTime': date('2020-05-01T00:00:00.000Z'),
+        await storage.on_history_order_added('1:ps-mpa-1', {'id': '7', 'doneTime': date('2020-05-01T00:00:00.000Z'),
                                              'type': 'ORDER_TYPE_BUY'})
-        await storage.on_history_order_added(1, {'id': '8', 'doneTime': date('2020-02-01T00:00:00.000Z'),
+        await storage.on_history_order_added('1:ps-mpa-1', {'id': '8', 'doneTime': date('2020-02-01T00:00:00.000Z'),
                                              'type': 'ORDER_TYPE_SELL'})
-        await storage.on_history_order_added(1, {'id': '6', 'doneTime': date('2020-10-01T00:00:00.000Z'),
+        await storage.on_history_order_added('1:ps-mpa-1', {'id': '6', 'doneTime': date('2020-10-01T00:00:00.000Z'),
                                              'type': 'ORDER_TYPE_BUY'})
-        await storage.on_history_order_added(1, {'id': '4', 'doneTime': date('2020-02-01T00:00:00.000Z'),
+        await storage.on_history_order_added('1:ps-mpa-1', {'id': '4', 'doneTime': date('2020-02-01T00:00:00.000Z'),
                                              'type': 'ORDER_TYPE_SELL'})
-        await storage.on_history_order_added(1, {'id': '5', 'doneTime': date('2020-06-01T00:00:00.000Z'),
+        await storage.on_history_order_added('1:ps-mpa-1', {'id': '5', 'doneTime': date('2020-06-01T00:00:00.000Z'),
                                              'type': 'ORDER_TYPE_BUY'})
-        await storage.on_history_order_added(1, {'id': '11', 'type': 'ORDER_TYPE_SELL'})
-        await storage.on_history_order_added(1, {'id': '3', 'doneTime': date('2020-09-01T00:00:00.000Z'),
+        await storage.on_history_order_added('1:ps-mpa-1', {'id': '11', 'type': 'ORDER_TYPE_SELL'})
+        await storage.on_history_order_added('1:ps-mpa-1', {'id': '3', 'doneTime': date('2020-09-01T00:00:00.000Z'),
                                              'type': 'ORDER_TYPE_BUY'})
-        await storage.on_history_order_added(1, {'id': '5', 'doneTime': date('2020-06-01T00:00:00.000Z'),
-                                                 'type': 'ORDER_TYPE_BUY'})
-        await storage.on_history_order_added(1, {'id': '2', 'doneTime': date('2020-08-01T00:00:00.000Z'),
+        await storage.on_history_order_added('1:ps-mpa-1', {'id': '5', 'doneTime': date('2020-06-01T00:00:00.000Z'),
+                                             'type': 'ORDER_TYPE_BUY'})
+        await storage.on_history_order_added('1:ps-mpa-1', {'id': '2', 'doneTime': date('2020-08-01T00:00:00.000Z'),
                                              'type': 'ORDER_TYPE_SELL'})
-        await storage.on_history_order_added(1, {'id': '10', 'type': 'ORDER_TYPE_SELL'})
-        await storage.on_history_order_added(1, {'id': '12', 'type': 'ORDER_TYPE_BUY'})
+        await storage.on_history_order_added('1:ps-mpa-1', {'id': '10', 'type': 'ORDER_TYPE_SELL'})
+        await storage.on_history_order_added('1:ps-mpa-1', {'id': '12', 'type': 'ORDER_TYPE_BUY'})
 
         assert storage.history_orders == [
             {'id': '10', 'type': 'ORDER_TYPE_SELL'},
@@ -135,7 +144,7 @@ class TestMemoryHistoryStorage:
         """Should return saved order synchronization status."""
 
         assert not storage.order_synchronization_finished
-        await storage.on_order_synchronization_finished(1, 'synchronizationId')
+        await storage.on_order_synchronization_finished('1:ps-mpa-1', 'synchronizationId')
         assert storage.order_synchronization_finished
 
     @pytest.mark.asyncio
@@ -144,7 +153,7 @@ class TestMemoryHistoryStorage:
 
         storage._fileManager.update_disk_storage = AsyncMock()
         assert not storage.deal_synchronization_finished
-        await storage.on_deal_synchronization_finished(1, 'synchronizationId')
+        await storage.on_deal_synchronization_finished('1:ps-mpa-1', 'synchronizationId')
         storage._fileManager.update_disk_storage.assert_called()
         assert storage.deal_synchronization_finished
 
@@ -152,10 +161,23 @@ class TestMemoryHistoryStorage:
     async def test_reset_storage(self):
         """Should reset storage."""
         storage._fileManager.delete_storage_from_disk = AsyncMock()
-        await storage.on_deal_added(1, {'id': '1', 'time': date('2020-01-01T00:00:00.000Z'), 'type': 'DEAL_TYPE_SELL'})
-        await storage.on_history_order_added(1, {'id': '1', 'doneTime': date('2020-01-01T00:00:00.000Z'),
+        await storage.on_deal_added('1:ps-mpa-1', {'id': '1', 'time': date('2020-01-01T00:00:00.000Z'),
+                                                   'type': 'DEAL_TYPE_SELL'})
+        await storage.on_history_order_added('1:ps-mpa-1', {'id': '1', 'doneTime': date('2020-01-01T00:00:00.000Z'),
                                              'type': 'ORDER_TYPE_SELL'})
         await storage.clear()
         assert storage.deals == []
         assert storage.history_orders == []
         storage._fileManager.delete_storage_from_disk.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_store_multiple_streams(self):
+        """Should record instance data from multiple streams."""
+        await storage.on_history_order_added('1:ps-mpa-1', {'id': '2', 'doneTime': date('2020-01-01T00:00:00.000Z')})
+        assert await storage.last_history_order_time(1) == date('2020-01-01T00:00:00.000Z')
+        await storage.on_history_order_added('1:ps-mpa-2', {'id': '3', 'doneTime': date('2020-01-02T00:00:00.000Z')})
+        assert await storage.last_history_order_time(1) == date('2020-01-02T00:00:00.000Z')
+        await storage.on_deal_added('1:ps-mpa-1', {'id': '2', 'time': date('2020-01-01T00:00:00.000Z')})
+        assert await storage.last_deal_time(1) == date('2020-01-01T00:00:00.000Z')
+        await storage.on_deal_added('1:ps-mpa-2', {'id': '3', 'time': date('2020-01-02T00:00:00.000Z')})
+        assert await storage.last_deal_time(1) == date('2020-01-02T00:00:00.000Z')

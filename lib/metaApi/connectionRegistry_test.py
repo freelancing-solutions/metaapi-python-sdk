@@ -12,7 +12,7 @@ import pytest
 
 
 class MockClient(MetaApiWebsocketClient):
-    async def subscribe(self, account_id: str, instance_index: int = None):
+    async def subscribe(self, account_id: str, instance_index: str = None):
         pass
 
     def add_synchronization_listener(self, account_id: str, listener):
@@ -48,19 +48,19 @@ class MockStorage(MemoryHistoryStorageModel):
     async def clear(self):
         pass
 
-    def last_deal_time(self, instance_index: int = None) -> datetime:
+    def last_deal_time(self, instance_index: str = None) -> datetime:
         pass
 
-    def last_history_order_time(self, instance_index: int = None) -> datetime:
+    def last_history_order_time(self, instance_index: str = None) -> datetime:
         pass
 
-    def on_deal_added(self, instance_index: int, deal: MetatraderDeal):
+    def on_deal_added(self, instance_index: str, deal: MetatraderDeal):
         pass
 
     async def load_data_from_disk(self):
         return {'deals': [], 'history_orders': []}
 
-    def on_history_order_added(self, instance_index: int, history_order: MetatraderOrder):
+    def on_history_order_added(self, instance_index: str, history_order: MetatraderOrder):
         pass
 
 

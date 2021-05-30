@@ -540,16 +540,16 @@ class MetaApiWebsocketClient:
             raise TradeException(response['response']['message'], response['response']['numericCode'],
                                  response['response']['stringCode'])
 
-    def ensure_subscribe(self, account_id: str, instance_index: int = None):
+    def ensure_subscribe(self, account_id: str, instance_number: int = None):
         """Creates a subscription manager task to send subscription requests until cancelled.
 
         Args:
             account_id: Account id to subscribe.
-            instance_index: Instance index.
+            instance_number: Instance index number.
         """
-        asyncio.create_task(self._subscriptionManager.subscribe(account_id, instance_index))
+        asyncio.create_task(self._subscriptionManager.subscribe(account_id, instance_number))
 
-    def subscribe(self, account_id: str, instance_index: int = None):
+    def subscribe(self, account_id: str, instance_index: str = None):
         """Subscribes to the Metatrader terminal events
         (see https://metaapi.cloud/docs/client/websocket/api/subscribe/).
 
@@ -576,7 +576,7 @@ class MetaApiWebsocketClient:
         """
         return self._rpc_request(account_id, {'type': 'reconnect'})
 
-    def synchronize(self, account_id: str, instance_index: int, synchronization_id: str,
+    def synchronize(self, account_id: str, instance_index: int, host: str, synchronization_id: str,
                     starting_history_order_time: datetime, starting_deal_time: datetime) -> Coroutine:
         """Requests the terminal to start synchronization process.
         (see https://metaapi.cloud/docs/client/websocket/synchronizing/synchronize/).
@@ -584,6 +584,7 @@ class MetaApiWebsocketClient:
         Args:
             account_id: Id of the MetaTrader account to synchronize.
             instance_index: Instance index.
+            host: Name of host to synchronize with.
             synchronization_id: Synchronization request id.
             starting_history_order_time: From what date to start synchronizing history orders from. If not specified,
             the entire order history will be downloaded.
@@ -597,26 +598,27 @@ class MetaApiWebsocketClient:
             self.socket_instances_by_accounts[account_id]]['synchronizationThrottler']
         return sync_throttler.schedule_synchronize(account_id, {
             'requestId': synchronization_id, 'type': 'synchronize',
+            'host': host,
             'startingHistoryOrderTime': format_date(starting_history_order_time),
             'startingDealTime': format_date(starting_deal_time),
             'instanceIndex': instance_index})
 
-    def wait_synchronized(self, account_id: str, instance_index: int, application_pattern: str,
+    def wait_synchronized(self, account_id: str, instance_number: int, application_pattern: str,
                           timeout_in_seconds: float):
         """Waits for server-side terminal state synchronization to complete.
         (see https://metaapi.cloud/docs/client/websocket/synchronizing/waitSynchronized/).
 
         Args:
             account_id: Id of the MetaTrader account to synchronize.
-            instance_index: Instance index.
+            instance_number: Instance index number.
             application_pattern: MetaApi application regular expression pattern, default is .*
             timeout_in_seconds: Timeout in seconds, default is 300 seconds.
         """
         return self._rpc_request(account_id, {'type': 'waitSynchronized', 'applicationPattern': application_pattern,
-                                              'timeoutInSeconds': timeout_in_seconds, 'instanceIndex': instance_index},
+                                              'timeoutInSeconds': timeout_in_seconds, 'instanceIndex': instance_number},
                                  timeout_in_seconds + 1)
 
-    def subscribe_to_market_data(self, account_id: str, instance_index: int, symbol: str,
+    def subscribe_to_market_data(self, account_id: str, instance_index: str, symbol: str,
                                  subscriptions: List[MarketDataSubscription] = None) -> Coroutine:
         """Subscribes on market data of specified symbol
         (see https://metaapi.cloud/docs/client/websocket/marketDataStreaming/subscribeToMarketData/).
@@ -637,7 +639,7 @@ class MetaApiWebsocketClient:
             packet['subscriptions'] = subscriptions
         return self._rpc_request(account_id, packet)
 
-    def unsubscribe_from_market_data(self, account_id: str, instance_index: int, symbol: str,
+    def unsubscribe_from_market_data(self, account_id: str, instance_index: str, symbol: str,
                                      subscriptions: List[MarketDataUnsubscription] = None) -> Coroutine:
         """Unsubscribes from market data of specified symbol
         (see https://metaapi.cloud/docs/client/websocket/marketDataStreaming/unsubscribeFromMarketData/).
@@ -1021,8 +1023,16 @@ class MetaApiWebsocketClient:
                     data['accountId'] in self._socketInstancesByAccounts else None
                 if 'synchronizationId' in data and socket_instance:
                     socket_instance['synchronizationThrottler'].update_synchronization_id(data['synchronizationId'])
-                instance_id = data['accountId'] + ':' + str(data['instanceIndex'] if 'instanceIndex' in data else 0)
-                instance_index = data['instanceIndex'] if 'instanceIndex' in data else 0
+                instance_number = data['instanceIndex'] if 'instanceIndex' in data else 0
+                instance_id = data['accountId'] + ':' + str(instance_number) + ':' + \
+                    (data['host'] if 'host' in data else '0')
+                instance_index = str(instance_number) + ':' + (data['host'] if 'host' in data else '0')
+
+                def is_only_active_instance():
+                    active_instance_ids = list(
+                        filter(lambda instance: instance.startswith(
+                            data['accountId'] + ':' + str(instance_number)), self._connectedHosts.keys()))
+                    return len(active_instance_ids) == 1 and active_instance_ids[0] == instance_id
 
                 def cancel_disconnect_timer():
                     if instance_id in self._status_timers:
@@ -1031,28 +1041,48 @@ class MetaApiWebsocketClient:
                 def reset_disconnect_timer():
                     async def disconnect():
                         await asyncio.sleep(60)
-                        await on_disconnected()
-                        self._subscriptionManager.on_timeout(data["accountId"], instance_index)
+                        if is_only_active_instance():
+                            self._subscriptionManager.on_timeout(data["accountId"], instance_number)
+                        await on_disconnected(True)
 
                     cancel_disconnect_timer()
                     self._status_timers[instance_id] = asyncio.create_task(disconnect())
 
-                async def on_disconnected():
-                    if instance_id in self._connectedHosts and self._connectedHosts[instance_id] == data['host']:
-                        on_disconnected_tasks: List[asyncio.Task] = []
+                async def on_disconnected(is_timeout: bool = False):
+                    if instance_id in self._connectedHosts:
+                        if is_only_active_instance():
+                            on_disconnected_tasks: List[asyncio.Task] = []
+                            if not is_timeout:
+                                on_disconnected_tasks.append(asyncio.create_task(
+                                    self._subscriptionManager.on_disconnected(data['accountId'], instance_number)))
 
-                        async def run_on_disconnected(listener):
-                            try:
-                                await listener.on_disconnected(instance_index)
-                            except Exception as err:
-                                print(f'{data["accountId"]}: Failed to notify listener about disconnected event',
-                                      format_error(err))
+                            async def run_on_disconnected(listener):
+                                try:
+                                    await listener.on_disconnected(instance_index)
+                                except Exception as err:
+                                    print(f'{data["accountId"]}: Failed to notify listener about disconnected event',
+                                          format_error(err))
 
-                        if data['accountId'] in self._synchronizationListeners:
-                            for listener in self._synchronizationListeners[data['accountId']]:
-                                on_disconnected_tasks.append(asyncio.create_task(run_on_disconnected(listener)))
-                        if len(on_disconnected_tasks) > 0:
-                            await asyncio.wait(on_disconnected_tasks)
+                            if data['accountId'] in self._synchronizationListeners:
+                                for listener in self._synchronizationListeners[data['accountId']]:
+                                    on_disconnected_tasks.append(asyncio.create_task(run_on_disconnected(listener)))
+                            if len(on_disconnected_tasks) > 0:
+                                await asyncio.wait(on_disconnected_tasks)
+                        else:
+                            on_stream_closed_tasks: List[asyncio.Task] = []
+
+                            async def run_on_stream_closed(listener):
+                                try:
+                                    await listener.on_stream_closed(instance_index)
+                                except Exception as err:
+                                    print(f'{data["accountId"]}: Failed to notify listener about stream closed event',
+                                          format_error(err))
+
+                            if data['accountId'] in self._synchronizationListeners:
+                                for listener in self._synchronizationListeners[data['accountId']]:
+                                    on_stream_closed_tasks.append(asyncio.create_task(run_on_stream_closed(listener)))
+                            if len(on_stream_closed_tasks) > 0:
+                                await asyncio.wait(on_stream_closed_tasks)
                         if instance_id in self._connectedHosts:
                             del self._connectedHosts[instance_id]
 
@@ -1074,13 +1104,12 @@ class MetaApiWebsocketClient:
                         if data['accountId'] in self._synchronizationListeners:
                             for listener in self._synchronizationListeners[data['accountId']]:
                                 on_connected_tasks.append(asyncio.create_task(run_on_connected(listener)))
-                            self._subscriptionManager.cancel_subscribe(instance_id)
+                            self._subscriptionManager.cancel_subscribe(data['accountId'] + ':' + str(instance_number))
                         if len(on_connected_tasks) > 0:
                             await asyncio.wait(on_connected_tasks)
                 elif data['type'] == 'disconnected':
                     cancel_disconnect_timer()
-                    await asyncio.gather(on_disconnected(),
-                                         self._subscriptionManager.on_disconnected(data['accountId'], instance_index))
+                    await on_disconnected()
                 elif data['type'] == 'synchronizationStarted':
                     on_sync_started_tasks: List[asyncio.Task] = []
 
@@ -1356,12 +1385,12 @@ class MetaApiWebsocketClient:
                 elif data['type'] == 'status':
                     if instance_id not in self._connectedHosts:
                         if instance_id in self._status_timers and 'authenticated' in data and data['authenticated']:
-                            self._subscriptionManager.cancel_subscribe(instance_id)
+                            self._subscriptionManager.cancel_subscribe(data['accountId'] + ':' + str(instance_number))
                             await asyncio.sleep(0.01)
                             print(f'[{datetime.now().isoformat()}] it seems like we are not connected to a ' +
                                   'running API server yet, retrying subscription for account ' + instance_id)
-                            self.ensure_subscribe(data['accountId'], instance_index)
-                    elif instance_id in self._connectedHosts and self._connectedHosts[instance_id] == data['host']:
+                            self.ensure_subscribe(data['accountId'], instance_number)
+                    else:
                         reset_disconnect_timer()
                         on_broker_connection_status_changed_tasks: List[asyncio.Task] = []
 

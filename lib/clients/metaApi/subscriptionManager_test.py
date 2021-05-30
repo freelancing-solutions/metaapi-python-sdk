@@ -11,7 +11,7 @@ from asyncio import sleep
 
 
 class MockClient(MetaApiWebsocketClient):
-    def subscribe(self, account_id: str, instance_index: int = None):
+    def subscribe(self, account_id: str, instance_index: str = None):
         pass
 
 
@@ -115,7 +115,7 @@ class TestSubscriptionManager:
     async def test_wait_for_stop_on_reconnect(self):
         """Should wait until previous subscription ends on reconnect."""
         with patch('lib.clients.metaApi.subscriptionManager.asyncio.sleep', new=lambda x: sleep(x / 10)):
-            async def delay_subscribe(account_id: str, instance_index: int = None):
+            async def delay_subscribe(account_id: str, instance_number: int = None):
                 await sleep(0.2)
 
             client.connect = AsyncMock()
