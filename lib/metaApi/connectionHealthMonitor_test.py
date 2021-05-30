@@ -94,7 +94,7 @@ class TestConnectionHealthMonitor:
     @pytest.mark.asyncio
     async def test_return_100_uptime(self):
         """Should return 100 uptime."""
-        await health_monitor.on_symbol_price_updated(1, prices[0])
+        await health_monitor.on_symbol_price_updated('1:ps-mpa-1', prices[0])
         await sleep(0.2)
         assert health_monitor.uptime == {'5m': 100, '1h': 100, '1d': 100, '1w': 100}
 
@@ -102,7 +102,7 @@ class TestConnectionHealthMonitor:
     async def test_return_average_uptime(self):
         """Should return average uptime."""
         with freeze_time(start_time) as frozen_datetime:
-            await health_monitor.on_symbol_price_updated(1, prices[0])
+            await health_monitor.on_symbol_price_updated('1:ps-mpa-1', prices[0])
             await sleep(0.6)
             frozen_datetime.tick(60)
             await sleep(0.4)
@@ -111,7 +111,7 @@ class TestConnectionHealthMonitor:
     @pytest.mark.asyncio
     async def test_check_downtime(self):
         """Should check connection for downtime."""
-        await health_monitor.on_symbol_price_updated(1, prices[0])
+        await health_monitor.on_symbol_price_updated('1:ps-mpa-1', prices[0])
         await sleep(0.22)
         assert health_monitor.uptime == {'5m': 100, '1h': 100, '1d': 100, '1w': 100}
         connection.terminal_state._connected = False
@@ -174,7 +174,7 @@ class TestConnectionHealthMonitor:
     @pytest.mark.asyncio
     async def test_show_as_healthy(self):
         """Should show as healthy if recently updated and in session."""
-        await health_monitor.on_symbol_price_updated(1, prices[0])
+        await health_monitor.on_symbol_price_updated('1:ps-mpa-1', prices[0])
         await sleep(0.2)
         assert health_monitor.health_status['quoteStreamingHealthy']
 
@@ -182,7 +182,7 @@ class TestConnectionHealthMonitor:
     async def test_show_as_not_healthy(self):
         """Should show as not healthy if old update and in session."""
         with freeze_time(start_time) as frozen_datetime:
-            await health_monitor.on_symbol_price_updated(1, prices[0])
+            await health_monitor.on_symbol_price_updated('1:ps-mpa-1', prices[0])
             frozen_datetime.tick(60)
             await sleep(0.2)
             assert not health_monitor.health_status['quoteStreamingHealthy']
@@ -191,7 +191,7 @@ class TestConnectionHealthMonitor:
     async def test_show_as_healthy_if_not_in_session(self):
         """Should show as healthy if not in session."""
         with freeze_time(start_time) as frozen_datetime:
-            await health_monitor.on_symbol_price_updated(1, prices[1])
+            await health_monitor.on_symbol_price_updated('1:ps-mpa-1', prices[1])
             frozen_datetime.tick(60)
             await sleep(0.2)
             assert health_monitor.health_status['quoteStreamingHealthy']
@@ -201,7 +201,7 @@ class TestConnectionHealthMonitor:
         """Should show as healthy if no symbols."""
         with freeze_time(start_time) as frozen_datetime:
             connection._subscribed_symbols = []
-            await health_monitor.on_symbol_price_updated(1, prices[0])
+            await health_monitor.on_symbol_price_updated('1:ps-mpa-1', prices[0])
             frozen_datetime.tick(60)
             await sleep(0.2)
             assert health_monitor.health_status['quoteStreamingHealthy']

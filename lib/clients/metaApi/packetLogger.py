@@ -176,22 +176,22 @@ class PacketLogger:
         self._deleteOldLogsInterval.cancel()
         self._deleteOldLogsInterval = None
 
-    def _record_prices(self, account_id: str, instance_index: int):
+    def _record_prices(self, account_id: str, instance_number: int):
         """Records price packet messages to log files.
 
         Args:
             account_id: Account id.
         """
-        prev_price = self._previousPrices[account_id][instance_index] if instance_index \
+        prev_price = self._previousPrices[account_id][instance_number] if instance_number \
             in self._previousPrices[account_id] else {'first': {}, 'last': {}}
         queue = self._writeQueue[account_id]['queue']
-        del self._previousPrices[account_id][instance_index]
+        del self._previousPrices[account_id][instance_number]
         if not len(self._previousPrices[account_id].keys()):
             del self._previousPrices[account_id]
         if prev_price['first']['sequenceNumber'] != prev_price['last']['sequenceNumber']:
             queue.append(json.dumps(prev_price['last']))
             queue.append(f'Recorded price packets {prev_price["first"]["sequenceNumber"]}'
-                         f'-{prev_price["last"]["sequenceNumber"]}, instanceIndex: {instance_index}')
+                         f'-{prev_price["last"]["sequenceNumber"]}, instanceIndex: {instance_number}')
 
     async def _append_logs(self):
         """Writes logs to files."""

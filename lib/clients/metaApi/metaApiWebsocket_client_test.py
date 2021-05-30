@@ -944,10 +944,10 @@ class TestMetaApiWebsocketClient:
         listener = MagicMock()
         listener.on_connected = FinalMock()
         client.add_synchronization_listener('accountId', listener)
-        await sio.emit('synchronization', {'type': 'authenticated', 'accountId': 'accountId',
+        await sio.emit('synchronization', {'type': 'authenticated', 'accountId': 'accountId', 'host': 'ps-mpa-1',
                                            'instanceIndex': 1, 'replicas': 2})
         await future_close
-        listener.on_connected.assert_called_with(1, 2)
+        listener.on_connected.assert_called_with('1:ps-mpa-1', 2)
 
     @pytest.mark.asyncio
     async def test_process_auth_sync_event_with_session_id(self):
@@ -956,12 +956,13 @@ class TestMetaApiWebsocketClient:
         listener.on_connected = FinalMock()
         client.add_synchronization_listener('accountId', listener)
         await sio.emit('synchronization', {'type': 'authenticated', 'accountId': 'accountId', 'instanceIndex': 2,
-                                           'replicas': 4, 'sessionId': 'wrong'})
+                                           'replicas': 4, 'sessionId': 'wrong', 'host': 'ps-mpa-1'})
         await sio.emit('synchronization', {'type': 'authenticated', 'accountId': 'accountId', 'instanceIndex': 1,
-                                           'replicas': 2, 'sessionId': client._socketInstances[0]['sessionId']})
+                                           'replicas': 2, 'host': 'ps-mpa-1',
+                                           'sessionId': client._socketInstances[0]['sessionId']})
         await future_close
         assert listener.on_connected.call_count == 1
-        listener.on_connected.assert_called_with(1, 2)
+        listener.on_connected.assert_called_with('1:ps-mpa-1', 2)
 
     @pytest.mark.asyncio
     async def test_process_broker_connection_status_event(self):
@@ -975,7 +976,7 @@ class TestMetaApiWebsocketClient:
         await sio.emit('synchronization', {'type': 'status', 'accountId': 'accountId', 'host': 'ps-mpa-1',
                                            'connected': True, 'instanceIndex': 1})
         await future_close
-        listener.on_broker_connection_status_changed.assert_called_with(1, True)
+        listener.on_broker_connection_status_changed.assert_called_with('1:ps-mpa-1', True)
 
     @pytest.mark.asyncio
     async def test_call_disconnect(self):
@@ -1000,7 +1001,52 @@ class TestMetaApiWebsocketClient:
             await sleep(0.2)
             listener.on_disconnected.assert_not_called()
             await sleep(1.1)
-            listener.on_disconnected.assert_called_with(1)
+            listener.on_disconnected.assert_called_with('1:ps-mpa-1')
+
+    @pytest.mark.asyncio
+    async def test_close_stream_on_timeout(self):
+        """Should close stream on timeout if another stream exists"""
+        with patch('lib.clients.metaApi.metaApiWebsocket_client.asyncio.sleep', new=lambda x: sleep(x / 50)):
+            listener = MagicMock()
+            listener.on_connected = AsyncMock()
+            listener.on_broker_connection_status_changed = AsyncMock()
+            listener.on_disconnected = FinalMock()
+            listener.on_stream_closed = AsyncMock()
+            client._subscriptionManager.on_timeout = AsyncMock()
+            client._subscriptionManager.on_disconnected = AsyncMock()
+            client.add_synchronization_listener('accountId', listener)
+            await sio.emit('synchronization', {'type': 'authenticated', 'accountId': 'accountId', 'host': 'ps-mpa-1',
+                                               'instanceIndex': 1, 'replicas': 2})
+            await sleep(0.3)
+            await sio.emit('synchronization', {'type': 'authenticated', 'accountId': 'accountId', 'host': 'ps-mpa-2',
+                                               'instanceIndex': 1, 'replicas': 2})
+            await sio.emit('synchronization', {'type': 'status', 'accountId': 'accountId', 'host': 'ps-mpa-1',
+                                               'connected': True, 'instanceIndex': 1})
+            await sio.emit('synchronization', {'type': 'status', 'accountId': 'accountId', 'host': 'ps-mpa-2',
+                                               'connected': True, 'instanceIndex': 1})
+            await sleep(0.3)
+            await sio.emit('synchronization', {'type': 'status', 'accountId': 'accountId', 'host': 'ps-mpa-1',
+                                               'connected': True, 'instanceIndex': 1})
+            await sio.emit('synchronization', {'type': 'status', 'accountId': 'accountId', 'host': 'ps-mpa-2',
+                                               'connected': True, 'instanceIndex': 1})
+            await sleep(1.1)
+            listener.on_disconnected.assert_not_called()
+            await sio.emit('synchronization', {'type': 'status', 'accountId': 'accountId', 'host': 'ps-mpa-1',
+                                               'connected': True, 'instanceIndex': 1})
+            await sio.emit('synchronization', {'type': 'status', 'accountId': 'accountId', 'host': 'ps-mpa-2',
+                                               'connected': True, 'instanceIndex': 1})
+            await sleep(0.3)
+            await sio.emit('synchronization', {'type': 'status', 'accountId': 'accountId', 'host': 'ps-mpa-2',
+                                               'connected': True, 'instanceIndex': 1})
+            listener.on_disconnected.assert_not_called()
+            await sleep(1.1)
+            listener.on_stream_closed.assert_called_with('1:ps-mpa-1')
+            listener.on_disconnected.assert_not_called()
+            client._subscriptionManager.on_timeout.assert_not_called()
+            await sleep(0.3)
+            listener.on_disconnected.assert_called_with('1:ps-mpa-2')
+            client._subscriptionManager.on_disconnected.assert_not_called()
+            client._subscriptionManager.on_timeout.assert_called_with('accountId', 1)
 
     @pytest.mark.asyncio
     async def test_process_server_health_status(self):
@@ -1016,7 +1062,7 @@ class TestMetaApiWebsocketClient:
                                            'connected': True, 'healthStatus': {'restApiHealthy': True},
                                            'instanceIndex': 1})
         await future_close
-        listener.on_health_status.assert_called_with(1, {'restApiHealthy': True})
+        listener.on_health_status.assert_called_with('1:ps-mpa-1', {'restApiHealthy': True})
 
     @pytest.mark.asyncio
     async def test_process_disconnected_synchronization_event(self):
@@ -1025,13 +1071,41 @@ class TestMetaApiWebsocketClient:
         listener = MagicMock()
         listener.on_connected = AsyncMock()
         listener.on_disconnected = FinalMock()
+        client._subscriptionManager.on_disconnected = AsyncMock()
         client.add_synchronization_listener('accountId', listener)
         await sio.emit('synchronization', {'type': 'authenticated', 'accountId': 'accountId', 'host': 'ps-mpa-1',
                                            'instanceIndex': 1, 'replicas': 1})
         await sio.emit('synchronization', {'type': 'disconnected', 'accountId': 'accountId', 'host': 'ps-mpa-1',
                                            'instanceIndex': 1})
         await future_close
-        listener.on_disconnected.assert_called_with(1)
+        client._subscriptionManager.on_disconnected.assert_called_with('accountId', 1)
+        listener.on_disconnected.assert_called_with('1:ps-mpa-1')
+
+    @pytest.mark.asyncio
+    async def test_on_stream_closed(self):
+        """Should close the stream if host name disconnected and another stream exists."""
+
+        listener = MagicMock()
+        listener.on_connected = AsyncMock()
+        listener.on_disconnected = FinalMock()
+        listener.on_stream_closed = AsyncMock()
+        client._subscriptionManager.on_disconnected = AsyncMock()
+        client.add_synchronization_listener('accountId', listener)
+        await sio.emit('synchronization', {'type': 'authenticated', 'accountId': 'accountId', 'host': 'ps-mpa-1',
+                                           'instanceIndex': 1, 'replicas': 2})
+        await sio.emit('synchronization', {'type': 'authenticated', 'accountId': 'accountId', 'host': 'ps-mpa-2',
+                                           'instanceIndex': 1, 'replicas': 2})
+        await sio.emit('synchronization', {'type': 'disconnected', 'accountId': 'accountId', 'host': 'ps-mpa-1',
+                                           'instanceIndex': 1})
+        await asyncio.sleep(0.1)
+        listener.on_stream_closed.assert_called_with('1:ps-mpa-1')
+        listener.on_disconnected.assert_not_called()
+        client._subscriptionManager.on_disconnected.assert_not_called()
+        await sio.emit('synchronization', {'type': 'disconnected', 'accountId': 'accountId', 'host': 'ps-mpa-2',
+                                           'instanceIndex': 1})
+        await future_close
+        listener.on_disconnected.assert_called()
+        client._subscriptionManager.on_disconnected.assert_called_with('accountId', 1)
 
     @pytest.mark.asyncio
     async def test_accept_own_packets(self):
@@ -1077,6 +1151,7 @@ class TestMetaApiWebsocketClient:
         @sio.on('request')
         async def on_request(sid, data):
             if data['type'] == 'synchronize' and data['accountId'] == 'accountId' and \
+                    data['host'] == 'ps-mpa-1' and \
                     data['startingHistoryOrderTime'] == '2020-01-01T00:00:00.000Z' and \
                     data['startingDealTime'] == '2020-01-02T00:00:00.000Z' and \
                     data['requestId'] == 'synchronizationId' and data['application'] == 'application' and \
@@ -1086,7 +1161,7 @@ class TestMetaApiWebsocketClient:
                 await sio.emit('response', {'type': 'response', 'accountId': data['accountId'],
                                             'requestId': data['requestId']})
 
-        await client.synchronize('accountId', 1, 'synchronizationId', date('2020-01-01T00:00:00.000Z'),
+        await client.synchronize('accountId', 1, 'ps-mpa-1', 'synchronizationId', date('2020-01-01T00:00:00.000Z'),
                                  date('2020-01-02T00:00:00.000Z'))
         assert request_received
 
@@ -1098,9 +1173,9 @@ class TestMetaApiWebsocketClient:
 
         client.add_synchronization_listener('accountId', listener)
         await sio.emit('synchronization', {'type': 'synchronizationStarted', 'accountId': 'accountId',
-                                           'instanceIndex': 1})
+                                           'instanceIndex': 1, 'host': 'ps-mpa-1'})
         await future_close
-        listener.on_synchronization_started.assert_called_with(1)
+        listener.on_synchronization_started.assert_called_with('1:ps-mpa-1')
 
     @pytest.mark.asyncio
     async def test_synchronize_account_information(self):
@@ -1121,10 +1196,10 @@ class TestMetaApiWebsocketClient:
         listener.on_account_information_updated = FinalMock()
 
         client.add_synchronization_listener('accountId', listener)
-        await sio.emit('synchronization', {'type': 'accountInformation', 'accountId': 'accountId',
+        await sio.emit('synchronization', {'type': 'accountInformation', 'accountId': 'accountId', 'host': 'ps-mpa-1',
                                            'accountInformation': account_information, 'instanceIndex': 1})
         await future_close
-        listener.on_account_information_updated.assert_called_with(1, account_information)
+        listener.on_account_information_updated.assert_called_with('1:ps-mpa-1', account_information)
 
     @pytest.mark.asyncio
     async def test_synchronize_positions(self):
@@ -1154,11 +1229,11 @@ class TestMetaApiWebsocketClient:
 
         client.add_synchronization_listener('accountId', listener)
         await sio.emit('synchronization', {'type': 'positions', 'accountId': 'accountId', 'positions': positions,
-                                           'instanceIndex': 1})
+                                           'instanceIndex': 1, 'host': 'ps-mpa-1'})
         await future_close
         positions[0]['time'] = date(positions[0]['time'])
         positions[0]['updateTime'] = date(positions[0]['updateTime'])
-        listener.on_positions_replaced.assert_called_with(1, positions)
+        listener.on_positions_replaced.assert_called_with('1:ps-mpa-1', positions)
 
     @pytest.mark.asyncio
     async def test_synchronize_orders(self):
@@ -1183,10 +1258,10 @@ class TestMetaApiWebsocketClient:
 
         client.add_synchronization_listener('accountId', listener)
         await sio.emit('synchronization', {'type': 'orders', 'accountId': 'accountId', 'orders': orders,
-                                           'instanceIndex': 1})
+                                           'instanceIndex': 1, 'host': 'ps-mpa-1'})
         await future_close
         orders[0]['time'] = date(orders[0]['time'])
-        listener.on_orders_replaced.assert_called_with(1, orders)
+        listener.on_orders_replaced.assert_called_with('1:ps-mpa-1', orders)
 
     @pytest.mark.asyncio
     async def test_synchronize_history_orders(self):
@@ -1211,11 +1286,11 @@ class TestMetaApiWebsocketClient:
         listener.on_history_order_added = FinalMock()
         client.add_synchronization_listener('accountId', listener)
         await sio.emit('synchronization', {'type': 'historyOrders', 'accountId': 'accountId',
-                                           'historyOrders': history_orders, 'instanceIndex': 1})
+                                           'historyOrders': history_orders, 'instanceIndex': 1, 'host': 'ps-mpa-1'})
         await future_close
         history_orders[0]['time'] = date(history_orders[0]['time'])
         history_orders[0]['doneTime'] = date(history_orders[0]['doneTime'])
-        listener.on_history_order_added.assert_called_with(1, history_orders[0])
+        listener.on_history_order_added.assert_called_with('1:ps-mpa-1', history_orders[0])
 
     @pytest.mark.asyncio
     async def test_synchronize_deals(self):
@@ -1242,10 +1317,10 @@ class TestMetaApiWebsocketClient:
         listener.on_deal_added = FinalMock()
         client.add_synchronization_listener('accountId', listener)
         await sio.emit('synchronization', {'type': 'deals', 'accountId': 'accountId', 'deals': deals,
-                                           'instanceIndex': 1})
+                                           'instanceIndex': 1, 'host': 'ps-mpa-1'})
         await future_close
         deals[0]['time'] = date(deals[0]['time'])
-        listener.on_deal_added.assert_called_with(1, deals[0])
+        listener.on_deal_added.assert_called_with('1:ps-mpa-1', deals[0])
 
     @pytest.mark.asyncio
     async def test_process_synchronization_updates(self):
@@ -1344,6 +1419,7 @@ class TestMetaApiWebsocketClient:
         emit['type'] = 'update'
         emit['accountId'] = 'accountId'
         emit['instanceIndex'] = 1
+        emit['host'] = 'ps-mpa-1'
         await sio.emit('synchronization', emit)
         await future_close
         update['updatedPositions'][0]['time'] = date(update['updatedPositions'][0]['time'])
@@ -1352,13 +1428,13 @@ class TestMetaApiWebsocketClient:
         update['historyOrders'][0]['time'] = date(update['historyOrders'][0]['time'])
         update['historyOrders'][0]['doneTime'] = date(update['historyOrders'][0]['doneTime'])
         update['deals'][0]['time'] = date(update['deals'][0]['time'])
-        listener.on_account_information_updated.assert_called_with(1, update['accountInformation'])
-        listener.on_position_updated.assert_called_with(1, update['updatedPositions'][0])
-        listener.on_position_removed.assert_called_with(1, update['removedPositionIds'][0])
-        listener.on_order_updated.assert_called_with(1, update['updatedOrders'][0])
-        listener.on_order_completed.assert_called_with(1, update['completedOrderIds'][0])
-        listener.on_history_order_added.assert_called_with(1, update['historyOrders'][0])
-        listener.on_deal_added.assert_called_with(1, update['deals'][0])
+        listener.on_account_information_updated.assert_called_with('1:ps-mpa-1', update['accountInformation'])
+        listener.on_position_updated.assert_called_with('1:ps-mpa-1', update['updatedPositions'][0])
+        listener.on_position_removed.assert_called_with('1:ps-mpa-1', update['removedPositionIds'][0])
+        listener.on_order_updated.assert_called_with('1:ps-mpa-1', update['updatedOrders'][0])
+        listener.on_order_completed.assert_called_with('1:ps-mpa-1', update['completedOrderIds'][0])
+        listener.on_history_order_added.assert_called_with('1:ps-mpa-1', update['historyOrders'][0])
+        listener.on_deal_added.assert_called_with('1:ps-mpa-1', update['deals'][0])
 
     @pytest.mark.asyncio
     async def test_retry_on_failure(self):
@@ -1601,10 +1677,10 @@ class TestMetaApiWebsocketClient:
         client.add_synchronization_listener('accountId', listener)
         await sio.emit('synchronization', {'type': 'specifications', 'accountId': 'accountId',
                                            'specifications': specifications, 'instanceIndex': 1,
-                                           'removedSymbols': ['AUDNZD']})
+                                           'removedSymbols': ['AUDNZD'], 'host': 'ps-mpa-1'})
         await future_close
-        listener.on_symbol_specification_updated.assert_called_with(1, specifications[0])
-        listener.on_symbol_specifications_removed.assert_called_with(1, ['AUDNZD'])
+        listener.on_symbol_specification_updated.assert_called_with('1:ps-mpa-1', specifications[0])
+        listener.on_symbol_specifications_removed.assert_called_with('1:ps-mpa-1', ['AUDNZD'])
 
     @pytest.mark.asyncio
     async def test_synchronize_symbol_prices(self):
@@ -1667,16 +1743,16 @@ class TestMetaApiWebsocketClient:
         await sio.emit('synchronization', {'type': 'prices', 'accountId': 'accountId', 'prices': prices,
                                            'ticks': ticks, 'candles': candles, 'books': books,
                                            'equity': 100, 'margin': 200, 'freeMargin': 400, 'marginLevel': 40000,
-                                           'instanceIndex': 1})
+                                           'instanceIndex': 1, 'host': 'ps-mpa-1'})
         await future_close
         ticks[0]['time'] = date(ticks[0]['time'])
         candles[0]['time'] = date(candles[0]['time'])
         books[0]['time'] = date(books[0]['time'])
-        listener.on_symbol_prices_updated.assert_called_with(1, prices, 100, 200, 400, 40000, None)
-        listener.on_candles_updated.assert_called_with(1, candles, 100, 200, 400, 40000, None)
-        listener.on_ticks_updated.assert_called_with(1, ticks, 100, 200, 400, 40000, None)
-        listener.on_books_updated.assert_called_with(1, books, 100, 200, 400, 40000, None)
-        listener.on_symbol_price_updated.assert_called_with(1, prices[0])
+        listener.on_symbol_prices_updated.assert_called_with('1:ps-mpa-1', prices, 100, 200, 400, 40000, None)
+        listener.on_candles_updated.assert_called_with('1:ps-mpa-1', candles, 100, 200, 400, 40000, None)
+        listener.on_ticks_updated.assert_called_with('1:ps-mpa-1', ticks, 100, 200, 400, 40000, None)
+        listener.on_books_updated.assert_called_with('1:ps-mpa-1', books, 100, 200, 400, 40000, None)
+        listener.on_symbol_price_updated.assert_called_with('1:ps-mpa-1', prices[0])
 
     @pytest.mark.asyncio
     async def test_wait_for_server_side_sync(self):

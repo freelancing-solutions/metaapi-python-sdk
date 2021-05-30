@@ -58,17 +58,17 @@ class MockClient(MetaApiWebsocketClient):
     def reconnect(self, account_id: str):
         pass
 
-    def synchronize(self, account_id: str, instance_index: int, synchronization_id: str,
+    def synchronize(self, account_id: str, instance_index: str, synchronization_id: str,
                     starting_history_order_time: datetime, starting_deal_time: datetime) -> Coroutine:
         pass
 
-    def subscribe(self, account_id: str, instance_index: int = None):
+    def subscribe(self, account_id: str, instance_index: str = None):
         pass
 
-    def subscribe_to_market_data(self, account_id: str, instance_index: int, symbol: str) -> Coroutine:
+    def subscribe_to_market_data(self, account_id: str, instance_index: str, symbol: str) -> Coroutine:
         pass
 
-    def unsubscribe_from_market_data(self, account_id: str, instance_index: int, symbol: str) -> Coroutine:
+    def unsubscribe_from_market_data(self, account_id: str, instance_index: str, symbol: str) -> Coroutine:
         pass
 
     def add_synchronization_listener(self, account_id: str, listener):
@@ -86,7 +86,7 @@ class MockClient(MetaApiWebsocketClient):
     def get_symbol_price(self, account_id: str, symbol: str) -> asyncio.Future:
         pass
 
-    async def wait_synchronized(self, account_id: str, instance_index: int, application_pattern: str,
+    async def wait_synchronized(self, account_id: str, instance_index: str, application_pattern: str,
                                 timeout_in_seconds: float):
         pass
 
@@ -692,11 +692,12 @@ class TestMetaApiConnection:
         client.synchronize = AsyncMock()
         with patch('lib.metaApi.metaApiConnection.random_id', return_value='synchronizationId'):
             api = MetaApiConnection(client, account, None, MagicMock())
-            await api.history_storage.on_history_order_added(1, {'doneTime': date('2020-01-01T00:00:00.000Z')})
-            await api.history_storage.on_deal_added(1, {'time': date('2020-01-02T00:00:00.000Z')})
-            await api.synchronize(1)
-            client.synchronize.assert_called_with('accountId', 1, 'synchronizationId', date('2020-01-01T00:00:00.000Z'),
-                                                  date('2020-01-02T00:00:00.000Z'))
+            await api.history_storage.on_history_order_added('1:ps-mpa-1',
+                                                             {'doneTime': date('2020-01-01T00:00:00.000Z')})
+            await api.history_storage.on_deal_added('1:ps-mpa-1', {'time': date('2020-01-02T00:00:00.000Z')})
+            await api.synchronize('1:ps-mpa-1')
+            client.synchronize.assert_called_with('accountId', 1, 'ps-mpa-1', 'synchronizationId',
+                                                  date('2020-01-01T00:00:00.000Z'), date('2020-01-02T00:00:00.000Z'))
 
     @pytest.mark.asyncio
     async def test_synchronize_state_with_terminal_from_time(self):
@@ -704,17 +705,18 @@ class TestMetaApiConnection:
         client.synchronize = AsyncMock()
         with patch('lib.metaApi.metaApiConnection.random_id', return_value='synchronizationId'):
             api = MetaApiConnection(client, account, None, MagicMock(), date('2020-10-07T00:00:00.000Z'))
-            await api.history_storage.on_history_order_added(1, {'doneTime': date('2020-01-01T00:00:00.000Z')})
-            await api.history_storage.on_deal_added(1, {'time': date('2020-01-02T00:00:00.000Z')})
-            await api.synchronize(1)
-            client.synchronize.assert_called_with('accountId', 1, 'synchronizationId', date('2020-10-07T00:00:00.000Z'),
-                                                  date('2020-10-07T00:00:00.000Z'))
+            await api.history_storage.on_history_order_added('1:ps-mpa-1',
+                                                             {'doneTime': date('2020-01-01T00:00:00.000Z')})
+            await api.history_storage.on_deal_added('1:ps-mpa-1', {'time': date('2020-01-02T00:00:00.000Z')})
+            await api.synchronize('1:ps-mpa-1')
+            client.synchronize.assert_called_with('accountId', 1, 'ps-mpa-1', 'synchronizationId',
+                                                  date('2020-10-07T00:00:00.000Z'), date('2020-10-07T00:00:00.000Z'))
 
     @pytest.mark.asyncio
     async def test_subscribe_to_market_data(self):
         """Should subscribe to market data."""
         client.subscribe_to_market_data = AsyncMock()
-        await api.subscribe_to_market_data('EURUSD', [{'type': 'quotes'}], 1)
+        await api.subscribe_to_market_data('EURUSD', [{'type': 'quotes'}], '1:ps-mpa-1')
         assert 'EURUSD' in api.subscribed_symbols
         client.subscribe_to_market_data.assert_called_with('accountId', 1, 'EURUSD', [{'type': 'quotes'}])
 
@@ -723,9 +725,9 @@ class TestMetaApiConnection:
         """Should unsubscribe from market data."""
         client.subscribe_to_market_data = AsyncMock()
         client.unsubscribe_from_market_data = AsyncMock()
-        await api.subscribe_to_market_data('EURUSD', [{'type': 'quotes'}], 1)
+        await api.subscribe_to_market_data('EURUSD', [{'type': 'quotes'}], '1:ps-mpa-1')
         assert 'EURUSD' in api.subscribed_symbols
-        await api.unsubscribe_from_market_data('EURUSD', [{'type': 'quotes'}], 1)
+        await api.unsubscribe_from_market_data('EURUSD', [{'type': 'quotes'}], '1:ps-mpa-1')
         assert 'EURUSD' not in api.subscribed_symbols
         client.unsubscribe_from_market_data.assert_called_with('accountId', 1, 'EURUSD', [{'type': 'quotes'}])
 
@@ -734,7 +736,7 @@ class TestMetaApiConnection:
         """Should unsubscribe during market data subscription downgrade."""
         api.subscribe_to_market_data = AsyncMock()
         api.unsubscribe_from_market_data = AsyncMock()
-        await api.on_subscription_downgraded(1, 'EURUSD', None, [{'type': 'ticks'}, {'type': 'books'}])
+        await api.on_subscription_downgraded('1:ps-mpa-1', 'EURUSD', None, [{'type': 'ticks'}, {'type': 'books'}])
         api.unsubscribe_from_market_data.assert_called_with('EURUSD', [{'type': 'ticks'}, {'type': 'books'}])
         api.subscribe_to_market_data.assert_not_called()
 
@@ -743,7 +745,8 @@ class TestMetaApiConnection:
         """Should update market data subscription on downgrade."""
         api.subscribe_to_market_data = AsyncMock()
         api.unsubscribe_from_market_data = AsyncMock()
-        await api.on_subscription_downgraded(1, 'EURUSD', [{'type': 'quotes', 'intervalInMilliseconds': 30000}])
+        await api.on_subscription_downgraded('1:ps-mpa-1', 'EURUSD',
+                                             [{'type': 'quotes', 'intervalInMilliseconds': 30000}])
         api.subscribe_to_market_data.assert_called_with('EURUSD', [{'type': 'quotes', 'intervalInMilliseconds': 30000}])
         api.unsubscribe_from_market_data.assert_not_called()
 
@@ -896,11 +899,12 @@ class TestMetaApiConnection:
         with patch('lib.metaApi.metaApiConnection.random_id', return_value='synchronizationId'):
             client.synchronize = AsyncMock()
             api = MetaApiConnection(client, account, None, MagicMock())
-            await api.history_storage.on_history_order_added(1, {'doneTime': date('2020-01-01T00:00:00.000Z')})
-            await api.history_storage.on_deal_added(1, {'time': date('2020-01-02T00:00:00.000Z')})
-            await api.on_connected(1, 1)
-            client.synchronize.assert_called_with('accountId', 1, 'synchronizationId', date('2020-01-01T00:00:00.000Z'),
-                                                  date('2020-01-02T00:00:00.000Z'))
+            await api.history_storage.on_history_order_added('1:ps-mpa-1',
+                                                             {'doneTime': date('2020-01-01T00:00:00.000Z')})
+            await api.history_storage.on_deal_added('1:ps-mpa-1', {'time': date('2020-01-02T00:00:00.000Z')})
+            await api.on_connected('1:ps-mpa-1', 1)
+            client.synchronize.assert_called_with('accountId', 1, 'ps-mpa-1', 'synchronizationId',
+                                                  date('2020-01-01T00:00:00.000Z'), date('2020-01-02T00:00:00.000Z'))
 
     @pytest.mark.asyncio
     async def test_maintain_sync(self):
@@ -908,11 +912,12 @@ class TestMetaApiConnection:
         with patch('lib.metaApi.metaApiConnection.random_id', return_value='synchronizationId'):
             client.synchronize = AsyncMock(side_effect=[Exception('test error'), None])
             api = MetaApiConnection(client, account, None, MagicMock())
-            await api.history_storage.on_history_order_added(1, {'doneTime': date('2020-01-01T00:00:00.000Z')})
-            await api.history_storage.on_deal_added(1, {'time': date('2020-01-02T00:00:00.000Z')})
-            await api.on_connected(1, 1)
-            client.synchronize.assert_called_with('accountId', 1, 'synchronizationId', date('2020-01-01T00:00:00.000Z'),
-                                                  date('2020-01-02T00:00:00.000Z'))
+            await api.history_storage.on_history_order_added('1:ps-mpa-1',
+                                                             {'doneTime': date('2020-01-01T00:00:00.000Z')})
+            await api.history_storage.on_deal_added('1:ps-mpa-1', {'time': date('2020-01-02T00:00:00.000Z')})
+            await api.on_connected('1:ps-mpa-1', 1)
+            client.synchronize.assert_called_with('accountId', 1,  'ps-mpa-1', 'synchronizationId',
+                                                  date('2020-01-01T00:00:00.000Z'), date('2020-01-02T00:00:00.000Z'))
 
     @pytest.mark.asyncio
     async def test_restore_market_data_subs_on_sync(self):
@@ -928,7 +933,7 @@ class TestMetaApiConnection:
         await api.subscribe_to_market_data('EURUSD')
         await api.subscribe_to_market_data('AUDNZD')
         client.subscribe_to_market_data = AsyncMock()
-        await api.on_account_information_updated(1, {})
+        await api.on_account_information_updated('1:ps-mpa-1', {})
         assert client.subscribe_to_market_data.call_count == 1
         client.subscribe_to_market_data.assert_called_with('accountId', 1, 'AUDNZD', None)
 
@@ -949,7 +954,7 @@ class TestMetaApiConnection:
     @pytest.mark.asyncio
     async def test_wait_sync_complete_user_mode(self):
         """Should wait until synchronization complete."""
-        assert not (await api.is_synchronized(1))
+        assert not (await api.is_synchronized('1:ps-mpa-1'))
         api._historyStorage.update_disk_storage = AsyncMock()
         try:
             await api.wait_synchronized({'applicationPattern': 'app.*', 'synchronizationId': 'synchronizationId',
@@ -957,14 +962,14 @@ class TestMetaApiConnection:
             raise Exception('TimeoutError is expected')
         except Exception as err:
             assert err.__class__.__name__ == 'TimeoutException'
-        await api.on_order_synchronization_finished(1, 'synchronizationId')
-        await api.on_deal_synchronization_finished(1, 'synchronizationId')
+        await api.on_order_synchronization_finished('1:ps-mpa-1', 'synchronizationId')
+        await api.on_deal_synchronization_finished('1:ps-mpa-1', 'synchronizationId')
         promise = api.wait_synchronized({'applicationPattern': 'app.*', 'synchronizationId': 'synchronizationId',
                                          'timeoutInSeconds': 1, 'intervalInMilliseconds': 10})
         start_time = datetime.now()
         await promise
         assert pytest.approx(10, 10) == (datetime.now() - start_time).seconds * 1000
-        assert (await api.is_synchronized(1, 'synchronizationId'))
+        assert (await api.is_synchronized('1:ps-mpa-1', 'synchronizationId'))
 
     @pytest.mark.asyncio
     async def test_time_out_waiting_for_sync(self):
@@ -975,7 +980,7 @@ class TestMetaApiConnection:
             raise Exception('TimeoutError is expected')
         except Exception as err:
             assert err.__class__.__name__ == 'TimeoutException'
-        assert not (await api.is_synchronized(1, 'synchronizationId'))
+        assert not (await api.is_synchronized('1:ps-mpa-1', 'synchronizationId'))
 
     @pytest.mark.asyncio
     async def test_load_history_storage_from_disk(self):
@@ -987,7 +992,19 @@ class TestMetaApiConnection:
     @pytest.mark.asyncio
     async def test_disconnect(self):
         """Should set synchronized false on disconnect."""
+        client.synchronize = AsyncMock()
+        await api.on_connected('1:ps-mpa-1', 2)
+        assert api.synchronized
         client.subscribe = AsyncMock()
         account.reload = AsyncMock()
-        await api.on_disconnected(1)
+        await api.on_disconnected('1:ps-mpa-1')
+        assert not api.synchronized
+
+    @pytest.mark.asyncio
+    async def test_on_stream_closed(self):
+        """Should delete state if stream closed."""
+        client.synchronize = AsyncMock()
+        await api.on_connected('1:ps-mpa-1', 2)
+        assert api.synchronized
+        await api.on_stream_closed('1:ps-mpa-1')
         assert not api.synchronized

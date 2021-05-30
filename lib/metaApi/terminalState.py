@@ -112,7 +112,7 @@ class TerminalState(SynchronizationListener):
         return state['pricesBySymbol'][symbol] if \
             (symbol in state['pricesBySymbol']) else None
 
-    async def on_connected(self, instance_index: int, replicas: int):
+    async def on_connected(self, instance_index: str, replicas: int):
         """Invoked when connection to MetaTrader terminal established.
 
         Args:
@@ -124,7 +124,7 @@ class TerminalState(SynchronizationListener):
         """
         self._get_state(instance_index)['connected'] = True
 
-    async def on_disconnected(self, instance_index: int):
+    async def on_disconnected(self, instance_index: str):
         """Invoked when connection to MetaTrader terminal terminated.
 
         Args:
@@ -137,7 +137,7 @@ class TerminalState(SynchronizationListener):
         state['connected'] = False
         state['connectedToBroker'] = False
 
-    async def on_broker_connection_status_changed(self, instance_index: int, connected: bool):
+    async def on_broker_connection_status_changed(self, instance_index: str, connected: bool):
         """Invoked when broker connection status have changed.
 
         Args:
@@ -149,7 +149,7 @@ class TerminalState(SynchronizationListener):
         """
         self._get_state(instance_index)['connectedToBroker'] = connected
 
-    async def on_synchronization_started(self, instance_index: int):
+    async def on_synchronization_started(self, instance_index: str):
         """Invoked when MetaTrader terminal state synchronization is started.
 
         Args:
@@ -170,7 +170,7 @@ class TerminalState(SynchronizationListener):
         state['ordersInitialized'] = False
         state['positionsInitialized'] = False
 
-    async def on_account_information_updated(self, instance_index: int,
+    async def on_account_information_updated(self, instance_index: str,
                                              account_information: MetatraderAccountInformation):
         """Invoked when MetaTrader position is updated.
 
@@ -183,7 +183,7 @@ class TerminalState(SynchronizationListener):
         """
         self._get_state(instance_index)['accountInformation'] = account_information
 
-    async def on_positions_replaced(self, instance_index: int, positions: List[MetatraderPosition]):
+    async def on_positions_replaced(self, instance_index: str, positions: List[MetatraderPosition]):
         """Invoked when the positions are replaced as a result of initial terminal state synchronization.
 
         Args:
@@ -198,7 +198,7 @@ class TerminalState(SynchronizationListener):
         state['removedPositions'] = {}
         state['positionsInitialized'] = True
 
-    async def on_position_updated(self, instance_index: int, position: MetatraderPosition):
+    async def on_position_updated(self, instance_index: str, position: MetatraderPosition):
         """Invoked when MetaTrader position is updated.
 
         Args:
@@ -218,7 +218,7 @@ class TerminalState(SynchronizationListener):
         if (not is_exists) and (position['id'] not in state['removedPositions']):
             state['positions'].append(position)
 
-    async def on_position_removed(self, instance_index: int, position_id: str):
+    async def on_position_removed(self, instance_index: str, position_id: str):
         """Invoked when MetaTrader position is removed.
 
         Args:
@@ -239,7 +239,7 @@ class TerminalState(SynchronizationListener):
         else:
             state['positions'] = list(filter(lambda p: p['id'] != position_id, state['positions']))
 
-    async def on_orders_replaced(self, instance_index: int, orders: List[MetatraderOrder]):
+    async def on_orders_replaced(self, instance_index: str, orders: List[MetatraderOrder]):
         """Invoked when the orders are replaced as a result of initial terminal state synchronization.
 
         Args:
@@ -254,7 +254,7 @@ class TerminalState(SynchronizationListener):
         state['completedOrders'] = {}
         state['ordersInitialized'] = True
 
-    async def on_order_updated(self, instance_index: int, order: MetatraderOrder):
+    async def on_order_updated(self, instance_index: str, order: MetatraderOrder):
         """Invoked when MetaTrader order is updated.
 
         Args:
@@ -274,7 +274,7 @@ class TerminalState(SynchronizationListener):
         if (not is_exists) and (order['id'] not in state['completedOrders']):
             state['orders'].append(order)
 
-    async def on_order_completed(self, instance_index: int, order_id: str):
+    async def on_order_completed(self, instance_index: str, order_id: str):
         """Invoked when MetaTrader order is completed (executed or canceled).
 
         Args:
@@ -295,7 +295,7 @@ class TerminalState(SynchronizationListener):
         else:
             state['orders'] = list(filter(lambda o: o['id'] != order_id, state['orders']))
 
-    async def on_symbol_specification_updated(self, instance_index: int, specification: MetatraderSymbolSpecification):
+    async def on_symbol_specification_updated(self, instance_index: str, specification: MetatraderSymbolSpecification):
         """Invoked when a symbol specification was updated
 
         Args:
@@ -314,7 +314,7 @@ class TerminalState(SynchronizationListener):
             state['specifications'].append(specification)
         state['specificationsBySymbol'][specification['symbol']] = specification
 
-    async def on_symbol_specifications_removed(self, instance_index: int, symbols: List[str]):
+    async def on_symbol_specifications_removed(self, instance_index: str, symbols: List[str]):
         """Invoked when a symbol specifications was removed.
 
         Args:
@@ -330,7 +330,7 @@ class TerminalState(SynchronizationListener):
             if symbol in state['specificationsBySymbol']:
                 del state['specificationsBySymbol'][symbol]
 
-    async def on_symbol_prices_updated(self, instance_index: int, prices: List[MetatraderSymbolPrice],
+    async def on_symbol_prices_updated(self, instance_index: str, prices: List[MetatraderSymbolPrice],
                                        equity: float = None, margin: float = None, free_margin: float = None,
                                        margin_level: float = None, account_currency_exchange_rate: float = None):
         """Invoked when prices for several symbols were updated.
@@ -388,6 +388,18 @@ class TerminalState(SynchronizationListener):
             state['accountInformation']['marginLevel'] = margin_level if free_margin else (
                 state['accountInformation']['marginLevel'] if 'marginLevel' in state['accountInformation'] else None)
 
+    async def on_stream_closed(self, instance_index: str):
+        """Invoked when a stream for an instance index is closed.
+
+        Args:
+            instance_index: Index of an account instance connected.
+
+        Returns:
+            A coroutine which resolves when the asynchronous event is processed.
+        """
+        if instance_index in self._stateByInstanceIndex:
+            del self._stateByInstanceIndex[instance_index]
+
     def _update_position_profits(self, position: Dict, price: Dict):
         specification = self.specification(position['symbol'])
         if specification:
@@ -409,7 +421,7 @@ class TerminalState(SynchronizationListener):
             position['currentPrice'] = new_position_price
             position['currentTickValue'] = current_tick_value
 
-    def _get_state(self, instance_index: int) -> TerminalStateDict:
+    def _get_state(self, instance_index: str) -> TerminalStateDict:
         if str(instance_index) not in self._stateByInstanceIndex:
             self._stateByInstanceIndex[str(instance_index)] = self._construct_terminal_state()
         return self._stateByInstanceIndex[str(instance_index)]

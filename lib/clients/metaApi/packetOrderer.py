@@ -46,7 +46,8 @@ class PacketOrderer:
             packet: Packet to process.
 
         """
-        instance_id = packet['accountId'] + ':' + str(packet['instanceIndex'] if 'instanceIndex' in packet else 0)
+        instance_id = packet['accountId'] + ':' + str(packet['instanceIndex'] if 'instanceIndex' in packet else 0) + \
+            ':' + (packet['host'] if 'host' in packet else '0')
         if 'sequenceNumber' not in packet:
             return [packet]
         if packet['type'] == 'synchronizationStarted' and 'synchronizationId' in packet:

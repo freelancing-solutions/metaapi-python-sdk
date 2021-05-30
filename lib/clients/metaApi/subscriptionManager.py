@@ -26,15 +26,14 @@ class SubscriptionManager:
                 return True
         return False
 
-    async def subscribe(self, account_id: str, instance_index: int = None):
+    async def subscribe(self, account_id: str, instance_number: int = None):
         """Schedules to send subscribe requests to an account until cancelled.
 
         Args:
             account_id: Id of the MetaTrader account.
-            instance_index: Instance index.
+            instance_number: Instance index number.
         """
-
-        instance_id = account_id + ':' + str(instance_index or 0)
+        instance_id = account_id + ':' + str(instance_number or 0)
         if instance_id not in self._subscriptions:
             self._subscriptions[instance_id] = {
                 'shouldRetry': True,
@@ -46,7 +45,7 @@ class SubscriptionManager:
             while self._subscriptions[instance_id]['shouldRetry']:
                 async def subscribe_task():
                     try:
-                        await self._websocketClient.subscribe(account_id, instance_index)
+                        await self._websocketClient.subscribe(account_id, instance_number)
                     except TooManyRequestsException as err:
                         socket_instance_index = self._websocketClient.socket_instances_by_accounts[account_id]
                         if err.metadata['type'] == 'LIMIT_ACCOUNT_SUBSCRIPTIONS_PER_USER':
@@ -110,25 +109,25 @@ class SubscriptionManager:
         for instance_id in list(filter(lambda key: key.startswith(account_id), self._subscriptions.keys())):
             self.cancel_subscribe(instance_id)
 
-    def on_timeout(self, account_id: str, instance_index: int = None):
+    def on_timeout(self, account_id: str, instance_number: int = None):
         """Invoked on account timeout.
 
         Args:
             account_id: Id of the MetaTrader account.
-            instance_index: Instance index.
+            instance_number: Instance index number.
         """
         if self._websocketClient.connected(self._websocketClient.socket_instances_by_accounts[account_id]):
-            asyncio.create_task(self.subscribe(account_id, instance_index))
+            asyncio.create_task(self.subscribe(account_id, instance_number))
 
-    async def on_disconnected(self, account_id: str, instance_index: int = None):
+    async def on_disconnected(self, account_id: str, instance_number: int = None):
         """Invoked when connection to MetaTrader terminal terminated.
 
         Args:
             account_id: Id of the MetaTrader account.
-            instance_index: Instance index.
+            instance_number: Instance index number.
         """
         await asyncio.sleep(uniform(1, 5))
-        asyncio.create_task(self.subscribe(account_id, instance_index))
+        asyncio.create_task(self.subscribe(account_id, instance_number))
 
     def on_reconnected(self, socket_instance_index: int, reconnect_account_ids: List[str]):
         """Invoked when connection to MetaApi websocket API restored after a disconnect.

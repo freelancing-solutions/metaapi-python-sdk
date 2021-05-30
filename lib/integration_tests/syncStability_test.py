@@ -73,19 +73,19 @@ class FakeServer:
         self.status_tasks = {}
         self.client_ids = []
 
-    async def authenticate(self, data):
+    async def authenticate(self, data, host='ps-mpa-0'):
         await self.sio.emit('synchronization', {'type': 'authenticated', 'accountId': data['accountId'],
-                                                'instanceIndex': 0, 'replicas': 1, 'host': 'ps-mpa-0'})
+                                                'instanceIndex': 0, 'replicas': 1, 'host': host})
 
-    async def emit_status(self, account_id: str):
+    async def emit_status(self, account_id: str, host='ps-mpa-0'):
         packet = {'connected': True, 'authenticated': True, 'instanceIndex': 0, 'type': 'status',
-                  'healthStatus': {'rpcApiHealthy': True}, 'replicas': 1, 'host': 'ps-mpa-0',
+                  'healthStatus': {'rpcApiHealthy': True}, 'replicas': 1, 'host': host,
                   'connectionId': account_id, 'accountId': account_id}
         await self.sio.emit('synchronization', packet)
 
-    async def create_status_task(self, account_id: str):
+    async def create_status_task(self, account_id: str, host='ps-mpa-0'):
         while True:
-            await self.emit_status(account_id)
+            await self.emit_status(account_id, host)
             await sleep(1)
 
     def delete_status_task(self, account_id: str):
@@ -97,23 +97,23 @@ class FakeServer:
         await self.sio.emit('response', {'type': 'response', 'accountId': data['accountId'],
                                          'requestId': data['requestId'], 'accountInformation': account_information})
 
-    async def sync_account(self, data):
+    async def sync_account(self, data, host='ps-mpa-0'):
         await self.sio.emit('synchronization', {'type': 'synchronizationStarted', 'accountId': data['accountId'],
                                                 'instanceIndex': 0, 'synchronizationId': data['requestId'],
-                                                'host': 'ps-mpa-0'})
+                                                'host': host})
         await sleep(0.1)
         await self.sio.emit('synchronization', {'type': 'accountInformation', 'accountId': data['accountId'],
                                                 'accountInformation': account_information, 'instanceIndex': 0,
-                                                'host': 'ps-mpa-0'})
+                                                'host': host})
         await self.sio.emit('synchronization', {'type': 'specifications', 'accountId': data['accountId'],
-                                                'specifications': [], 'instanceIndex': 0, 'host': 'ps-mpa-0'})
+                                                'specifications': [], 'instanceIndex': 0, 'host': host})
         await self.sio.emit('synchronization', {'type': 'orderSynchronizationFinished',
                                                 'accountId': data['accountId'], 'instanceIndex': 0,
-                                                'synchronizationId': data['requestId'], 'host': 'ps-mpa-0'})
+                                                'synchronizationId': data['requestId'], 'host': host})
         await sleep(0.1)
         await self.sio.emit('synchronization', {'type': 'dealSynchronizationFinished',
                                                 'accountId': data['accountId'], 'instanceIndex': 0,
-                                                'synchronizationId': data['requestId'], 'host': 'ps-mpa-0'})
+                                                'synchronizationId': data['requestId'], 'host': host})
 
     async def respond(self, data):
         await self.sio.emit('response', {'type': 'response', 'accountId': data['accountId'],
@@ -310,9 +310,10 @@ class TestSyncStability:
             connection = await account.connect()
             await connection.wait_synchronized({'timeoutInSeconds': 10})
             fake_server.delete_status_task('accountId')
+            fake_server.disable_sync()
+            await sleep(0.05)
             await sio.emit('synchronization', {'type': 'disconnected', 'accountId': 'accountId', 'host': 'ps-mpa-0',
                                                'instanceIndex': 0})
-            fake_server.disable_sync()
             await sleep(0.4)
             assert not connection.synchronized
             assert not connection.terminal_state.connected
@@ -654,3 +655,103 @@ class TestSyncStability:
             connection5 = await account5.connect()
             await connection5.wait_synchronized({'timeoutInSeconds': 3})
             assert sid_by_accounts['accountId'] == sid_by_accounts['accountId5']
+
+    @pytest.mark.asyncio
+    async def test_resubscribe_on_disconnected_packet(self):
+        """Should attempt to resubscribe on disconnected packet."""
+        with patch('lib.clients.metaApi.metaApiWebsocket_client.asyncio.sleep', new=lambda x: sleep(x / 50)):
+            account = await api.metatrader_account_api.get_account('accountId')
+            connection = await account.connect()
+            await connection.wait_synchronized({'timeoutInSeconds': 10})
+            assert connection.synchronized
+            assert connection.terminal_state.connected
+            assert connection.terminal_state.connected_to_broker
+            fake_server.delete_status_task('accountId')
+            await sio.emit('synchronization', {'type': 'disconnected', 'accountId': 'accountId', 'host': 'ps-mpa-0',
+                                               'instanceIndex': 0})
+            await sleep(0.2)
+            assert not connection.synchronized
+            assert not connection.terminal_state.connected
+            assert not connection.terminal_state.connected_to_broker
+            await sleep(0.4)
+            assert connection.synchronized
+            assert connection.terminal_state.connected
+            assert connection.terminal_state.connected_to_broker
+
+    @pytest.mark.asyncio
+    async def test_multiple_streams(self):
+        """Should handle multiple streams in one instance number."""
+        with patch('lib.clients.metaApi.metaApiWebsocket_client.asyncio.sleep', new=lambda x: sleep(x / 50)):
+            account = await api.metatrader_account_api.get_account('accountId')
+            connection = await account.connect()
+            await connection.wait_synchronized({'timeoutInSeconds': 10})
+            subscribe_called = False
+
+            @sio.on('request')
+            async def on_request(sid, data):
+                if data['type'] == 'subscribe':
+                    nonlocal subscribe_called
+                    subscribe_called = True
+                elif data['type'] == 'synchronize':
+                    await fake_server.respond(data)
+                    await fake_server.sync_account(data, 'ps-mpa-1')
+                elif data['type'] == 'waitSynchronized':
+                    await fake_server.respond(data)
+                elif data['type'] == 'getAccountInformation':
+                    await fake_server.respond_account_information(data)
+
+            asyncio.create_task(fake_server.create_status_task('accountId', 'ps-mpa-1'))
+            await fake_server.authenticate({'accountId': 'accountId'}, 'ps-mpa-1')
+            await sleep(0.4)
+            fake_server.delete_status_task('accountId')
+            await sio.emit('synchronization', {'type': 'disconnected', 'accountId': 'accountId', 'host': 'ps-mpa-0',
+                                               'instanceIndex': 0})
+            await sleep(0.2)
+            assert connection.synchronized
+            assert connection.terminal_state.connected
+            assert connection.terminal_state.connected_to_broker
+            assert not subscribe_called
+            await sio.emit('synchronization', {'type': 'disconnected', 'accountId': 'accountId', 'host': 'ps-mpa-1',
+                                               'instanceIndex': 0})
+            await sleep(0.1)
+            assert not connection.synchronized
+            assert not connection.terminal_state.connected
+            assert not connection.terminal_state.connected_to_broker
+
+    @pytest.mark.asyncio
+    async def test_multiple_streams_timeout(self):
+        """Should not resubscribe if multiple streams and one timed out."""
+        with patch('lib.clients.metaApi.metaApiWebsocket_client.asyncio.sleep', new=lambda x: sleep(x / 50)):
+            account = await api.metatrader_account_api.get_account('accountId')
+            connection = await account.connect()
+            await connection.wait_synchronized({'timeoutInSeconds': 10})
+            subscribe_called = False
+
+            @sio.on('request')
+            async def on_request(sid, data):
+                if data['type'] == 'subscribe':
+                    nonlocal subscribe_called
+                    subscribe_called = True
+                elif data['type'] == 'synchronize':
+                    await fake_server.respond(data)
+                    await fake_server.sync_account(data, 'ps-mpa-1')
+                elif data['type'] == 'waitSynchronized':
+                    await fake_server.respond(data)
+                elif data['type'] == 'getAccountInformation':
+                    await fake_server.respond_account_information(data)
+
+            status_task = asyncio.create_task(fake_server.create_status_task('accountId', 'ps-mpa-1'))
+            await fake_server.authenticate({'accountId': 'accountId'}, 'ps-mpa-1')
+            await sleep(0.1)
+            fake_server.delete_status_task('accountId')
+            await sleep(1.1)
+            assert connection.synchronized
+            assert connection.terminal_state.connected
+            assert connection.terminal_state.connected_to_broker
+            assert not subscribe_called
+            status_task.cancel()
+            await sleep(1.1)
+            assert not connection.synchronized
+            assert not connection.terminal_state.connected
+            assert not connection.terminal_state.connected_to_broker
+            assert subscribe_called

@@ -64,7 +64,7 @@ class ConnectionHealthMonitor(SynchronizationListener):
         self._updateQuoteHealthStatusInterval.cancel()
         self._measureUptimeInterval.cancel()
 
-    async def on_symbol_price_updated(self, instance_index: int, price: MetatraderSymbolPrice):
+    async def on_symbol_price_updated(self, instance_index: str, price: MetatraderSymbolPrice):
         """Invoked when a symbol price was updated.
 
         Args:
@@ -80,7 +80,7 @@ class ConnectionHealthMonitor(SynchronizationListener):
             print(f'[{datetime.now().isoformat()}] failed to update quote streaming health status on price ' +
                   'update for account ' + self._connection.account.id, format_error(err))
 
-    async def on_health_status(self, instance_index: int, status: HealthStatus):
+    async def on_health_status(self, instance_index: str, status: HealthStatus):
         """Invoked when a server-side application health status is received from MetaApi.
 
         Args:
@@ -92,7 +92,7 @@ class ConnectionHealthMonitor(SynchronizationListener):
         """
         self._serverHealthStatus[str(instance_index)] = status
 
-    async def on_disconnected(self, instance_index: int):
+    async def on_disconnected(self, instance_index: str):
         """Invoked when connection to MetaTrader terminal terminated.
 
         Args:
