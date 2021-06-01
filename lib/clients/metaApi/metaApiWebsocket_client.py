@@ -618,7 +618,7 @@ class MetaApiWebsocketClient:
                                               'timeoutInSeconds': timeout_in_seconds, 'instanceIndex': instance_number},
                                  timeout_in_seconds + 1)
 
-    def subscribe_to_market_data(self, account_id: str, instance_index: str, symbol: str,
+    def subscribe_to_market_data(self, account_id: str, instance_index: int, symbol: str,
                                  subscriptions: List[MarketDataSubscription] = None) -> Coroutine:
         """Subscribes on market data of specified symbol
         (see https://metaapi.cloud/docs/client/websocket/marketDataStreaming/subscribeToMarketData/).

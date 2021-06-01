@@ -635,7 +635,8 @@ class MetaApiConnection(SynchronizationListener, ReconnectListener):
         Returns:
             A coroutine which resolves when subscription is initiated.
         """
-        self._websocketClient.ensure_subscribe(self._account.id)
+        if not self._closed:
+            self._websocketClient.ensure_subscribe(self._account.id)
 
     def subscribe_to_market_data(self, symbol: str, subscriptions: List[MarketDataSubscription] = None,
                                  instance_index: str = None) -> Coroutine:
@@ -1062,7 +1063,7 @@ class MetaApiConnection(SynchronizationListener, ReconnectListener):
 
     async def _ensure_synchronized(self, instance_index: str, key):
         state = self._get_state(instance_index)
-        if state:
+        if state and not self._closed:
             try:
                 await self.synchronize(instance_index)
                 state['synchronized'] = True
