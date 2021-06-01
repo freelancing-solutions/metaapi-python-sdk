@@ -687,6 +687,15 @@ class TestMetaApiConnection:
         client.ensure_subscribe.assert_called_with('accountId')
 
     @pytest.mark.asyncio
+    async def test_not_subscribe_if_closed(self):
+        """Should not subscribe if connection is closed."""
+        client.ensure_subscribe = AsyncMock()
+        client.unsubscribe = AsyncMock()
+        await api.close()
+        await api.subscribe()
+        client.ensure_subscribe.assert_not_called()
+
+    @pytest.mark.asyncio
     async def test_synchronize_state_with_terminal(self):
         """Should synchronize state with terminal."""
         client.synchronize = AsyncMock()
@@ -918,6 +927,20 @@ class TestMetaApiConnection:
             await api.on_connected('1:ps-mpa-1', 1)
             client.synchronize.assert_called_with('accountId', 1,  'ps-mpa-1', 'synchronizationId',
                                                   date('2020-01-01T00:00:00.000Z'), date('2020-01-02T00:00:00.000Z'))
+
+    @pytest.mark.asyncio
+    async def test_not_sync_if_connection_closed(self):
+        """Should not synchronize if connection is closed."""
+        with patch('lib.metaApi.metaApiConnection.random_id', return_value='synchronizationId'):
+            client.synchronize = AsyncMock()
+            client.unsubscribe = AsyncMock()
+            api = MetaApiConnection(client, account, None, MagicMock())
+            await api.history_storage.on_history_order_added('1:ps-mpa-1',
+                                                             {'doneTime': date('2020-01-01T00:00:00.000Z')})
+            await api.history_storage.on_deal_added('1:ps-mpa-1', {'time': date('2020-01-02T00:00:00.000Z')})
+            await api.close()
+            await api.on_connected('1:ps-mpa-1', 1)
+            client.synchronize.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_restore_market_data_subs_on_sync(self):

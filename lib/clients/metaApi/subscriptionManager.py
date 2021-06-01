@@ -116,7 +116,8 @@ class SubscriptionManager:
             account_id: Id of the MetaTrader account.
             instance_number: Instance index number.
         """
-        if self._websocketClient.connected(self._websocketClient.socket_instances_by_accounts[account_id]):
+        if account_id in self._websocketClient.socket_instances_by_accounts and \
+                self._websocketClient.connected(self._websocketClient.socket_instances_by_accounts[account_id]):
             asyncio.create_task(self.subscribe(account_id, instance_number))
 
     async def on_disconnected(self, account_id: str, instance_number: int = None):
@@ -127,7 +128,8 @@ class SubscriptionManager:
             instance_number: Instance index number.
         """
         await asyncio.sleep(uniform(1, 5))
-        asyncio.create_task(self.subscribe(account_id, instance_number))
+        if account_id in self._websocketClient.socket_instances_by_accounts:
+            asyncio.create_task(self.subscribe(account_id, instance_number))
 
     def on_reconnected(self, socket_instance_index: int, reconnect_account_ids: List[str]):
         """Invoked when connection to MetaApi websocket API restored after a disconnect.

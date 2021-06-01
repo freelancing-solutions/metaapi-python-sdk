@@ -141,8 +141,8 @@ class FakeServer:
             elif data['type'] == 'getAccountInformation':
                 await self.respond_account_information(data)
             elif data['type'] == 'unsubscribe':
-                fake_server.delete_status_task(data['accountId'])
-                await fake_server.respond(data)
+                self.delete_status_task(data['accountId'])
+                await self.respond(data)
 
     def disable_sync(self):
         @self.sio.on('request')
@@ -755,3 +755,108 @@ class TestSyncStability:
             assert not connection.terminal_state.connected
             assert not connection.terminal_state.connected_to_broker
             assert subscribe_called
+
+    @pytest.mark.asyncio
+    async def test_not_resubscribe_after_close(self):
+        """Should not synchronize if connection is closed."""
+        synchronize_counter = 0
+
+        @sio.on('request')
+        async def on_request(sid, data):
+            if data['type'] == 'subscribe':
+                await sleep(0.2)
+                await fake_server.respond(data)
+                fake_server.status_tasks[data['accountId']] = \
+                    asyncio.create_task(fake_server.create_status_task(data['accountId']))
+                await fake_server.authenticate(data)
+            elif data['type'] == 'synchronize':
+                nonlocal synchronize_counter
+                synchronize_counter += 1
+                await fake_server.respond(data)
+                await fake_server.sync_account(data)
+            elif data['type'] == 'waitSynchronized':
+                await fake_server.respond(data)
+            elif data['type'] == 'getAccountInformation':
+                await fake_server.respond_account_information(data)
+            elif data['type'] == 'unsubscribe':
+                await fake_server.respond(data)
+
+        account = await api.metatrader_account_api.get_account('accountId')
+        connection = await account.connect()
+        await connection.wait_synchronized({'timeoutInSeconds': 3})
+        assert synchronize_counter == 1
+        account2 = await api.metatrader_account_api.get_account('accountId2')
+        connection2 = await account2.connect()
+        await sleep(0.1)
+        await connection2.close()
+        try:
+            await connection2.wait_synchronized({'timeoutInSeconds': 3})
+            raise Exception('TimeoutException expected')
+        except Exception as err:
+            assert err.__class__.__name__ == 'TimeoutException'
+        assert synchronize_counter == 1
+
+    @pytest.mark.asyncio
+    async def test_not_resubscribe_after_close_after_disconnected(self):
+        """Should not resubscribe after connection is closed."""
+        with patch('lib.clients.metaApi.metaApiWebsocket_client.asyncio.sleep', new=lambda x: sleep(x / 5)):
+            subscribe_counter = 0
+
+            @sio.on('request')
+            async def on_request(sid, data):
+                if data['type'] == 'subscribe':
+                    nonlocal subscribe_counter
+                    subscribe_counter += 1
+                    await sleep(0.1)
+                    await fake_server.respond(data)
+                    fake_server.delete_status_task(data['accountId'])
+                    fake_server.status_tasks[data['accountId']] = \
+                        asyncio.create_task(fake_server.create_status_task(data['accountId']))
+                    await fake_server.authenticate(data)
+                elif data['type'] == 'synchronize':
+                    await fake_server.respond(data)
+                    await fake_server.sync_account(data)
+                elif data['type'] == 'waitSynchronized':
+                    await fake_server.respond(data)
+                elif data['type'] == 'getAccountInformation':
+                    await fake_server.respond_account_information(data)
+                elif data['type'] == 'unsubscribe':
+                    fake_server.delete_status_task(data['accountId'])
+                    print("RESPOND UNSUBSCRIBE")
+                    await fake_server.respond(data)
+
+            account = await api.metatrader_account_api.get_account('accountId')
+            connection = await account.connect()
+            await connection.wait_synchronized({'timeoutInSeconds': 10})
+            assert connection.synchronized and connection.terminal_state.connected and \
+                   connection.terminal_state.connected_to_broker
+            assert subscribe_counter == 1
+            asyncio.create_task(sio.emit('synchronization', {'type': 'disconnected', 'accountId': 'accountId',
+                                                             'host': 'ps-mpa-0', 'instanceIndex': 0}))
+            await sleep(2)
+            assert subscribe_counter > 1
+            previous_subscribe_counter = subscribe_counter
+            assert connection.synchronized and connection.terminal_state.connected and \
+                   connection.terminal_state.connected_to_broker
+            asyncio.create_task(sio.emit('synchronization', {'type': 'disconnected', 'accountId': 'accountId',
+                                                             'host': 'ps-mpa-0', 'instanceIndex': 0}))
+            await sleep(0.1)
+            await connection.close()
+            await sleep(2)
+            assert subscribe_counter == previous_subscribe_counter
+            assert not connection.synchronized
+            assert not connection.terminal_state.connected
+            assert not connection.terminal_state.connected_to_broker
+
+    @pytest.mark.asyncio
+    async def test_not_resubscribe_on_timeout_if_connection_closed(self):
+        """Should not resubscribe on timeout if connection is closed."""
+        with patch('lib.clients.metaApi.metaApiWebsocket_client.asyncio.sleep', new=lambda x: sleep(x / 50)):
+            account = await api.metatrader_account_api.get_account('accountId')
+            connection = await account.connect()
+            await connection.wait_synchronized({'timeoutInSeconds': 10})
+            fake_server.status_tasks['accountId'].cancel()
+            assert connection.synchronized
+            await connection.close()
+            await sleep(1.5)
+            assert not connection.synchronized
