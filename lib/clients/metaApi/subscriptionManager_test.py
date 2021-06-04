@@ -188,6 +188,7 @@ class TestSubscriptionManager:
 
     @pytest.mark.asyncio
     async def test_should_destroy_subscribe_process_on_cancel(self):
+        """Should destroy subscribe process on cancel."""
         subscribe = AsyncMock()
 
         async def delay_subscribe(account_id, instance_index):
@@ -203,3 +204,12 @@ class TestSubscriptionManager:
         asyncio.create_task(manager.subscribe('accountId'))
         await asyncio.sleep(0.05)
         assert subscribe.call_count == 2
+
+    @pytest.mark.asyncio
+    async def test_is_subscribing(self):
+        """Should check if account is subscribing."""
+        asyncio.create_task(manager.subscribe('accountId', 1))
+        await asyncio.sleep(0.05)
+        assert manager.is_account_subscribing('accountId')
+        assert not manager.is_account_subscribing('accountId', 0)
+        assert manager.is_account_subscribing('accountId', 1)

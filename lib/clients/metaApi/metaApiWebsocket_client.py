@@ -1070,6 +1070,7 @@ class MetaApiWebsocketClient:
                                 await asyncio.wait(on_disconnected_tasks)
                         else:
                             on_stream_closed_tasks: List[asyncio.Task] = []
+                            self._packetOrderer.on_stream_closed(instance_id)
 
                             async def run_on_stream_closed(listener):
                                 try:
@@ -1384,7 +1385,10 @@ class MetaApiWebsocketClient:
                             await asyncio.wait(on_order_synchronization_finished_tasks)
                 elif data['type'] == 'status':
                     if instance_id not in self._connectedHosts:
-                        if instance_id in self._status_timers and 'authenticated' in data and data['authenticated']:
+                        if instance_id in self._status_timers and 'authenticated' in data and data['authenticated'] \
+                                and (self._subscriptionManager.is_disconnected_retry_mode(
+                                data['accountId'], instance_number) or not
+                                self._subscriptionManager.is_account_subscribing(data['accountId'], instance_number)):
                             self._subscriptionManager.cancel_subscribe(data['accountId'] + ':' + str(instance_number))
                             await asyncio.sleep(0.01)
                             print(f'[{datetime.now().isoformat()}] it seems like we are not connected to a ' +
@@ -1596,9 +1600,10 @@ class MetaApiWebsocketClient:
                         self._socketInstancesByAccounts[listener['accountId']] == socket_instance_index:
                     reconnect_listeners.append(listener)
 
-            self._subscriptionManager.on_reconnected(socket_instance_index,
-                                                     list(map(lambda listener: listener['accountId'],
-                                                              reconnect_listeners)))
+            reconnect_account_ids = list(map(lambda listener: listener['accountId'], reconnect_listeners))
+            self._subscriptionManager.on_reconnected(socket_instance_index, reconnect_account_ids)
+            self._packetOrderer.on_reconnected(reconnect_account_ids)
+
             for listener in reconnect_listeners:
                 async def on_reconnected_task(listener):
                     try:

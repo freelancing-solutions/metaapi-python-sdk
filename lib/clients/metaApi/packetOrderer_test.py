@@ -317,3 +317,65 @@ class TestPacketOrderer:
         assert packet_orderer.restore_order(start_packet) == []
         assert len(packet_orderer._packetsByInstance['accountId:0:ps-mpa-1']) == 1
         assert packet_orderer._packetsByInstance['accountId:0:ps-mpa-1'][0]['packet'] == start_packet
+
+    @pytest.mark.asyncio
+    async def test_reset_on_reconnected(self):
+        """Should reset state on disconnected event."""
+        out_of_order_listener.on_out_of_order_packet = MagicMock()
+        timed_out_packet = {
+            'accountId': 'accountId',
+            'instanceId': 'accountId:0:ps-mpa-1',
+            'host': 'ps-mpa-1',
+            'instanceIndex': 0,
+            'sequenceNumber': 11,
+            'packet': {},
+            'receivedAt': date
+        }
+        not_timed_out_packet = {
+            'accountId': 'accountId',
+            'instanceId': 'accountId:0:ps-mpa-1',
+            'host': 'ps-mpa-1',
+            'instanceIndex': 0,
+            'sequenceNumber': 15,
+            'packet': {},
+            'receivedAt': datetime.fromtimestamp(10000000000)
+        }
+        packet_orderer._sequenceNumberByInstance['accountId:0:ps-mpa-1'] = 1
+        packet_orderer._packetsByInstance['accountId:0:ps-mpa-1'] = [
+            timed_out_packet,
+            not_timed_out_packet
+        ]
+        packet_orderer.on_reconnected(['accountId'])
+        await asyncio.sleep(1)
+        out_of_order_listener.on_out_of_order_packet.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_reset_on_stream_closed(self):
+        """Should reset state for an instance on stream closed event."""
+        out_of_order_listener.on_out_of_order_packet = MagicMock()
+        timed_out_packet = {
+            'accountId': 'accountId',
+            'instanceId': 'accountId:0:ps-mpa-1',
+            'host': 'ps-mpa-1',
+            'instanceIndex': 0,
+            'sequenceNumber': 11,
+            'packet': {},
+            'receivedAt': date
+        }
+        not_timed_out_packet = {
+            'accountId': 'accountId',
+            'instanceId': 'accountId:0:ps-mpa-1',
+            'host': 'ps-mpa-1',
+            'instanceIndex': 0,
+            'sequenceNumber': 15,
+            'packet': {},
+            'receivedAt': datetime.fromtimestamp(10000000000)
+        }
+        packet_orderer._sequenceNumberByInstance['accountId:0:ps-mpa-1'] = 1
+        packet_orderer._packetsByInstance['accountId:0:ps-mpa-1'] = [
+            timed_out_packet,
+            not_timed_out_packet
+        ]
+        packet_orderer.on_stream_closed('accountId:0:ps-mpa-1')
+        await asyncio.sleep(1)
+        out_of_order_listener.on_out_of_order_packet.assert_not_called()

@@ -1957,6 +1957,7 @@ class TestMetaApiWebsocketClient:
         listener = MagicMock()
         listener.on_reconnected = AsyncMock()
         client.add_reconnect_listener(listener, 'accountId')
+        client._packetOrderer.on_reconnected = MagicMock()
         client._subscriptionManager.on_reconnected = MagicMock()
         request_counter = 0
 
@@ -1973,6 +1974,7 @@ class TestMetaApiWebsocketClient:
         await asyncio.sleep(0.1)
         listener.on_reconnected.assert_called_once()
         client._subscriptionManager.on_reconnected.assert_called_with(0, ['accountId'])
+        client._packetOrderer.on_reconnected.assert_called_with(['accountId'])
         await client.trade('accountId', trade)
         assert request_counter == 2
         await client.close()

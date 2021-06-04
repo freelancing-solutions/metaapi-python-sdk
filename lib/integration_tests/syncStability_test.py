@@ -860,3 +860,44 @@ class TestSyncStability:
             await connection.close()
             await sleep(1.5)
             assert not connection.synchronized
+
+    @pytest.mark.asyncio
+    async def test_not_send_multiple_subscribes_on_status(self):
+        """Should not send multiple subscribe requests if status arrives faster than subscribe."""
+        with patch('lib.clients.metaApi.metaApiWebsocket_client.asyncio.sleep', new=lambda x: sleep(x / 50)):
+            subscribe_calls = 0
+            account = await api.metatrader_account_api.get_account('accountId')
+            connection = await account.connect()
+            await connection.wait_synchronized({'timeoutInSeconds': 10})
+            fake_server.disable_sync()
+            fake_server.status_tasks['accountId'].cancel()
+            await sleep(2)
+            assert not connection.synchronized and not connection.terminal_state.connected and \
+                not connection.terminal_state.connected_to_broker
+
+            @sio.on('request')
+            async def on_request(sid, data):
+                if data['type'] == 'subscribe':
+                    nonlocal subscribe_calls
+                    subscribe_calls += 1
+                    await sleep(2.8)
+                    await fake_server.respond(data)
+                    fake_server.status_tasks[data['accountId']] = \
+                        asyncio.create_task(fake_server.create_status_task(data['accountId']))
+                    await fake_server.authenticate(data)
+                elif data['type'] == 'synchronize':
+                    await fake_server.respond(data)
+                    await fake_server.sync_account(data)
+                elif data['type'] == 'waitSynchronized':
+                    await fake_server.respond(data)
+                elif data['type'] == 'getAccountInformation':
+                    await fake_server.respond_account_information(data)
+                elif data['type'] == 'unsubscribe':
+                    await fake_server.respond(data)
+
+            fake_server.status_tasks['accountId'] = \
+                asyncio.create_task(fake_server.create_status_task('accountId'))
+            await sleep(4)
+            assert connection.synchronized and connection.terminal_state.connected and \
+                   connection.terminal_state.connected_to_broker
+            assert subscribe_calls == 1
