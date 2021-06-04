@@ -18,6 +18,9 @@ class PacketOrderer:
         self._isOutOfOrderEmitted = {}
         self._waitListSizeLimit = 100
         self._outOfOrderInterval = None
+        self._sequenceNumberByInstance = {}
+        self._lastSessionStartTimestamp = {}
+        self._packetsByInstance = {}
 
     def start(self):
         """Initializes the packet orderer"""
@@ -91,6 +94,38 @@ class PacketOrderer:
             while len(wait_list) > self._waitListSizeLimit:
                 wait_list.pop(0)
             return []
+
+    def on_stream_closed(self, instance_id: str):
+        """Resets state for instance id.
+
+        Args:
+            instance_id: Instance id to reset state for.
+        """
+        if instance_id in self._packetsByInstance.keys():
+            del self._packetsByInstance[instance_id]
+        if instance_id in self._lastSessionStartTimestamp.keys():
+            del self._lastSessionStartTimestamp[instance_id]
+        if instance_id in self._sequenceNumberByInstance.keys():
+            del self._sequenceNumberByInstance[instance_id]
+
+    def on_reconnected(self, reconnect_account_ids: List[str]):
+        """Resets state for specified accounts on reconnect.
+
+        Args:
+            reconnect_account_ids: Reconnected account ids.
+        """
+        for instance_id in list(self._packetsByInstance.keys()):
+            if self._get_account_id_from_instance(instance_id) in reconnect_account_ids:
+                del self._packetsByInstance[instance_id]
+        for instance_id in list(self._lastSessionStartTimestamp.keys()):
+            if self._get_account_id_from_instance(instance_id) in reconnect_account_ids:
+                del self._lastSessionStartTimestamp[instance_id]
+        for instance_id in list(self._sequenceNumberByInstance.keys()):
+            if self._get_account_id_from_instance(instance_id) in reconnect_account_ids:
+                del self._sequenceNumberByInstance[instance_id]
+
+    def _get_account_id_from_instance(self, instance_id: str) -> str:
+        return instance_id.split(':')[0]
 
     def _find_next_packets_from_wait_list(self, instance_id) -> List:
         result = []

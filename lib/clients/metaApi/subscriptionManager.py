@@ -19,19 +19,40 @@ class SubscriptionManager:
         self._subscriptions = {}
         self._awaitingResubscribe = {}
 
-    def is_account_subscribing(self, account_id: str):
-        """Returns whether an account is currently subscribing."""
-        for key in self._subscriptions.keys():
-            if key.startswith(account_id):
-                return True
-        return False
+    def is_account_subscribing(self, account_id: str, instance_number: int = None):
+        """Returns whether an account is currently subscribing.
 
-    async def subscribe(self, account_id: str, instance_number: int = None):
+        Args:
+            account_id: Id of the MetaTrader account.
+            instance_number: Instance index number.
+        """
+        if instance_number is not None:
+            return account_id + ':' + str(instance_number) in self._subscriptions.keys()
+        else:
+            for key in self._subscriptions.keys():
+                if key.startswith(account_id):
+                    return True
+            return False
+
+    def is_disconnected_retry_mode(self, account_id: str, instance_number: int):
+        """Returns whether an instance is in disconnected retry mode.
+
+        Args:
+            account_id: Id of the MetaTrader account.
+            instance_number: Instance index number.
+        """
+        instance_id = account_id + ':' + str(instance_number or 0)
+        return self._subscriptions[instance_id]['isDisconnectedRetryMode'] if instance_id in \
+            self._subscriptions else False
+
+    async def subscribe(self, account_id: str, instance_number: int = None, is_disconnected_retry_mode=False):
         """Schedules to send subscribe requests to an account until cancelled.
 
         Args:
             account_id: Id of the MetaTrader account.
             instance_number: Instance index number.
+            is_disconnected_retry_mode: Whether to start subscription in disconnected retry mode. Subscription
+                task in disconnected mode will be immediately replaced when the status packet is received.
         """
         instance_id = account_id + ':' + str(instance_number or 0)
         if instance_id not in self._subscriptions:
@@ -39,7 +60,8 @@ class SubscriptionManager:
                 'shouldRetry': True,
                 'task': None,
                 'wait_task': None,
-                'future': None
+                'future': None,
+                'isDisconnectedRetryMode': is_disconnected_retry_mode
             }
             subscribe_retry_interval_in_seconds = 3
             while self._subscriptions[instance_id]['shouldRetry']:
@@ -118,7 +140,7 @@ class SubscriptionManager:
         """
         if account_id in self._websocketClient.socket_instances_by_accounts and \
                 self._websocketClient.connected(self._websocketClient.socket_instances_by_accounts[account_id]):
-            asyncio.create_task(self.subscribe(account_id, instance_number))
+            asyncio.create_task(self.subscribe(account_id, instance_number, is_disconnected_retry_mode=True))
 
     async def on_disconnected(self, account_id: str, instance_number: int = None):
         """Invoked when connection to MetaTrader terminal terminated.
@@ -129,7 +151,7 @@ class SubscriptionManager:
         """
         await asyncio.sleep(uniform(1, 5))
         if account_id in self._websocketClient.socket_instances_by_accounts:
-            asyncio.create_task(self.subscribe(account_id, instance_number))
+            asyncio.create_task(self.subscribe(account_id, instance_number, is_disconnected_retry_mode=True))
 
     def on_reconnected(self, socket_instance_index: int, reconnect_account_ids: List[str]):
         """Invoked when connection to MetaApi websocket API restored after a disconnect.
