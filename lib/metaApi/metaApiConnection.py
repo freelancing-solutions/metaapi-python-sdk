@@ -11,7 +11,7 @@ from ..clients.timeoutException import TimeoutException
 from .models import random_id, format_error, MetatraderSymbolSpecification, MetatraderAccountInformation, \
     MetatraderPosition, MetatraderOrder, MetatraderHistoryOrders, MetatraderDeals, MetatraderTradeResponse, \
     MetatraderSymbolPrice, MarketTradeOptions, PendingTradeOptions, MarketDataSubscription, MarketDataUnsubscription, \
-    MetatraderCandle, MetatraderTick, MetatraderBook
+    MetatraderCandle, MetatraderTick, MetatraderBook, StopOptions
 from datetime import datetime, timedelta
 from typing import Coroutine, List, Optional, Dict
 from typing_extensions import TypedDict
@@ -234,7 +234,8 @@ class MetaApiConnection(SynchronizationListener, ReconnectListener):
         asyncio.create_task(self._historyStorage.clear())
         return self._websocketClient.remove_application(self._account.id)
 
-    def create_market_buy_order(self, symbol: str, volume: float, stop_loss: float = None, take_profit: float = None,
+    def create_market_buy_order(self, symbol: str, volume: float, stop_loss: float or StopOptions = None,
+                                take_profit: float or StopOptions = None,
                                 options: MarketTradeOptions = None) -> \
             'Coroutine[asyncio.Future[MetatraderTradeResponse]]':
         """Creates a market buy order (see https://metaapi.cloud/docs/client/websocket/api/trade/).
@@ -252,15 +253,13 @@ class MetaApiConnection(SynchronizationListener, ReconnectListener):
         Raises:
             TradeException: On trade error, check error properties for error code details.
         """
-        trade_params = {'actionType': 'ORDER_TYPE_BUY', 'symbol': symbol, 'volume': volume}
-        if stop_loss:
-            trade_params['stopLoss'] = stop_loss
-        if take_profit:
-            trade_params['takeProfit'] = take_profit
+        trade_params = {'actionType': 'ORDER_TYPE_BUY', 'symbol': symbol, 'volume': volume,
+                        **self._generate_stop_options(stop_loss=stop_loss, take_profit=take_profit)}
         trade_params.update(options or {})
         return self._websocketClient.trade(self._account.id, trade_params)
 
-    def create_market_sell_order(self, symbol: str, volume: float, stop_loss: float = None, take_profit: float = None,
+    def create_market_sell_order(self, symbol: str, volume: float, stop_loss: float or StopOptions = None,
+                                 take_profit: float or StopOptions = None,
                                  options: MarketTradeOptions = None) -> \
             'Coroutine[asyncio.Future[MetatraderTradeResponse]]':
         """Creates a market sell order (see https://metaapi.cloud/docs/client/websocket/api/trade/).
@@ -278,16 +277,14 @@ class MetaApiConnection(SynchronizationListener, ReconnectListener):
         Raises:
             TradeException: On trade error, check error properties for error code details.
         """
-        trade_params = {'actionType': 'ORDER_TYPE_SELL', 'symbol': symbol, 'volume': volume}
-        if stop_loss:
-            trade_params['stopLoss'] = stop_loss
-        if take_profit:
-            trade_params['takeProfit'] = take_profit
+        trade_params = {'actionType': 'ORDER_TYPE_SELL', 'symbol': symbol, 'volume': volume,
+                        **self._generate_stop_options(stop_loss=stop_loss, take_profit=take_profit)}
         trade_params.update(options or {})
         return self._websocketClient.trade(self._account.id, trade_params)
 
-    def create_limit_buy_order(self, symbol: str, volume: float, open_price: float, stop_loss: float = None,
-                               take_profit: float = None, options: PendingTradeOptions = None) -> \
+    def create_limit_buy_order(self, symbol: str, volume: float, open_price: float,
+                               stop_loss: float or StopOptions = None,
+                               take_profit: float or StopOptions = None, options: PendingTradeOptions = None) -> \
             'Coroutine[asyncio.Future[MetatraderTradeResponse]]':
         """Creates a limit buy order (see https://metaapi.cloud/docs/client/websocket/api/trade/).
 
@@ -306,16 +303,14 @@ class MetaApiConnection(SynchronizationListener, ReconnectListener):
             TradeException: On trade error, check error properties for error code details.
         """
         trade_params = {'actionType': 'ORDER_TYPE_BUY_LIMIT', 'symbol': symbol, 'volume': volume,
-                        'openPrice': open_price}
-        if stop_loss:
-            trade_params['stopLoss'] = stop_loss
-        if take_profit:
-            trade_params['takeProfit'] = take_profit
+                        'openPrice': open_price,
+                        **self._generate_stop_options(stop_loss=stop_loss, take_profit=take_profit)}
         trade_params.update(options or {})
         return self._websocketClient.trade(self._account.id, trade_params)
 
-    def create_limit_sell_order(self, symbol: str, volume: float, open_price: float, stop_loss: float = None,
-                                take_profit: float = None, options: PendingTradeOptions = None) -> \
+    def create_limit_sell_order(self, symbol: str, volume: float, open_price: float,
+                                stop_loss: float or StopOptions = None,
+                                take_profit: float or StopOptions = None, options: PendingTradeOptions = None) -> \
             'Coroutine[asyncio.Future[MetatraderTradeResponse]]':
         """Creates a limit sell order (see https://metaapi.cloud/docs/client/websocket/api/trade/).
 
@@ -334,16 +329,14 @@ class MetaApiConnection(SynchronizationListener, ReconnectListener):
             TradeException: On trade error, check error properties for error code details.
         """
         trade_params = {'actionType': 'ORDER_TYPE_SELL_LIMIT', 'symbol': symbol, 'volume': volume,
-                        'openPrice': open_price}
-        if stop_loss:
-            trade_params['stopLoss'] = stop_loss
-        if take_profit:
-            trade_params['takeProfit'] = take_profit
+                        'openPrice': open_price,
+                        **self._generate_stop_options(stop_loss=stop_loss, take_profit=take_profit)}
         trade_params.update(options or {})
         return self._websocketClient.trade(self._account.id, trade_params)
 
-    def create_stop_buy_order(self, symbol: str, volume: float, open_price: float, stop_loss: float = None,
-                              take_profit: float = None, options: PendingTradeOptions = None) -> \
+    def create_stop_buy_order(self, symbol: str, volume: float, open_price: float,
+                              stop_loss: float or StopOptions = None,
+                              take_profit: float or StopOptions = None, options: PendingTradeOptions = None) -> \
             'Coroutine[asyncio.Future[MetatraderTradeResponse]]':
         """Creates a stop buy order (see https://metaapi.cloud/docs/client/websocket/api/trade/).
 
@@ -362,16 +355,14 @@ class MetaApiConnection(SynchronizationListener, ReconnectListener):
             TradeException: On trade error, check error properties for error code details.
         """
         trade_params = {'actionType': 'ORDER_TYPE_BUY_STOP', 'symbol': symbol, 'volume': volume,
-                        'openPrice': open_price}
-        if stop_loss:
-            trade_params['stopLoss'] = stop_loss
-        if take_profit:
-            trade_params['takeProfit'] = take_profit
+                        'openPrice': open_price,
+                        **self._generate_stop_options(stop_loss=stop_loss, take_profit=take_profit)}
         trade_params.update(options or {})
         return self._websocketClient.trade(self._account.id, trade_params)
 
-    def create_stop_sell_order(self, symbol: str, volume: float, open_price: float, stop_loss: float = None,
-                               take_profit: float = None, options: PendingTradeOptions = None) -> \
+    def create_stop_sell_order(self, symbol: str, volume: float, open_price: float,
+                               stop_loss: float or StopOptions = None,
+                               take_profit: float or StopOptions = None, options: PendingTradeOptions = None) -> \
             'Coroutine[asyncio.Future[MetatraderTradeResponse]]':
         """Creates a stop sell order (see https://metaapi.cloud/docs/client/websocket/api/trade/).
 
@@ -390,16 +381,13 @@ class MetaApiConnection(SynchronizationListener, ReconnectListener):
             TradeException: On trade error, check error properties for error code details.
         """
         trade_params = {'actionType': 'ORDER_TYPE_SELL_STOP', 'symbol': symbol, 'volume': volume,
-                        'openPrice': open_price}
-        if stop_loss:
-            trade_params['stopLoss'] = stop_loss
-        if take_profit:
-            trade_params['takeProfit'] = take_profit
+                        'openPrice': open_price,
+                        **self._generate_stop_options(stop_loss=stop_loss, take_profit=take_profit)}
         trade_params.update(options or {})
         return self._websocketClient.trade(self._account.id, trade_params)
 
     def create_stop_limit_buy_order(self, symbol: str, volume: float, open_price: float, stop_limit_price: float,
-                                    stop_loss: float = None, take_profit: float = None,
+                                    stop_loss: float or StopOptions = None, take_profit: float or StopOptions = None,
                                     options: PendingTradeOptions = None):
         """Creates a stop limit buy order (see https://metaapi.cloud/docs/client/websocket/api/trade/).
 
@@ -419,16 +407,13 @@ class MetaApiConnection(SynchronizationListener, ReconnectListener):
             TradeException: On trade error, check error properties for error code details.
         """
         trade_params = {'actionType': 'ORDER_TYPE_BUY_STOP_LIMIT', 'symbol': symbol, 'volume': volume,
-                        'openPrice': open_price, 'stopLimitPrice': stop_limit_price}
-        if stop_loss:
-            trade_params['stopLoss'] = stop_loss
-        if take_profit:
-            trade_params['takeProfit'] = take_profit
+                        'openPrice': open_price, 'stopLimitPrice': stop_limit_price,
+                        **self._generate_stop_options(stop_loss=stop_loss, take_profit=take_profit)}
         trade_params.update(options or {})
         return self._websocketClient.trade(self._account.id, trade_params)
 
     def create_stop_limit_sell_order(self, symbol: str, volume: float, open_price: float, stop_limit_price: float,
-                                     stop_loss: float = None, take_profit: float = None,
+                                     stop_loss: float or StopOptions = None, take_profit: float or StopOptions = None,
                                      options: PendingTradeOptions = None):
         """Creates a stop limit sell order (see https://metaapi.cloud/docs/client/websocket/api/trade/).
 
@@ -448,15 +433,13 @@ class MetaApiConnection(SynchronizationListener, ReconnectListener):
             TradeException: On trade error, check error properties for error code details.
         """
         trade_params = {'actionType': 'ORDER_TYPE_SELL_STOP_LIMIT', 'symbol': symbol, 'volume': volume,
-                        'openPrice': open_price, 'stopLimitPrice': stop_limit_price}
-        if stop_loss:
-            trade_params['stopLoss'] = stop_loss
-        if take_profit:
-            trade_params['takeProfit'] = take_profit
+                        'openPrice': open_price, 'stopLimitPrice': stop_limit_price,
+                        **self._generate_stop_options(stop_loss=stop_loss, take_profit=take_profit)}
         trade_params.update(options or {})
         return self._websocketClient.trade(self._account.id, trade_params)
 
-    def modify_position(self, position_id: str, stop_loss: float = None, take_profit: float = None) -> \
+    def modify_position(self, position_id: str, stop_loss: float or StopOptions = None,
+                        take_profit: float or StopOptions = None) -> \
             'Coroutine[asyncio.Future[MetatraderTradeResponse]]':
         """Modifies a position (see https://metaapi.cloud/docs/client/websocket/api/trade/).
 
@@ -471,11 +454,8 @@ class MetaApiConnection(SynchronizationListener, ReconnectListener):
         Raises:
             TradeException: On trade error.
         """
-        trade_params = {'actionType': 'POSITION_MODIFY', 'positionId': position_id}
-        if stop_loss:
-            trade_params['stopLoss'] = stop_loss
-        if take_profit:
-            trade_params['takeProfit'] = take_profit
+        trade_params = {'actionType': 'POSITION_MODIFY', 'positionId': position_id,
+                        **self._generate_stop_options(stop_loss=stop_loss, take_profit=take_profit)}
         return self._websocketClient.trade(self._account.id, trade_params)
 
     def close_position_partially(self, position_id: str, volume: float, options: MarketTradeOptions = None) -> \
@@ -553,8 +533,8 @@ class MetaApiConnection(SynchronizationListener, ReconnectListener):
         trade_params.update(options or {})
         return self._websocketClient.trade(self._account.id, trade_params)
 
-    def modify_order(self, order_id: str, open_price: float, stop_loss: float = None,
-                     take_profit: float = None) -> \
+    def modify_order(self, order_id: str, open_price: float, stop_loss: float or StopOptions = None,
+                     take_profit: float or StopOptions = None) -> \
             'Coroutine[asyncio.Future[MetatraderTradeResponse]]':
         """Modifies a pending order (see https://metaapi.cloud/docs/client/websocket/api/trade/).
 
@@ -570,11 +550,8 @@ class MetaApiConnection(SynchronizationListener, ReconnectListener):
         Raises:
             TradeException: On trade error, check error properties for error code details.
         """
-        trade_params = {'actionType': 'ORDER_MODIFY', 'orderId': order_id, 'openPrice': open_price}
-        if stop_loss:
-            trade_params['stopLoss'] = stop_loss
-        if take_profit:
-            trade_params['takeProfit'] = take_profit
+        trade_params = {'actionType': 'ORDER_MODIFY', 'orderId': order_id, 'openPrice': open_price,
+                        **self._generate_stop_options(stop_loss=stop_loss, take_profit=take_profit)}
         return self._websocketClient.trade(self._account.id, trade_params)
 
     def cancel_order(self, order_id: str) -> \
@@ -639,7 +616,7 @@ class MetaApiConnection(SynchronizationListener, ReconnectListener):
             self._websocketClient.ensure_subscribe(self._account.id)
 
     def subscribe_to_market_data(self, symbol: str, subscriptions: List[MarketDataSubscription] = None,
-                                 instance_index: str = None) -> Coroutine:
+                                 instance_index: int = None) -> Coroutine:
         """Subscribes on market data of specified symbol (see
         https://metaapi.cloud/docs/client/websocket/marketDataStreaming/subscribeToMarketData/).
 
@@ -653,12 +630,11 @@ class MetaApiConnection(SynchronizationListener, ReconnectListener):
             Promise which resolves when subscription request was processed.
         """
         self._subscriptions[symbol] = {'subscriptions': subscriptions or None}
-        instance = self.get_instance_number(instance_index)
-        return self._websocketClient.subscribe_to_market_data(self._account.id, instance, symbol,
+        return self._websocketClient.subscribe_to_market_data(self._account.id, instance_index, symbol,
                                                               subscriptions)
 
     def unsubscribe_from_market_data(self, symbol: str, subscriptions: List[MarketDataUnsubscription] = None,
-                                     instance_index: str = None) -> Coroutine:
+                                     instance_index: int = None) -> Coroutine:
         """Unsubscribes from market data of specified symbol (see
         https://metaapi.cloud/docs/client/websocket/marketDataStreaming/subscribeToMarketData/).
 
@@ -679,8 +655,7 @@ class MetaApiConnection(SynchronizationListener, ReconnectListener):
                 self._subscriptions[symbol]['subscriptions']))
             if not len(self._subscriptions[symbol]['subscriptions']):
                 del self._subscriptions[symbol]
-        instance = self.get_instance_number(instance_index)
-        return self._websocketClient.unsubscribe_from_market_data(self._account.id, instance, symbol,
+        return self._websocketClient.unsubscribe_from_market_data(self._account.id, instance_index, symbol,
                                                                   subscriptions)
 
     async def on_subscription_downgraded(self, instance_index: str, symbol: str,
@@ -929,8 +904,9 @@ class MetaApiConnection(SynchronizationListener, ReconnectListener):
         for symbol in self.subscribed_symbols:
             if not self._terminalState.price(symbol):
                 try:
+                    instance = self.get_instance_number(instance_index)
                     await self.subscribe_to_market_data(symbol, self._subscriptions[symbol]['subscriptions'],
-                                                        instance_index)
+                                                        instance)
                 except Exception as err:
                     print(f'[{datetime.now().isoformat()}] MetaApi websocket client for account ' + self.account.id +
                           ':' + str(instance_index) + ' failed to resubscribe to symbol ' + symbol, format_error(err))
@@ -953,7 +929,6 @@ class MetaApiConnection(SynchronizationListener, ReconnectListener):
             A coroutine which resolves when the asynchronous event is processed.
         """
         if instance_index in self._stateByInstanceIndex:
-            print('ON STREAM CLOSED', self._account.id + ':' + instance_index)
             del self._stateByInstanceIndex[instance_index]
 
     async def is_synchronized(self, instance_index: str, synchronization_id: str = None) -> bool:
@@ -1060,6 +1035,20 @@ class MetaApiConnection(SynchronizationListener, ReconnectListener):
             Connection health monitor instance.
         """
         return self._healthMonitor
+
+    def _generate_stop_options(self, stop_loss, take_profit):
+        trade = {}
+        if isinstance(stop_loss, int) or isinstance(stop_loss, float):
+            trade['stopLoss'] = stop_loss
+        elif stop_loss:
+            trade['stopLoss'] = stop_loss['value']
+            trade['stopLossUnits'] = stop_loss['units']
+        if isinstance(take_profit, int) or isinstance(take_profit, float):
+            trade['takeProfit'] = take_profit
+        elif take_profit:
+            trade['takeProfit'] = take_profit['value']
+            trade['takeProfitUnits'] = take_profit['units']
+        return trade
 
     async def _ensure_synchronized(self, instance_index: str, key):
         state = self._get_state(instance_index)

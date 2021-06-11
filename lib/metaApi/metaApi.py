@@ -10,6 +10,7 @@ from ..metaApi.connectionRegistry import ConnectionRegistry
 from .metatraderDemoAccountApi import MetatraderDemoAccountApi
 from ..clients.metaApi.synchronizationThrottler import SynchronizationThrottlerOpts
 from ..clients.metaApi.metatraderDemoAccount_client import MetatraderDemoAccountClient
+from ..clients.metaApi.historicalMarketData_client import HistoricalMarketDataClient
 from .latencyMonitor import LatencyMonitor
 from ..clients.metaApi.expertAdvisor_client import ExpertAdvisorClient
 import re
@@ -41,6 +42,10 @@ class MetaApiOpts(TypedDict):
     """Timeout for connecting to server in seconds."""
     packetOrderingTimeout: Optional[float]
     """Packet ordering timeout in seconds."""
+    historicalMarketDataRequestTimeout: Optional[float]
+    """Timeout for historical market data client in seconds."""
+    demoAccountRequestTimeout: Optional[float]
+    """Timeout for demo account requests in seconds."""
     packetLogger: Optional[PacketLoggerOpts]
     """Packet logger options."""
     enableLatencyMonitor: Optional[bool]
@@ -67,15 +72,21 @@ class MetaApi:
         application = opts['application'] if 'application' in opts else 'MetaApi'
         domain = opts['domain'] if 'domain' in opts else 'agiliumtrade.agiliumtrade.ai'
         request_timeout = opts['requestTimeout'] if 'requestTimeout' in opts else 60
+        historical_market_data_request_timeout = opts['historicalMarketDataRequestTimeout'] if \
+            'historicalMarketDataRequestTimeout' in opts else 240
         connect_timeout = opts['connectTimeout'] if 'connectTimeout' in opts else 60
         packet_ordering_timeout = opts['packetOrderingTimeout'] if 'packetOrderingTimeout' in opts else 60
         retry_opts = opts['retryOpts'] if 'retryOpts' in opts else {}
         packet_logger = opts['packetLogger'] if 'packetLogger' in opts else {}
         synchronization_throttler = opts['synchronizationThrottler'] if 'synchronizationThrottler' in opts else {}
+        demo_account_request_timeout = opts['demoAccountRequestTimeout'] if \
+            'demoAccountRequestTimeout' in opts else 240
         if not re.search(r"[a-zA-Z0-9_]+", application):
             raise ValidationException('Application name must be non-empty string consisting ' +
                                       'from letters, digits and _ only')
         http_client = HttpClient(request_timeout, retry_opts)
+        historical_market_data_http_client = HttpClient(historical_market_data_request_timeout, retry_opts)
+        demo_account_http_client = HttpClient(demo_account_request_timeout, retry_opts)
         self._metaApiWebsocketClient = MetaApiWebsocketClient(
             token, {'application': application, 'domain': domain, 'requestTimeout': request_timeout,
                     'connectTimeout': connect_timeout, 'packetLogger': packet_logger,
@@ -84,11 +95,13 @@ class MetaApi:
                     'retryOpts': retry_opts})
         self._provisioningProfileApi = ProvisioningProfileApi(ProvisioningProfileClient(http_client, token, domain))
         self._connectionRegistry = ConnectionRegistry(self._metaApiWebsocketClient, application)
+        historical_market_data_client = HistoricalMarketDataClient(historical_market_data_http_client, token, domain)
         self._metatraderAccountApi = MetatraderAccountApi(MetatraderAccountClient(http_client, token, domain),
                                                           self._metaApiWebsocketClient, self._connectionRegistry,
-                                                          ExpertAdvisorClient(http_client, token, domain))
-        self._metatraderDemoAccountApi = MetatraderDemoAccountApi(MetatraderDemoAccountClient(http_client, token,
-                                                                                              domain))
+                                                          ExpertAdvisorClient(http_client, token, domain),
+                                                          historical_market_data_client)
+        self._metatraderDemoAccountApi = MetatraderDemoAccountApi(MetatraderDemoAccountClient(
+            demo_account_http_client, token, domain))
         if ('enableLatencyTracking' in opts and opts['enableLatencyTracking']) or ('enableLatencyMonitor' in opts and
                                                                                    opts['enableLatencyMonitor']):
             self._latencyMonitor = LatencyMonitor()

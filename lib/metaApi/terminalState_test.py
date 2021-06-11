@@ -69,11 +69,10 @@ class TestTerminalState:
     async def test_return_specifications(self):
         """Should return specifications."""
         assert len(state.specifications) == 0
-        await state.on_symbol_specification_updated('1:ps-mpa-1', {'symbol': 'EURUSD', 'tickSize': 0.00001})
-        await state.on_symbol_specification_updated('1:ps-mpa-1', {'symbol': 'GBPUSD'})
-        await state.on_symbol_specification_updated('1:ps-mpa-1', {'symbol': 'AUDNZD'})
-        await state.on_symbol_specification_updated('1:ps-mpa-1', {'symbol': 'EURUSD', 'tickSize': 0.0001})
-        await state.on_symbol_specifications_removed('1:ps-mpa-1', ['AUDNZD'])
+        await state.on_symbol_specifications_updated('1:ps-mpa-1', [{'symbol': 'EURUSD', 'tickSize': 0.00001},
+                                                                    {'symbol': 'GBPUSD'}], [])
+        await state.on_symbol_specifications_updated('1:ps-mpa-1', [
+            {'symbol': 'AUDNZD'}, {'symbol': 'EURUSD', 'tickSize': 0.0001}], ['AUDNZD'])
         assert len(state.specifications) == 2
         assert state.specifications == [{'symbol': 'EURUSD', 'tickSize': 0.0001}, {'symbol': 'GBPUSD'}]
         assert state.specification('EURUSD') == {'symbol': 'EURUSD', 'tickSize': 0.0001}
@@ -94,7 +93,7 @@ class TestTerminalState:
     @pytest.mark.asyncio
     async def test_update_account_equity_and_position(self):
         """Should update account equity and position profit on price update."""
-        await state.on_account_information_updated('1:ps-mpa-1', {'equity': 1000, 'balance': 800})
+        await state.on_account_information_updated('1:ps-mpa-1', {'equity': 1000, 'balance': 800, 'platform': 'mt4'})
         await state.on_positions_replaced('1:ps-mpa-1', [{
             'id': '1',
             'symbol': 'EURUSD',
@@ -115,8 +114,9 @@ class TestTerminalState:
             'profit': 100,
             'volume': 2
         })
-        await state.on_symbol_specification_updated('1:ps-mpa-1', {'symbol': 'EURUSD', 'tickSize': 0.01})
-        await state.on_symbol_specification_updated('1:ps-mpa-1', {'symbol': 'AUDUSD', 'tickSize': 0.01})
+        await state.on_symbol_specifications_updated('1:ps-mpa-1', [
+            {'symbol': 'EURUSD', 'tickSize': 0.01, 'digits': 5}, {'symbol': 'AUDUSD', 'tickSize': 0.01, 'digits': 5}],
+                                                     [])
         await state.on_symbol_prices_updated('1:ps-mpa-1', [
           {
             'time': datetime.now(),
@@ -166,7 +166,7 @@ class TestTerminalState:
             'type': 'ORDER_TYPE_SELL_LIMIT',
             'currentPrice': 9
         })
-        await state.on_symbol_specification_updated('1:ps-mpa-1', {'symbol': 'EURUSD', 'tickSize': 0.01})
+        await state.on_symbol_specifications_updated('1:ps-mpa-1', [{'symbol': 'EURUSD', 'tickSize': 0.01}], [])
         await state.on_symbol_prices_updated('1:ps-mpa-1', [{
           'time': datetime.now(),
           'symbol': 'EURUSD',

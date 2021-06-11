@@ -287,6 +287,25 @@ Query contract specifications and quotes via RPC API
     # unsubscribe from market data when no longer needed
     await connection.unsubscribe_from_market_data(symbol='GBPUSD')
 
+Query historical market data via RPC API
+----------------------------------------
+Currently this API is supported on G1 only.
+
+.. code-block:: python
+
+    from datetime import datetime
+
+    # retrieve 1000 candles before the specified time
+    candles = await account.get_historical_candles(symbol='EURUSD', timeframe='1m',
+                                                   start_time=datetime.fromisoformat('2021-05-01'), limit=1000)
+
+    # retrieve 1000 ticks after the specified time
+    ticks = await account.get_historical_ticks(symbol='EURUSD', start_time=datetime.fromisoformat('2021-05-01'),
+                                               offset=5, limit=1000)
+
+    # retrieve 1000 latest ticks
+    ticks = await account.get_historical_ticks(symbol='EURUSD', start_time=None, offset=0, limit=1000)
+
 Use real-time streaming API
 ---------------------------
 Real-time streaming API is good for developing trading applications like trade copiers or automated trading strategies.
@@ -506,3 +525,12 @@ CopyFactory is a powerful trade copying API which makes developing forex
 trade copying applications as easy as writing few lines of code.
 
 You can find CopyFactory Python SDK documentation here: `https://github.com/agiliumtrade-ai/copyfactory-python-sdk <https://github.com/agiliumtrade-ai/copyfactory-python-sdk>`_
+
+MetaStats trading statistics API
+===========================================
+
+MetaStats is a powerful trade statistics API which makes it possible to add forex trading metrics into forex
+applications.
+
+You can find MetaStats Python SDK documentation here:
+`https://github.com/agiliumtrade-ai/metaapi-metastats-python-sdk <https://github.com/agiliumtrade-ai/metaapi-metastats-python-sdk>`_

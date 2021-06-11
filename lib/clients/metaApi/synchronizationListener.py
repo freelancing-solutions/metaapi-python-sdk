@@ -238,12 +238,27 @@ class SynchronizationListener(ABC):
         """
         pass
 
-    async def on_symbol_specifications_removed(self, instance_index: str, symbols: List[str]):
-        """Invoked when a symbol specifications was removed.
+    async def on_symbol_specification_removed(self, instance_index: str, symbol: str):
+        """Invoked when a symbol specification was removed.
 
         Args:
             instance_index: Index of an account instance connected.
-            symbols: Removed symbols.
+            symbol: Removed symbol.
+
+        Returns:
+            A coroutine which resolves when the asynchronous event is processed.
+        """
+        pass
+
+    async def on_symbol_specifications_updated(self, instance_index: str,
+                                               specifications: List[MetatraderSymbolSpecification],
+                                               removed_symbols: List[str]):
+        """Invoked when a symbol specifications were updated.
+
+        Args:
+            instance_index: Index of an account instance connected.
+            specifications: Updated MetaTrader symbol specification.
+            removed_symbols: Removed symbols.
 
         Returns:
             A coroutine which resolves when the asynchronous event is processed.

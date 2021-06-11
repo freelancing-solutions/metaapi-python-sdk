@@ -194,7 +194,9 @@ class MemoryHistoryStorage(MemoryHistoryStorageModel):
             deal = self._deals[index]
             deal_time = get_time(deal)
             if (deal_time < new_deal_time) or \
-                    (deal_time == new_deal_time and deal['id'] <= new_deal['id']):
+                    (deal_time == new_deal_time and deal['id'] <= new_deal['id']) or \
+                    (deal_time == new_deal_time and deal['id'] == new_deal['id'] and
+                     deal['entryType'] <= new_deal['entryType']):
                 if (deal_time == new_deal_time and deal['id'] == new_deal['id'] and
                         deal['type'] == new_deal['type']):
                     replacement_index = index

@@ -8,7 +8,9 @@ from ..metaApi.historyFileManager import HistoryFileManager
 from .historyStorage import HistoryStorage
 from .connectionRegistryModel import ConnectionRegistryModel
 from .expertAdvisor import ExpertAdvisorClient, ExpertAdvisor, NewExpertAdvisorDto
+from ..clients.metaApi.historicalMarketData_client import HistoricalMarketDataClient
 from ..clients.errorHandler import ValidationException
+from .models import MetatraderCandle, MetatraderTick
 from datetime import datetime, timedelta
 from typing import List, Dict
 import asyncio
@@ -19,7 +21,7 @@ class MetatraderAccount(MetatraderAccountModel):
 
     def __init__(self, data: MetatraderAccountDto, metatrader_account_client: MetatraderAccountClient,
                  meta_api_websocket_client: MetaApiWebsocketClient, connection_registry: ConnectionRegistryModel,
-                 expert_advisor_client: ExpertAdvisorClient):
+                 expert_advisor_client: ExpertAdvisorClient, historical_market_data_client: HistoricalMarketDataClient):
         """Inits a MetaTrader account entity.
 
         Args:
@@ -28,12 +30,14 @@ class MetatraderAccount(MetatraderAccountModel):
             meta_api_websocket_client: MetaApi websocket client.
             connection_registry: Metatrader account connection registry.
             expert_advisor_client: Expert advisor REST API client.
+            historical_market_data_client: Historical market data HTTP API client.
         """
         self._data = data
         self._metatraderAccountClient = metatrader_account_client
         self._metaApiWebsocketClient = meta_api_websocket_client
         self._connectionRegistry = connection_registry
         self._expertAdvisorClient = expert_advisor_client
+        self._historicalMarketDataClient = historical_market_data_client
 
     @property
     def id(self) -> str:
@@ -170,6 +174,15 @@ class MetatraderAccount(MetatraderAccountModel):
             Reliability value.
         """
         return self._data['reliability']
+
+    @property
+    def version(self) -> int:
+        """Returns version value. Possible values are 4 and 5.
+
+        Returns:
+            Account version value.
+        """
+        return self._data['version']
 
     async def reload(self):
         """Reloads MetaTrader account from API.
@@ -358,8 +371,7 @@ class MetatraderAccount(MetatraderAccountModel):
         Returns:
             A coroutine resolving with an array of expert advisor entities.
         """
-        if self.type != 'cloud-g1':
-            raise ValidationException('Custom expert advisor is available only for cloud-g1 accounts')
+        self._check_expert_advisor_allowed()
         expert_advisors = await self._expertAdvisorClient.get_expert_advisors(self.id)
         return list(map(lambda e: ExpertAdvisor(e, self.id, self._expertAdvisorClient), expert_advisors))
 
@@ -372,8 +384,7 @@ class MetatraderAccount(MetatraderAccountModel):
         Returns:
             A coroutine resolving with expert advisor entity.
         """
-        if self.type != 'cloud-g1':
-            raise ValidationException('Custom expert advisor is available only for cloud-g1 accounts')
+        self._check_expert_advisor_allowed()
         expert_advisor = await self._expertAdvisorClient.get_expert_advisor(self.id, expert_id)
         return ExpertAdvisor(expert_advisor, self.id, self._expertAdvisorClient)
 
@@ -387,10 +398,50 @@ class MetatraderAccount(MetatraderAccountModel):
         Returns:
             A coroutine resolving with expert advisor entity.
         """
-        if self.type != 'cloud-g1':
-            raise ValidationException('Custom expert advisor is available only for cloud-g1 accounts')
+        self._check_expert_advisor_allowed()
         await self._expertAdvisorClient.update_expert_advisor(self.id, expert_id, expert)
         return await self.get_expert_advisor(expert_id)
+
+    async def get_historical_candles(self, symbol: str, timeframe: str, start_time: datetime = None,
+                                     limit: int = None) -> List[MetatraderCandle]:
+        """Returns historical candles for a specific symbol and timeframe from a MetaTrader account.
+        See https://metaapi.cloud/docs/client/restApi/api/retrieveMarketData/readHistoricalCandles/
+
+        Args:
+            symbol: Symbol to retrieve candles for (e.g. a currency pair or an index).
+            timeframe: Defines the timeframe according to which the candles must be generated. Allowed values
+            for MT5 are 1m, 2m, 3m, 4m, 5m, 6m, 10m, 12m, 15m, 20m, 30m, 1h, 2h, 3h, 4h, 6h, 8h, 12h, 1d, 1w, 1mn.
+            Allowed values for MT4 are 1m, 5m, 15m 30m, 1h, 4h, 1d, 1w, 1mn.
+            start_time: Time to start loading candles from. Note that candles are loaded in backwards direction, so
+            this should be the latest time. Leave empty to request latest candles.
+            limit: Maximum number of candles to retrieve. Must be less or equal to 1000.
+
+        Returns:
+            A coroutine resolving with historical candles downloaded.
+        """
+        return await self._historicalMarketDataClient.get_historical_candles(self.id, symbol, timeframe, start_time,
+                                                                             limit)
+
+    async def get_historical_ticks(self, symbol: str, start_time: datetime = None, offset: int = None,
+                                   limit: int = None) -> List[MetatraderTick]:
+        """Returns historical ticks for a specific symbol from a MetaTrader account.
+        See https://metaapi.cloud/docs/client/restApi/api/retrieveMarketData/readHistoricalTicks/
+
+        Args:
+            symbol: Symbol to retrieve ticks for (e.g. a currency pair or an index).
+            start_time: Time to start loading ticks from. Note that ticks are loaded in backwards direction, so
+            this should be the latest time. Leave empty to request latest ticks.
+            offset: Number of ticks to skip (you can use it to avoid requesting ticks from previous request twice)
+            limit: Maximum number of ticks to retrieve. Must be less or equal to 1000.
+
+        Returns:
+            A coroutine resolving with historical ticks downloaded.
+        """
+        return await self._historicalMarketDataClient.get_historical_ticks(self.id, symbol, start_time, offset, limit)
+
+    def _check_expert_advisor_allowed(self):
+        if self.version != 4 or self.type != 'cloud-g1':
+            raise ValidationException('Custom expert advisor is available only for MT4 G1 accounts')
 
     async def _delay(self, timeout_in_milliseconds):
         await asyncio.sleep(timeout_in_milliseconds / 1000)

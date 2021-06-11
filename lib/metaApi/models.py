@@ -440,8 +440,8 @@ class MetatraderSymbolSpecification(TypedDict):
     swapShort: Optional[float]
     """Short swap value."""
     swapRollover3Days: str
-    """Day of week to charge 3 days swap rollover. Allowed values are SUNDAY, MONDAY, TUESDAY, WEDNESDAY, THURDAY,
-    FRIDAY, SATURDAY."""
+    """Day of week to charge 3 days swap rollover. Allowed values are SUNDAY, MONDAY, TUESDAY, WEDNESDAY, THURSDAY,
+    FRIDAY, SATURDAY, NONE."""
     allowedExpirationModes: List[str]
     """Allowed order expiration modes. Allowed values are SYMBOL_EXPIRATION_GTC, SYMBOL_EXPIRATION_DAY,
     SYMBOL_EXPIRATION_SPECIFIED, SYMBOL_EXPIRATION_SPECIFIED_DAY.
@@ -673,3 +673,14 @@ class MetatraderBook(TypedDict):
     """Candle opening time, in broker timezone, YYYY-MM-DD HH:mm:ss.SSS format."""
     book: List[MetatraderBookEntry]
     """List of order book entries."""
+
+
+class StopOptions(TypedDict):
+    """Stop options."""
+    value: float
+    """Stop (SL or TP) value."""
+    units: str
+    """stop units. ABSOLUTE_PRICE means the that the value of value field is a final stop value.
+    RELATIVE_* means that the value field value contains relative stop expressed either in price, points, account
+    currency or balance percentage. Default is ABSOLUTE_PRICE. Allowed values are ABSOLUTE_PRICE, RELATIVE_PRICE,
+    RELATIVE_POINTS, RELATIVE_CURRENCY, RELATIVE_BALANCE_PERCENTAGE."""
