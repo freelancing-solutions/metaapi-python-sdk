@@ -13,7 +13,7 @@ import pytest
 class MockAccount(MetatraderAccount):
 
     def __init__(self, id):
-        super().__init__(MagicMock(), MagicMock(), MagicMock(), MagicMock(), MagicMock())
+        super().__init__(MagicMock(), MagicMock(), MagicMock(), MagicMock(), MagicMock(), MagicMock())
         self._id = id
 
     @property

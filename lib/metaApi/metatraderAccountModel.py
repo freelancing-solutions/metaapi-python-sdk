@@ -2,6 +2,7 @@ from ..clients.metaApi.metatraderAccount_client import MetatraderAccountUpdateDt
 from .historyStorage import HistoryStorage
 from typing import Dict, List
 from .expertAdvisor import ExpertAdvisor, NewExpertAdvisorDto
+from .models import MetatraderCandle, MetatraderTick
 from abc import ABC, abstractmethod
 from datetime import datetime
 
@@ -143,6 +144,15 @@ class MetatraderAccountModel(ABC):
 
         Returns:
             Reliability value.
+        """
+
+    @property
+    @abstractmethod
+    def version(self) -> int:
+        """Returns version value. Possible values are 4 and 5.
+
+        Returns:
+            Account version value.
         """
 
     @abstractmethod
@@ -309,6 +319,42 @@ class MetatraderAccountModel(ABC):
 
         Returns:
             A coroutine resolving with expert advisor entity.
+        """
+
+    @abstractmethod
+    async def get_historical_candles(self, symbol: str, timeframe: str, start_time: datetime = None,
+                                     limit: int = None) -> List[MetatraderCandle]:
+        """Returns historical candles for a specific symbol and timeframe from a MetaTrader account.
+        See https://metaapi.cloud/docs/client/restApi/api/retrieveMarketData/readHistoricalCandles/
+
+        Args:
+            symbol: Symbol to retrieve candles for (e.g. a currency pair or an index).
+            timeframe: Defines the timeframe according to which the candles must be generated. Allowed values
+            for MT5 are 1m, 2m, 3m, 4m, 5m, 6m, 10m, 12m, 15m, 20m, 30m, 1h, 2h, 3h, 4h, 6h, 8h, 12h, 1d, 1w, 1mn.
+            Allowed values for MT4 are 1m, 5m, 15m 30m, 1h, 4h, 1d, 1w, 1mn.
+            start_time: Time to start loading candles from. Note that candles are loaded in backwards direction, so
+            this should be the latest time. Leave empty to request latest candles.
+            limit: Maximum number of candles to retrieve. Must be less or equal to 1000.
+
+        Returns:
+            A coroutine resolving with historical candles downloaded.
+        """
+
+    @abstractmethod
+    async def get_historical_ticks(self, symbol: str, start_time: datetime = None, offset: int = None,
+                                   limit: int = None) -> List[MetatraderTick]:
+        """Returns historical ticks for a specific symbol from a MetaTrader account.
+        See https://metaapi.cloud/docs/client/restApi/api/retrieveMarketData/readHistoricalTicks/
+
+        Args:
+            symbol: Symbol to retrieve ticks for (e.g. a currency pair or an index).
+            start_time: Time to start loading ticks from. Note that ticks are loaded in backwards direction, so
+            this should be the latest time. Leave empty to request latest ticks.
+            offset: Number of ticks to skip (you can use it to avoid requesting ticks from previous request twice)
+            limit: Maximum number of ticks to retrieve. Must be less or equal to 1000.
+
+        Returns:
+            A coroutine resolving with historical ticks downloaded.
         """
 
     @abstractmethod

@@ -1,8 +1,20 @@
-12.5.0
+13.0.0
   - added baseCurrency field to the MetaTraderAccount model
-  - handle TooManyRequestsException in HTTP and websocket clients
+  - fixed history storage timestamp processing (issue #6)
+  - handle TooManyRequestsError in HTTP client
   - limit max concurrent synchronizations based on the number of subscribed accounts
-  - added support for multiple socket connections from one client
+  - implement proper rounding for position profits and account equity
+  - breaking change: refactored specifications updated events
+  - implemented API to retrieve historical market data
+  - upgraded CopyFactory API to 2.1.0
+  - swapRollover3Days can take value of NONE for some brokers
+  - increased default demo account request timeout to 240 seconds
+  - added MetaStats SDK
+  - fixed deal sorting in memory history store
+  - make it possible to specify relative SL/TP
+  - improve stability during server-side application redeployments
+  - disable synchronization after connection is closed
+  - fix equity calculation
 
 12.4.0
   - added clientId to query websocket url

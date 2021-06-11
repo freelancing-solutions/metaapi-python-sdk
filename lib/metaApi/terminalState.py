@@ -295,38 +295,30 @@ class TerminalState(SynchronizationListener):
         else:
             state['orders'] = list(filter(lambda o: o['id'] != order_id, state['orders']))
 
-    async def on_symbol_specification_updated(self, instance_index: str, specification: MetatraderSymbolSpecification):
-        """Invoked when a symbol specification was updated
+    async def on_symbol_specifications_updated(self, instance_index: str,
+                                               specifications: List[MetatraderSymbolSpecification],
+                                               removed_symbols: List[str]):
+        """Invoked when a symbol specifications were updated.
 
         Args:
             instance_index: Index of an account instance connected.
-            specification: Updated MetaTrader symbol specification.
+            specifications: Updated MetaTrader symbol specification.
+            removed_symbols: Removed symbols.
 
         Returns:
             A coroutine which resolves when the asynchronous event is processed.
         """
         state = self._get_state(instance_index)
-        for i in range(len(state['specifications'])):
-            if state['specifications'][i]['symbol'] == specification['symbol']:
-                state['specifications'][i] = specification
-                break
-        else:
-            state['specifications'].append(specification)
-        state['specificationsBySymbol'][specification['symbol']] = specification
-
-    async def on_symbol_specifications_removed(self, instance_index: str, symbols: List[str]):
-        """Invoked when a symbol specifications was removed.
-
-        Args:
-            instance_index: Index of an account instance connected.
-            symbols: Removed symbols.
-
-        Returns:
-            A coroutine which resolves when the asynchronous event is processed.
-        """
-        state = self._get_state(instance_index)
-        state['specifications'] = list(filter(lambda s: s['symbol'] not in symbols, state['specifications']))
-        for symbol in symbols:
+        for specification in specifications:
+            for i in range(len(state['specifications'])):
+                if state['specifications'][i]['symbol'] == specification['symbol']:
+                    state['specifications'][i] = specification
+                    break
+            else:
+                state['specifications'].append(specification)
+            state['specificationsBySymbol'][specification['symbol']] = specification
+        state['specifications'] = list(filter(lambda s: s['symbol'] not in removed_symbols, state['specifications']))
+        for symbol in removed_symbols:
             if symbol in state['specificationsBySymbol']:
                 del state['specificationsBySymbol'][symbol]
 
@@ -374,10 +366,26 @@ class TerminalState(SynchronizationListener):
                         price['bid']
         if state['accountInformation']:
             if state['positionsInitialized'] and prices_initialized:
-                state['accountInformation']['equity'] = \
-                    state['accountInformation']['balance'] + functools.reduce(
-                        lambda a, b: a + (b['unrealizedProfit'] if 'unrealizedProfit' in b else 0),
-                        state['positions'], 0)
+                if state['accountInformation']['platform'] == 'mt5':
+                    state['accountInformation']['equity'] = equity if equity is not None else \
+                        state['accountInformation']['balance'] + \
+                        functools.reduce(lambda a, b: a + round((b['unrealizedProfit'] if 'unrealizedProfit' in b and
+                                                                 b['unrealizedProfit'] is not None
+                                                                 else 0) * 100) / 100 +
+                                         round((b['swap'] if 'swap' in b and b['swap'] is not None
+                                                else 0) * 100) / 100, state['positions'], 0)
+                else:
+                    state['accountInformation']['equity'] = equity if equity is not None else \
+                        state['accountInformation']['balance'] + \
+                        functools.reduce(
+                        lambda a, b: a + round((b['swap'] if 'swap' in b and b['swap'] is not None
+                                                else 0) * 100) / 100 +
+                        round((b['commission'] if 'commission' in b and b['commission'] is not None
+                               else 0) * 100) / 100 +
+                        round((b['unrealizedProfit'] if 'unrealizedProfit' in b and b['unrealizedProfit'] is not None
+                               else 0) * 100) / 100,
+                            state['positions'], 0)
+                state['accountInformation']['equity'] = round(state['accountInformation']['equity'] * 100) / 100
             else:
                 state['accountInformation']['equity'] = equity if equity else (
                     state['accountInformation']['equity'] if 'equity' in state['accountInformation'] else None)
@@ -403,11 +411,15 @@ class TerminalState(SynchronizationListener):
     def _update_position_profits(self, position: Dict, price: Dict):
         specification = self.specification(position['symbol'])
         if specification:
+            multiplier = pow(10, specification['digits'])
+            if 'profit' in position:
+                position['profit'] = round(position['profit'] * multiplier) / multiplier
             if 'unrealizedProfit' not in position or 'realizedProfit' not in position:
                 position['unrealizedProfit'] = (1 if (position['type'] == 'POSITION_TYPE_BUY') else -1) * \
                                                (position['currentPrice'] - position['openPrice']) * \
                                                position['currentTickValue'] * position['volume'] / \
                                                specification['tickSize']
+                position['unrealizedProfit'] = round(position['unrealizedProfit'] * multiplier) / multiplier
                 position['realizedProfit'] = position['profit'] - position['unrealizedProfit']
             new_position_price = price['bid'] if (position['type'] == 'POSITION_TYPE_BUY') else price['ask']
             is_profitable = (1 if (position['type'] == 'POSITION_TYPE_BUY') else -1) * (new_position_price -
@@ -416,8 +428,10 @@ class TerminalState(SynchronizationListener):
             unrealized_profit = (1 if (position['type'] == 'POSITION_TYPE_BUY') else -1) * \
                                 (new_position_price - position['openPrice']) * current_tick_value * \
                 position['volume'] / specification['tickSize']
+            unrealized_profit = round(unrealized_profit * multiplier) / multiplier
             position['unrealizedProfit'] = unrealized_profit
             position['profit'] = position['unrealizedProfit'] + position['realizedProfit']
+            position['profit'] = round(position['profit'] * multiplier) / multiplier
             position['currentPrice'] = new_position_price
             position['currentTickValue'] = current_tick_value
 

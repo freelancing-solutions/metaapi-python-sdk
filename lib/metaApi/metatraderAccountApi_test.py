@@ -5,6 +5,7 @@ from ..clients.metaApi.metaApiWebsocket_client import MetaApiWebsocketClient
 from ..clients.metaApi.metatraderAccount_client import MetatraderAccountClient, NewMetatraderAccountDto
 from .metaApiConnection import MetaApiConnection
 from ..clients.metaApi.reconnectListener import ReconnectListener
+from ..clients.metaApi.historicalMarketData_client import HistoricalMarketDataClient
 from .connectionRegistry import ConnectionRegistry
 from .memoryHistoryStorage import MemoryHistoryStorage
 from .historyStorage import HistoryStorage
@@ -74,6 +75,7 @@ websocket_client: MockWebsocketClient = None
 registry: MockRegistry = None
 api: MetatraderAccountApi = None
 ea_client: ExpertAdvisorClient = None
+history_client: HistoricalMarketDataClient = None
 
 
 @pytest.fixture(autouse=True)
@@ -89,7 +91,9 @@ async def run_around_tests():
     registry.remove = MagicMock()
     global ea_client
     ea_client = ExpertAdvisorClient(MagicMock(), 'token')
-    api = MetatraderAccountApi(client, websocket_client, registry, ea_client)
+    global history_client
+    history_client = HistoricalMarketDataClient(MagicMock(), 'token')
+    api = MetatraderAccountApi(client, websocket_client, registry, ea_client, history_client)
     yield
 
 
@@ -706,6 +710,7 @@ class TestMetatraderAccountApi:
         """Should retrieve expert advisors."""
         client.get_account = AsyncMock(return_value={
             '_id': 'id',
+            'version': 4,
             'type': 'cloud-g1'
         })
         ea_client.get_expert_advisors = AsyncMock(return_value=[{'expertId': 'ea'}])
@@ -721,6 +726,7 @@ class TestMetatraderAccountApi:
         """Should retrieve expert advisor by expert id."""
         client.get_account = AsyncMock(return_value={
             '_id': 'id',
+            'version': 4,
             'type': 'cloud-g1'
         })
         ea_client.get_expert_advisor = AsyncMock(return_value={
@@ -739,10 +745,54 @@ class TestMetatraderAccountApi:
         ea_client.get_expert_advisor.assert_called_with('id', 'ea')
 
     @pytest.mark.asyncio
+    async def test_validate_account_version(self):
+        """Should validate account version."""
+        client.get_account = AsyncMock(return_value={
+            '_id': 'id',
+            'version': 5,
+            'type': 'cloud-g1'
+        })
+        ea_client.get_expert_advisors = AsyncMock(return_value=[{
+            'expertId': 'ea',
+            'period': '1H',
+            'symbol': 'EURUSD',
+            'fileUploaded': False
+        }])
+        ea_client.get_expert_advisor = AsyncMock(return_value={
+            'expertId': 'ea',
+            'period': '1H',
+            'symbol': 'EURUSD',
+            'fileUploaded': False
+        })
+        ea_client.update_expert_advisor = AsyncMock()
+        new_expert_advisor = {
+            'period': '1H',
+            'symbol': 'EURUSD',
+            'preset': 'preset'
+        }
+        account = await api.get_account('id')
+        try:
+            await account.get_expert_advisors()
+            pytest.fail()
+        except Exception:
+            pass
+        try:
+            await account.get_expert_advisor('ea')
+            pytest.fail()
+        except Exception:
+            pass
+        try:
+            await account.create_expert_advisor('ea', new_expert_advisor)
+            pytest.fail()
+        except Exception:
+            pass
+
+    @pytest.mark.asyncio
     async def test_validate_account_type(self):
         """Should validate account type."""
         client.get_account = AsyncMock(return_value={
             '_id': 'id',
+            'version': 4,
             'type': 'cloud-g2'
         })
         ea_client.get_expert_advisors = AsyncMock(return_value=[{
@@ -785,6 +835,7 @@ class TestMetatraderAccountApi:
         """Should create expert advisor."""
         client.get_account = AsyncMock(return_value={
             '_id': 'id',
+            'version': 4,
             'type': 'cloud-g1'
         })
         ea_client.update_expert_advisor = AsyncMock()
@@ -814,6 +865,7 @@ class TestMetatraderAccountApi:
         """Should reload expert advisor."""
         client.get_account = AsyncMock(return_value={
             '_id': 'id',
+            'version': 4,
             'type': 'cloud-g1'
         })
         ea_client.get_expert_advisor = AsyncMock(side_effect=[{
@@ -839,6 +891,7 @@ class TestMetatraderAccountApi:
         """Should update expert advisor."""
         client.get_account = AsyncMock(return_value={
             '_id': 'id',
+            'version': 4,
             'type': 'cloud-g1'
         })
         ea_client.get_expert_advisor = AsyncMock(side_effect=[{
@@ -871,6 +924,7 @@ class TestMetatraderAccountApi:
         """Should upload expert advisor file."""
         client.get_account = AsyncMock(return_value={
             '_id': 'id',
+            'version': 4,
             'type': 'cloud-g1'
         })
         ea_client.get_expert_advisor = AsyncMock(side_effect=[{
@@ -898,6 +952,7 @@ class TestMetatraderAccountApi:
         """Should remove expert advisor."""
         client.get_account = AsyncMock(return_value={
             '_id': 'id',
+            'version': 4,
             'type': 'cloud-g1'
         })
         ea_client.get_expert_advisor = AsyncMock(return_value={

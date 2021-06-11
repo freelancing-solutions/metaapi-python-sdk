@@ -1672,15 +1672,17 @@ class TestMetaApiWebsocketClient:
             'volumeStep': 0.01
         }]
         listener = MagicMock()
+        listener.on_symbol_specifications_updated = AsyncMock()
         listener.on_symbol_specification_updated = AsyncMock()
-        listener.on_symbol_specifications_removed = FinalMock()
+        listener.on_symbol_specification_removed = FinalMock()
         client.add_synchronization_listener('accountId', listener)
         await sio.emit('synchronization', {'type': 'specifications', 'accountId': 'accountId',
                                            'specifications': specifications, 'instanceIndex': 1,
                                            'removedSymbols': ['AUDNZD'], 'host': 'ps-mpa-1'})
         await future_close
+        listener.on_symbol_specifications_updated.assert_called_with('1:ps-mpa-1', specifications, ['AUDNZD'])
         listener.on_symbol_specification_updated.assert_called_with('1:ps-mpa-1', specifications[0])
-        listener.on_symbol_specifications_removed.assert_called_with('1:ps-mpa-1', ['AUDNZD'])
+        listener.on_symbol_specification_removed.assert_called_with('1:ps-mpa-1', 'AUDNZD')
 
     @pytest.mark.asyncio
     async def test_synchronize_symbol_prices(self):
@@ -1892,7 +1894,7 @@ class TestMetaApiWebsocketClient:
 
     @pytest.mark.asyncio
     async def test_process_trade_latency(self):
-        """Should proces trade latency."""
+        """Should process trade latency."""
         trade = {}
         response = {
             'numericCode': 10009,

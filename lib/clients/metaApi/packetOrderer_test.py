@@ -320,7 +320,7 @@ class TestPacketOrderer:
 
     @pytest.mark.asyncio
     async def test_reset_on_reconnected(self):
-        """Should reset state on disconnected event."""
+        """Should reset state on reconnected event."""
         out_of_order_listener.on_out_of_order_packet = MagicMock()
         timed_out_packet = {
             'accountId': 'accountId',

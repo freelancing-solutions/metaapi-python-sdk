@@ -822,7 +822,6 @@ class TestSyncStability:
                     await fake_server.respond_account_information(data)
                 elif data['type'] == 'unsubscribe':
                     fake_server.delete_status_task(data['accountId'])
-                    print("RESPOND UNSUBSCRIBE")
                     await fake_server.respond(data)
 
             account = await api.metatrader_account_api.get_account('accountId')

@@ -74,6 +74,8 @@ class MetatraderAccountDto(TypedDict):
     """MetaTrader account number."""
     server: str
     """MetaTrader server which hosts the account."""
+    version: int
+    """MT version (allowed values are 4 and 5)."""
     provisioningProfileId: str
     """Id of the account's provisioning profile."""
     application: str

@@ -229,6 +229,8 @@ class MetaApiWebsocketClient:
 
         @socket_instance.on('response')
         async def on_response(data):
+            if isinstance(data, str):
+                data = json.loads(data)
             if data['requestId'] in instance['requestResolves']:
                 request_resolve = instance['requestResolves'][data['requestId']]
                 del instance['requestResolves'][data['requestId']]
@@ -259,6 +261,8 @@ class MetaApiWebsocketClient:
 
         @socket_instance.on('synchronization')
         async def on_synchronization(data):
+            if isinstance(data, str):
+                data = json.loads(data)
             if ('synchronizationId' not in data) or \
                     (data['synchronizationId'] in instance['synchronizationThrottler'].active_synchronization_ids):
                 if self._packetLogger:
@@ -269,7 +273,7 @@ class MetaApiWebsocketClient:
         while not socket_instance.connected:
             try:
                 client_id = "{:01.10f}".format(random())
-                url = f'{self._url}?auth-token={self._token}&clientId={client_id}'
+                url = f'{self._url}?auth-token={self._token}&clientId={client_id}&protocol=2'
                 instance['sessionId'] = random_id()
                 await asyncio.wait_for(socket_instance.connect(url, socketio_path='ws',
                                                                headers={'Client-Id': client_id}),
@@ -549,20 +553,20 @@ class MetaApiWebsocketClient:
         """
         asyncio.create_task(self._subscriptionManager.subscribe(account_id, instance_number))
 
-    def subscribe(self, account_id: str, instance_index: str = None):
+    def subscribe(self, account_id: str, instance_number: int = None):
         """Subscribes to the Metatrader terminal events
         (see https://metaapi.cloud/docs/client/websocket/api/subscribe/).
 
         Args:
             account_id: Id of the MetaTrader account to subscribe to.
-            instance_index: Instance index.
+            instance_number: Instance index number.
 
         Returns:
             A coroutine which resolves when subscription started.
         """
         packet = {'type': 'subscribe'}
-        if instance_index is not None:
-            packet['instanceIndex'] = instance_index
+        if instance_number is not None:
+            packet['instanceIndex'] = instance_number
         return self._rpc_request(account_id, packet)
 
     def reconnect(self, account_id: str) -> Coroutine:
@@ -576,14 +580,14 @@ class MetaApiWebsocketClient:
         """
         return self._rpc_request(account_id, {'type': 'reconnect'})
 
-    def synchronize(self, account_id: str, instance_index: int, host: str, synchronization_id: str,
+    def synchronize(self, account_id: str, instance_number: int, host: str, synchronization_id: str,
                     starting_history_order_time: datetime, starting_deal_time: datetime) -> Coroutine:
         """Requests the terminal to start synchronization process.
         (see https://metaapi.cloud/docs/client/websocket/synchronizing/synchronize/).
 
         Args:
             account_id: Id of the MetaTrader account to synchronize.
-            instance_index: Instance index.
+            instance_number: Instance index number.
             host: Name of host to synchronize with.
             synchronization_id: Synchronization request id.
             starting_history_order_time: From what date to start synchronizing history orders from. If not specified,
@@ -601,7 +605,7 @@ class MetaApiWebsocketClient:
             'host': host,
             'startingHistoryOrderTime': format_date(starting_history_order_time),
             'startingDealTime': format_date(starting_deal_time),
-            'instanceIndex': instance_index})
+            'instanceIndex': instance_number})
 
     def wait_synchronized(self, account_id: str, instance_number: int, application_pattern: str,
                           timeout_in_seconds: float):
@@ -618,14 +622,14 @@ class MetaApiWebsocketClient:
                                               'timeoutInSeconds': timeout_in_seconds, 'instanceIndex': instance_number},
                                  timeout_in_seconds + 1)
 
-    def subscribe_to_market_data(self, account_id: str, instance_index: int, symbol: str,
+    def subscribe_to_market_data(self, account_id: str, instance_number: int, symbol: str,
                                  subscriptions: List[MarketDataSubscription] = None) -> Coroutine:
         """Subscribes on market data of specified symbol
         (see https://metaapi.cloud/docs/client/websocket/marketDataStreaming/subscribeToMarketData/).
 
         Args:
             account_id: Id of the MetaTrader account.
-            instance_index: Instance index.
+            instance_number: Instance index number.
             symbol: Symbol (e.g. currency pair or an index).
             subscriptions: Array of market data subscription to create or update.
 
@@ -633,20 +637,20 @@ class MetaApiWebsocketClient:
             A coroutine which resolves when subscription request was processed.
         """
         packet = {'type': 'subscribeToMarketData', 'symbol': symbol}
-        if instance_index is not None:
-            packet['instanceIndex'] = instance_index
+        if instance_number is not None:
+            packet['instanceIndex'] = instance_number
         if subscriptions is not None:
             packet['subscriptions'] = subscriptions
         return self._rpc_request(account_id, packet)
 
-    def unsubscribe_from_market_data(self, account_id: str, instance_index: str, symbol: str,
+    def unsubscribe_from_market_data(self, account_id: str, instance_number: int, symbol: str,
                                      subscriptions: List[MarketDataUnsubscription] = None) -> Coroutine:
         """Unsubscribes from market data of specified symbol
         (see https://metaapi.cloud/docs/client/websocket/marketDataStreaming/unsubscribeFromMarketData/).
 
         Args:
             account_id: Id of the MetaTrader account.
-            instance_index: Instance index.
+            instance_number: Instance index number.
             symbol: Symbol (e.g. currency pair or an index).
             subscriptions: Array of subscriptions to cancel.
 
@@ -654,8 +658,8 @@ class MetaApiWebsocketClient:
             A coroutine which resolves when unsubscription request was processed.
         """
         packet = {'type': 'unsubscribeFromMarketData', 'symbol': symbol}
-        if instance_index is not None:
-            packet['instanceIndex'] = instance_index
+        if instance_number is not None:
+            packet['instanceIndex'] = instance_number
         if subscriptions is not None:
             packet['subscriptions'] = subscriptions
         return self._rpc_request(account_id, packet)
@@ -858,7 +862,7 @@ class MetaApiWebsocketClient:
                 try:
                     await instance['socket'].disconnect()
                     client_id = "{:01.10f}".format(random())
-                    url = f'{self._url}?auth-token={self._token}&clientId={client_id}'
+                    url = f'{self._url}?auth-token={self._token}&clientId={client_id}&protocol=2'
                     instance['connectResult'] = asyncio.Future()
                     instance['resolved'] = False
                     instance['sessionId'] = random_id()
@@ -1453,6 +1457,24 @@ class MetaApiWebsocketClient:
                         if len(on_subscription_downgrade_tasks) > 0:
                             await asyncio.wait(on_subscription_downgrade_tasks)
                 elif data['type'] == 'specifications':
+                    on_symbol_specifications_updated_tasks: List[asyncio.Task] = []
+
+                    async def run_on_symbol_specifications_updated(listener):
+                        try:
+                            await listener.on_symbol_specifications_updated(
+                                instance_index, data['specifications'] if 'specifications' in data else [],
+                                data['removedSymbols'] if 'removedSymbols' in data else [])
+                        except Exception as err:
+                            print(f'{data["accountId"]}: Failed to notify listener about specifications ' +
+                                  'updated event', format_error(err))
+
+                    if data['accountId'] in self._synchronizationListeners:
+                        for listener in self._synchronizationListeners[data['accountId']]:
+                            on_symbol_specifications_updated_tasks.append(
+                                asyncio.create_task(run_on_symbol_specifications_updated(listener)))
+                        if len(on_symbol_specifications_updated_tasks) > 0:
+                            await asyncio.wait(on_symbol_specifications_updated_tasks)
+
                     if 'specifications' in data:
                         for specification in data['specifications']:
                             on_symbol_specification_updated_tasks: List[asyncio.Task] = []
@@ -1461,8 +1483,8 @@ class MetaApiWebsocketClient:
                                 try:
                                     await listener.on_symbol_specification_updated(instance_index, specification)
                                 except Exception as err:
-                                    print(f'{data["accountId"]}: Failed to notify listener about specifications ' +
-                                          'event', format_error(err))
+                                    print(f'{data["accountId"]}: Failed to notify listener about specification ' +
+                                          'updated event', format_error(err))
 
                             if data['accountId'] in self._synchronizationListeners:
                                 for listener in self._synchronizationListeners[data['accountId']]:
@@ -1472,21 +1494,22 @@ class MetaApiWebsocketClient:
                                     await asyncio.wait(on_symbol_specification_updated_tasks)
 
                     if 'removedSymbols' in data:
-                        on_symbol_specification_removed_tasks = []
+                        for removed_symbol in data['removedSymbols']:
+                            on_symbol_specification_removed_tasks = []
 
-                        async def run_on_symbol_specification_removed(listener):
-                            try:
-                                await listener.on_symbol_specifications_removed(instance_index, data['removedSymbols'])
-                            except Exception as err:
-                                print(f'{data["accountId"]}: Failed to notify listener about specifications ' +
-                                      'removed event', format_error(err))
+                            async def run_on_symbol_specification_removed(listener):
+                                try:
+                                    await listener.on_symbol_specification_removed(instance_index, removed_symbol)
+                                except Exception as err:
+                                    print(f'{data["accountId"]}: Failed to notify listener about specifications ' +
+                                          'removed event', format_error(err))
 
-                        if data['accountId'] in self._synchronizationListeners:
-                            for listener in self._synchronizationListeners[data['accountId']]:
-                                on_symbol_specification_removed_tasks.append(
-                                    asyncio.create_task(run_on_symbol_specification_removed(listener)))
-                            if len(on_symbol_specification_removed_tasks) > 0:
-                                await asyncio.wait(on_symbol_specification_removed_tasks)
+                            if data['accountId'] in self._synchronizationListeners:
+                                for listener in self._synchronizationListeners[data['accountId']]:
+                                    on_symbol_specification_removed_tasks.append(
+                                        asyncio.create_task(run_on_symbol_specification_removed(listener)))
+                                if len(on_symbol_specification_removed_tasks) > 0:
+                                    await asyncio.wait(on_symbol_specification_removed_tasks)
                 elif data['type'] == 'prices':
                     prices = data['prices'] if 'prices' in data else []
                     candles = data['candles'] if 'candles' in data else []

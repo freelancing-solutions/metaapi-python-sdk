@@ -66,10 +66,10 @@ async def stream_quotes():
 
         # wait until terminal state synchronized to the local state
         print('Waiting for SDK to synchronize to terminal state (may take some time depending on your history size), the price streaming will start once synchronization finishes')
-        await connection.wait_synchronized({'timeoutInSeconds': 1200})
+        await connection.wait_synchronized()
 
         # Add symbol to MarketWatch if not yet added and subscribe to market data
-        # Please note that currently only MT5 G1 instances support extended subscription management
+        # Please note that currently only G1 instances support extended subscription management
         # Other instances will only stream quotes in response
         await connection.subscribe_to_market_data(symbol, [
             {'type': 'quotes', 'intervalInMilliseconds': 5000},
@@ -78,7 +78,7 @@ async def stream_quotes():
             {'type': 'marketDepth', 'intervalInMilliseconds': 5000}
         ])
 
-        print('Streaming ' + symbol + ' market data now...')
+        print(f'[{datetime.now().isoformat()}] Synchronized successfully, streaming ' + symbol + ' market data now...')
 
         while True:
             await asyncio.sleep(1)

@@ -96,7 +96,7 @@ class MockAccount(MetatraderAccount):
     def __init__(self, data, metatrader_account_client,
                  meta_api_websocket_client, connection_registry):
         super(MockAccount, self).__init__(data, metatrader_account_client, meta_api_websocket_client,
-                                          connection_registry, MagicMock())
+                                          connection_registry, MagicMock(), MagicMock())
         self._state = 'DEPLOYED'
 
     @property
@@ -136,7 +136,7 @@ async def run_around_tests():
     global account
     account = MockAccount(MagicMock(), MagicMock(), MagicMock(), MagicMock())
     global auto_account
-    auto_account = AutoMockAccount(MagicMock(), MagicMock(), MagicMock(), MagicMock(), MagicMock())
+    auto_account = AutoMockAccount(MagicMock(), MagicMock(), MagicMock(), MagicMock(), MagicMock(), MagicMock())
     global client
     client = MockClient('token')
     storage = MagicMock()
@@ -458,6 +458,25 @@ class TestMetaApiConnection:
                                                       'comment': 'comment', 'clientId': 'TE_GBPUSD_7hyINWqAlE'})
 
     @pytest.mark.asyncio
+    async def test_create_market_buy_order_with_relative_sl_tp(self):
+        """Should create market buy order with relative SL/TP."""
+        trade_result = {
+            'error': 10009,
+            'description': 'TRADE_RETCODE_DONE',
+            'orderId': 46870472
+        }
+        client.trade = AsyncMock(return_value=trade_result)
+        actual = await api.create_market_buy_order('GBPUSD', 0.07, {'value': 0.1, 'units': 'RELATIVE_PRICE'},
+                                                   {'value': 2000, 'units': 'RELATIVE_POINTS'},
+                                                   {'comment': 'comment', 'clientId': 'TE_GBPUSD_7hyINWqAlE'})
+        assert actual == trade_result
+        client.trade.assert_called_with('accountId', {'actionType': 'ORDER_TYPE_BUY', 'symbol': 'GBPUSD',
+                                                      'volume': 0.07, 'stopLoss': 0.1,
+                                                      'stopLossUnits': 'RELATIVE_PRICE', 'takeProfit': 2000,
+                                                      'takeProfitUnits': 'RELATIVE_POINTS', 'comment': 'comment',
+                                                      'clientId': 'TE_GBPUSD_7hyINWqAlE'})
+
+    @pytest.mark.asyncio
     async def test_create_market_sell_order(self):
         """Should create market sell order."""
         trade_result = {
@@ -725,7 +744,7 @@ class TestMetaApiConnection:
     async def test_subscribe_to_market_data(self):
         """Should subscribe to market data."""
         client.subscribe_to_market_data = AsyncMock()
-        await api.subscribe_to_market_data('EURUSD', [{'type': 'quotes'}], '1:ps-mpa-1')
+        await api.subscribe_to_market_data('EURUSD', [{'type': 'quotes'}], 1)
         assert 'EURUSD' in api.subscribed_symbols
         client.subscribe_to_market_data.assert_called_with('accountId', 1, 'EURUSD', [{'type': 'quotes'}])
 
@@ -734,9 +753,9 @@ class TestMetaApiConnection:
         """Should unsubscribe from market data."""
         client.subscribe_to_market_data = AsyncMock()
         client.unsubscribe_from_market_data = AsyncMock()
-        await api.subscribe_to_market_data('EURUSD', [{'type': 'quotes'}], '1:ps-mpa-1')
+        await api.subscribe_to_market_data('EURUSD', [{'type': 'quotes'}], 1)
         assert 'EURUSD' in api.subscribed_symbols
-        await api.unsubscribe_from_market_data('EURUSD', [{'type': 'quotes'}], '1:ps-mpa-1')
+        await api.unsubscribe_from_market_data('EURUSD', [{'type': 'quotes'}], 1)
         assert 'EURUSD' not in api.subscribed_symbols
         client.unsubscribe_from_market_data.assert_called_with('accountId', 1, 'EURUSD', [{'type': 'quotes'}])
 
