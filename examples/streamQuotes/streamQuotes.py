@@ -9,6 +9,7 @@ from typing import List
 token = os.getenv('TOKEN') or '<put in your token here>'
 account_id = os.getenv('ACCOUNT_ID') or '<put in your account id here>'
 symbol = os.getenv('SYMBOL') or 'EURUSD'
+domain = os.getenv('DOMAIN') or 'agiliumtrade.agiliumtrade.ai'
 
 
 class QuoteListener(SynchronizationListener):
@@ -44,7 +45,7 @@ class QuoteListener(SynchronizationListener):
 
 
 async def stream_quotes():
-    api = MetaApi(token)
+    api = MetaApi(token, {'domain': domain})
     try:
         account = await api.metatrader_account_api.get_account(account_id)
 
@@ -69,8 +70,10 @@ async def stream_quotes():
         await connection.wait_synchronized()
 
         # Add symbol to MarketWatch if not yet added and subscribe to market data
-        # Please note that currently only G1 instances support extended subscription management
+        # Please note that currently only G1 and MT4 G2 instances support extended subscription management
         # Other instances will only stream quotes in response
+        # Market depth streaming is available in MT5 only
+        # Ticks streaming is not available for MT4 G1
         await connection.subscribe_to_market_data(symbol, [
             {'type': 'quotes', 'intervalInMilliseconds': 5000},
             {'type': 'candles', 'timeframe': '1m', 'intervalInMilliseconds': 10000},

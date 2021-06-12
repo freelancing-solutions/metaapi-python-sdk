@@ -1071,7 +1071,7 @@ class MetaApiWebsocketClient:
                                 for listener in self._synchronizationListeners[data['accountId']]:
                                     on_disconnected_tasks.append(asyncio.create_task(run_on_disconnected(listener)))
                             if len(on_disconnected_tasks) > 0:
-                                await asyncio.wait(on_disconnected_tasks)
+                                await asyncio.gather(*on_disconnected_tasks)
                         else:
                             on_stream_closed_tasks: List[asyncio.Task] = []
                             self._packetOrderer.on_stream_closed(instance_id)
@@ -1087,7 +1087,7 @@ class MetaApiWebsocketClient:
                                 for listener in self._synchronizationListeners[data['accountId']]:
                                     on_stream_closed_tasks.append(asyncio.create_task(run_on_stream_closed(listener)))
                             if len(on_stream_closed_tasks) > 0:
-                                await asyncio.wait(on_stream_closed_tasks)
+                                await asyncio.gather(*on_stream_closed_tasks)
                         if instance_id in self._connectedHosts:
                             del self._connectedHosts[instance_id]
 
@@ -1111,7 +1111,7 @@ class MetaApiWebsocketClient:
                                 on_connected_tasks.append(asyncio.create_task(run_on_connected(listener)))
                             self._subscriptionManager.cancel_subscribe(data['accountId'] + ':' + str(instance_number))
                         if len(on_connected_tasks) > 0:
-                            await asyncio.wait(on_connected_tasks)
+                            await asyncio.gather(*on_connected_tasks)
                 elif data['type'] == 'disconnected':
                     cancel_disconnect_timer()
                     await on_disconnected()
@@ -1129,7 +1129,7 @@ class MetaApiWebsocketClient:
                         for listener in self._synchronizationListeners[data['accountId']]:
                             on_sync_started_tasks.append(asyncio.create_task(run_on_sync_started(listener)))
                     if len(on_sync_started_tasks) > 0:
-                        await asyncio.wait(on_sync_started_tasks)
+                        await asyncio.gather(*on_sync_started_tasks)
                 elif data['type'] == 'accountInformation':
                     if data['accountInformation'] and (data['accountId'] in self._synchronizationListeners):
                         on_account_information_updated_tasks: List[asyncio.Task] = []
@@ -1146,7 +1146,7 @@ class MetaApiWebsocketClient:
                             on_account_information_updated_tasks.append(asyncio
                                                                         .create_task(run_on_account_info(listener)))
                         if len(on_account_information_updated_tasks) > 0:
-                            await asyncio.wait(on_account_information_updated_tasks)
+                            await asyncio.gather(*on_account_information_updated_tasks)
                 elif data['type'] == 'deals':
                     if 'deals' in data:
                         for deal in data['deals']:
@@ -1163,7 +1163,7 @@ class MetaApiWebsocketClient:
                                 for listener in self._synchronizationListeners[data['accountId']]:
                                     on_deal_added_tasks.append(asyncio.create_task(run_on_deal_added(listener)))
                             if len(on_deal_added_tasks) > 0:
-                                await asyncio.wait(on_deal_added_tasks)
+                                await asyncio.gather(*on_deal_added_tasks)
                 elif data['type'] == 'orders':
                     on_order_updated_tasks: List[asyncio.Task] = []
 
@@ -1179,7 +1179,7 @@ class MetaApiWebsocketClient:
                         for listener in self._synchronizationListeners[data['accountId']]:
                             on_order_updated_tasks.append(asyncio.create_task(run_on_order_updated(listener)))
                     if len(on_order_updated_tasks) > 0:
-                        await asyncio.wait(on_order_updated_tasks)
+                        await asyncio.gather(*on_order_updated_tasks)
                 elif data['type'] == 'historyOrders':
                     if 'historyOrders' in data:
                         for historyOrder in data['historyOrders']:
@@ -1197,7 +1197,7 @@ class MetaApiWebsocketClient:
                                     on_history_order_added_tasks.append(asyncio
                                                                         .create_task(run_on_order_added(listener)))
                             if len(on_history_order_added_tasks) > 0:
-                                await asyncio.wait(on_history_order_added_tasks)
+                                await asyncio.gather(*on_history_order_added_tasks)
                 elif data['type'] == 'positions':
                     on_position_updated_tasks: List[asyncio.Task] = []
 
@@ -1214,7 +1214,7 @@ class MetaApiWebsocketClient:
                             on_position_updated_tasks.append(asyncio
                                                              .create_task(run_on_position_updated(listener)))
                     if len(on_position_updated_tasks) > 0:
-                        await asyncio.wait(on_position_updated_tasks)
+                        await asyncio.gather(*on_position_updated_tasks)
                 elif data['type'] == 'update':
                     if 'accountInformation' in data and (data['accountId'] in self._synchronizationListeners):
                         on_account_information_updated_tasks: List[asyncio.Task] = []
@@ -1231,7 +1231,7 @@ class MetaApiWebsocketClient:
                             on_account_information_updated_tasks.append(
                                 asyncio.create_task(run_on_account_information_updated(listener)))
                         if len(on_account_information_updated_tasks) > 0:
-                            await asyncio.wait(on_account_information_updated_tasks)
+                            await asyncio.gather(*on_account_information_updated_tasks)
                     if 'updatedPositions' in data:
                         for position in data['updatedPositions']:
                             on_position_updated_tasks: List[asyncio.Task] = []
@@ -1248,7 +1248,7 @@ class MetaApiWebsocketClient:
                                     on_position_updated_tasks.append(
                                         asyncio.create_task(run_on_position_updated(listener)))
                             if len(on_position_updated_tasks) > 0:
-                                await asyncio.wait(on_position_updated_tasks)
+                                await asyncio.gather(*on_position_updated_tasks)
                     if 'removedPositionIds' in data:
                         for positionId in data['removedPositionIds']:
                             on_position_removed_tasks: List[asyncio.Task] = []
@@ -1265,7 +1265,7 @@ class MetaApiWebsocketClient:
                                     on_position_removed_tasks.append(
                                         asyncio.create_task(run_on_position_removed(listener)))
                             if len(on_position_removed_tasks) > 0:
-                                await asyncio.wait(on_position_removed_tasks)
+                                await asyncio.gather(*on_position_removed_tasks)
                     if 'updatedOrders' in data:
                         for order in data['updatedOrders']:
                             on_order_updated_tasks: List[asyncio.Task] = []
@@ -1282,7 +1282,7 @@ class MetaApiWebsocketClient:
                                     on_order_updated_tasks.append(
                                         asyncio.create_task(run_on_order_updated(listener)))
                             if len(on_order_updated_tasks) > 0:
-                                await asyncio.wait(on_order_updated_tasks)
+                                await asyncio.gather(*on_order_updated_tasks)
                     if 'completedOrderIds' in data:
                         for orderId in data['completedOrderIds']:
                             on_order_completed_tasks: List[asyncio.Task] = []
@@ -1299,7 +1299,7 @@ class MetaApiWebsocketClient:
                                     on_order_completed_tasks.append(
                                         asyncio.create_task(run_on_order_completed(listener)))
                             if len(on_order_completed_tasks) > 0:
-                                await asyncio.wait(on_order_completed_tasks)
+                                await asyncio.gather(*on_order_completed_tasks)
                     if 'historyOrders' in data:
                         for historyOrder in data['historyOrders']:
                             on_history_order_added_tasks: List[asyncio.Task] = []
@@ -1316,7 +1316,7 @@ class MetaApiWebsocketClient:
                                     on_history_order_added_tasks.append(
                                         asyncio.create_task(run_on_history_order_added(listener)))
                             if len(on_history_order_added_tasks) > 0:
-                                await asyncio.wait(on_history_order_added_tasks)
+                                await asyncio.gather(*on_history_order_added_tasks)
                     if 'deals' in data:
                         for deal in data['deals']:
                             on_deal_added_tasks: List[asyncio.Task] = []
@@ -1333,7 +1333,7 @@ class MetaApiWebsocketClient:
                                     on_deal_added_tasks.append(
                                         asyncio.create_task(run_on_deal_added(listener)))
                             if len(on_deal_added_tasks) > 0:
-                                await asyncio.wait(on_deal_added_tasks)
+                                await asyncio.gather(*on_deal_added_tasks)
                     if 'timestamps' in data:
                         data['timestamps']['clientProcessingFinished'] = datetime.now()
                         on_update_tasks: List[asyncio.Task] = []
@@ -1349,7 +1349,7 @@ class MetaApiWebsocketClient:
                             on_update_tasks.append(asyncio.create_task(run_on_update(listener)))
 
                         if len(on_update_tasks) > 0:
-                            await asyncio.wait(on_update_tasks)
+                            await asyncio.gather(*on_update_tasks)
                 elif data['type'] == 'dealSynchronizationFinished':
                     if data['accountId'] in self._synchronizationListeners:
                         on_deal_synchronization_finished_tasks: List[asyncio.Task] = []
@@ -1369,7 +1369,7 @@ class MetaApiWebsocketClient:
                             on_deal_synchronization_finished_tasks.append(
                                         asyncio.create_task(run_on_deal_synchronization_finished(listener)))
                         if len(on_deal_synchronization_finished_tasks) > 0:
-                            await asyncio.wait(on_deal_synchronization_finished_tasks)
+                            await asyncio.gather(*on_deal_synchronization_finished_tasks)
                 elif data['type'] == 'orderSynchronizationFinished':
                     if data['accountId'] in self._synchronizationListeners:
                         on_order_synchronization_finished_tasks: List[asyncio.Task] = []
@@ -1386,7 +1386,7 @@ class MetaApiWebsocketClient:
                             on_order_synchronization_finished_tasks.append(
                                 asyncio.create_task(run_on_order_synchronization_finished(listener)))
                         if len(on_order_synchronization_finished_tasks) > 0:
-                            await asyncio.wait(on_order_synchronization_finished_tasks)
+                            await asyncio.gather(*on_order_synchronization_finished_tasks)
                 elif data['type'] == 'status':
                     if instance_id not in self._connectedHosts:
                         if instance_id in self._status_timers and 'authenticated' in data and data['authenticated'] \
@@ -1414,7 +1414,7 @@ class MetaApiWebsocketClient:
                             on_broker_connection_status_changed_tasks.append(
                                 asyncio.create_task(run_on_broker_connection_status_changed(listener)))
                         if len(on_broker_connection_status_changed_tasks) > 0:
-                            await asyncio.wait(on_broker_connection_status_changed_tasks)
+                            await asyncio.gather(*on_broker_connection_status_changed_tasks)
                         if 'healthStatus' in data:
                             on_health_status_tasks: List[asyncio.Task] = []
 
@@ -1430,7 +1430,7 @@ class MetaApiWebsocketClient:
                                     on_health_status_tasks.append(
                                         asyncio.create_task(run_on_health_status(listener)))
                                 if len(on_health_status_tasks) > 0:
-                                    await asyncio.wait(on_health_status_tasks)
+                                    await asyncio.gather(*on_health_status_tasks)
                 elif data['type'] == 'downgradeSubscription':
                     print(f'{data["accountId"]}: Market data subscriptions for symbol {data["symbol"]} were '
                           f'downgraded by the server due to rate limits. Updated subscriptions: '
@@ -1455,7 +1455,7 @@ class MetaApiWebsocketClient:
                             on_subscription_downgrade_tasks.append(
                                 asyncio.create_task(run_on_subscription_downgraded(listener)))
                         if len(on_subscription_downgrade_tasks) > 0:
-                            await asyncio.wait(on_subscription_downgrade_tasks)
+                            await asyncio.gather(*on_subscription_downgrade_tasks)
                 elif data['type'] == 'specifications':
                     on_symbol_specifications_updated_tasks: List[asyncio.Task] = []
 
@@ -1473,7 +1473,7 @@ class MetaApiWebsocketClient:
                             on_symbol_specifications_updated_tasks.append(
                                 asyncio.create_task(run_on_symbol_specifications_updated(listener)))
                         if len(on_symbol_specifications_updated_tasks) > 0:
-                            await asyncio.wait(on_symbol_specifications_updated_tasks)
+                            await asyncio.gather(*on_symbol_specifications_updated_tasks)
 
                     if 'specifications' in data:
                         for specification in data['specifications']:
@@ -1491,7 +1491,7 @@ class MetaApiWebsocketClient:
                                     on_symbol_specification_updated_tasks.append(
                                         asyncio.create_task(run_on_symbol_specification_updated(listener)))
                                 if len(on_symbol_specification_updated_tasks) > 0:
-                                    await asyncio.wait(on_symbol_specification_updated_tasks)
+                                    await asyncio.gather(*on_symbol_specification_updated_tasks)
 
                     if 'removedSymbols' in data:
                         for removed_symbol in data['removedSymbols']:
@@ -1509,7 +1509,7 @@ class MetaApiWebsocketClient:
                                     on_symbol_specification_removed_tasks.append(
                                         asyncio.create_task(run_on_symbol_specification_removed(listener)))
                                 if len(on_symbol_specification_removed_tasks) > 0:
-                                    await asyncio.wait(on_symbol_specification_removed_tasks)
+                                    await asyncio.gather(*on_symbol_specification_removed_tasks)
                 elif data['type'] == 'prices':
                     prices = data['prices'] if 'prices' in data else []
                     candles = data['candles'] if 'candles' in data else []
@@ -1578,7 +1578,7 @@ class MetaApiWebsocketClient:
                                     asyncio.create_task(run_on_books_updated(listener)))
 
                         if len(on_symbol_prices_updated_tasks) > 0:
-                            await asyncio.wait(on_symbol_prices_updated_tasks)
+                            await asyncio.gather(*on_symbol_prices_updated_tasks)
 
                     for price in prices:
                         on_symbol_price_updated_tasks: List[asyncio.Task] = []
@@ -1593,7 +1593,7 @@ class MetaApiWebsocketClient:
                                 on_symbol_price_updated_tasks.append(
                                     asyncio.create_task(run_on_symbol_price_updated(listener)))
                             if len(on_symbol_price_updated_tasks) > 0:
-                                await asyncio.wait(on_symbol_price_updated_tasks)
+                                await asyncio.gather(*on_symbol_price_updated_tasks)
 
                     for price in prices:
                         if 'timestamps' in price:
@@ -1611,7 +1611,7 @@ class MetaApiWebsocketClient:
                                 on_symbol_price_tasks.append(
                                     asyncio.create_task(run_on_symbol_price(listener)))
                             if len(on_symbol_price_tasks) > 0:
-                                await asyncio.wait(on_symbol_price_tasks)
+                                await asyncio.gather(*on_symbol_price_tasks)
         except Exception as err:
             print('Failed to process incoming synchronization packet', format_error(err))
 
