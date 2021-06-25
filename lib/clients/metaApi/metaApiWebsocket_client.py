@@ -21,6 +21,7 @@ import re
 from random import random
 from datetime import datetime, timedelta
 from typing import Coroutine, List, Dict
+from collections import deque
 import json
 
 
@@ -49,6 +50,9 @@ class MetaApiWebsocketClient:
         self._maxAccountsPerInstance = 100
         self._subscribeCooldownInSeconds = retry_opts['subscribeCooldownInSeconds'] if 'subscribeCooldownInSeconds' \
             in retry_opts else 600
+        event_processing = opts['eventProcessing'] if 'eventProcessing' in opts else {}
+        self._sequentialEventProcessing = event_processing['sequentialProcessing'] if \
+            'sequentialProcessing' in event_processing else False
         self._token = token
         self._synchronizationListeners = {}
         self._latencyListeners = []
@@ -60,6 +64,7 @@ class MetaApiWebsocketClient:
         self._subscriptionManager = SubscriptionManager(self)
         self._packetOrderer = PacketOrderer(self, opts['packetOrderingTimeout'])
         self._status_timers = {}
+        self._eventQueues = {}
         self._subscribeLock = None
         if 'packetLogger' in opts and 'enabled' in opts['packetLogger'] and opts['packetLogger']['enabled']:
             self._packetLogger = PacketLogger(opts['packetLogger'])
@@ -268,7 +273,7 @@ class MetaApiWebsocketClient:
                 if self._packetLogger:
                     self._packetLogger.log_packet(data)
                 self._convert_iso_time_to_date(data)
-                await self._process_synchronization_packet(data)
+                self.queue_packet(data)
 
         while not socket_instance.connected:
             try:
@@ -853,6 +858,49 @@ class MetaApiWebsocketClient:
         self._synchronizationListeners = {}
         self._reconnectListeners = []
 
+    def queue_packet(self, packet: dict):
+        """Queues an account packet for processing.
+
+        Args:
+            packet: Packet to process.
+        """
+        account_id = packet['accountId']
+        packets = self._packetOrderer.restore_order(packet)
+        if self._sequentialEventProcessing:
+            events = list(map(lambda packet: asyncio.wait({
+                asyncio.create_task(self._process_synchronization_packet(packet))}), packets))
+            if account_id not in self._eventQueues:
+                self._eventQueues[account_id] = deque(events)
+                asyncio.create_task(self._call_account_events(account_id))
+            else:
+                self._eventQueues[account_id] += events
+        else:
+            for packet in packets:
+                asyncio.create_task(self._process_synchronization_packet(packet))
+
+    def queue_event(self, account_id: str, event):
+        """Queues an account event for processing.
+
+        Args:
+            account_id: Account id.
+            event: Event to process.
+        """
+        if self._sequentialEventProcessing:
+            if account_id not in self._eventQueues:
+                self._eventQueues[account_id] = deque([event])
+                asyncio.create_task(self._call_account_events(account_id))
+            else:
+                self._eventQueues[account_id].append(event)
+        else:
+            asyncio.create_task(event)
+
+    async def _call_account_events(self, account_id):
+        if account_id in self._eventQueues:
+            while len(self._eventQueues[account_id]):
+                await self._eventQueues[account_id][0]
+                self._eventQueues[account_id].popleft()
+            del self._eventQueues[account_id]
+
     async def _reconnect(self, socket_instance_index: int):
         reconnected = False
         instance = self._socketInstances[socket_instance_index]
@@ -1019,600 +1067,598 @@ class MetaApiWebsocketClient:
                                 if isinstance(price['timestamps'][field], str):
                                     price['timestamps'][field] = date(price['timestamps'][field])
 
-    async def _process_synchronization_packet(self, packet):
+    async def _process_synchronization_packet(self, data):
         try:
-            packets = self._packetOrderer.restore_order(packet)
-            for data in packets:
-                socket_instance = self._socketInstances[self._socketInstancesByAccounts[data['accountId']]] if \
-                    data['accountId'] in self._socketInstancesByAccounts else None
-                if 'synchronizationId' in data and socket_instance:
-                    socket_instance['synchronizationThrottler'].update_synchronization_id(data['synchronizationId'])
-                instance_number = data['instanceIndex'] if 'instanceIndex' in data else 0
-                instance_id = data['accountId'] + ':' + str(instance_number) + ':' + \
-                    (data['host'] if 'host' in data else '0')
-                instance_index = str(instance_number) + ':' + (data['host'] if 'host' in data else '0')
+            socket_instance = self._socketInstances[self._socketInstancesByAccounts[data['accountId']]] if \
+                data['accountId'] in self._socketInstancesByAccounts else None
+            if 'synchronizationId' in data and socket_instance:
+                socket_instance['synchronizationThrottler'].update_synchronization_id(data['synchronizationId'])
+            instance_number = data['instanceIndex'] if 'instanceIndex' in data else 0
+            instance_id = data['accountId'] + ':' + str(instance_number) + ':' + \
+                (data['host'] if 'host' in data else '0')
+            instance_index = str(instance_number) + ':' + (data['host'] if 'host' in data else '0')
 
-                def is_only_active_instance():
-                    active_instance_ids = list(
-                        filter(lambda instance: instance.startswith(
-                            data['accountId'] + ':' + str(instance_number)), self._connectedHosts.keys()))
-                    return len(active_instance_ids) == 1 and active_instance_ids[0] == instance_id
+            def is_only_active_instance():
+                active_instance_ids = list(
+                    filter(lambda instance: instance.startswith(
+                        data['accountId'] + ':' + str(instance_number)), self._connectedHosts.keys()))
+                return len(active_instance_ids) == 1 and active_instance_ids[0] == instance_id
 
-                def cancel_disconnect_timer():
-                    if instance_id in self._status_timers:
-                        self._status_timers[instance_id].cancel()
+            def cancel_disconnect_timer():
+                if instance_id in self._status_timers:
+                    self._status_timers[instance_id].cancel()
 
-                def reset_disconnect_timer():
-                    async def disconnect():
-                        await asyncio.sleep(60)
-                        if is_only_active_instance():
-                            self._subscriptionManager.on_timeout(data["accountId"], instance_number)
-                        await on_disconnected(True)
+            def reset_disconnect_timer():
+                async def disconnect():
+                    await asyncio.sleep(60)
+                    if is_only_active_instance():
+                        self._subscriptionManager.on_timeout(data["accountId"], instance_number)
+                    self.queue_event(data["accountId"], asyncio.wait({asyncio.create_task(on_disconnected(True))}))
 
-                    cancel_disconnect_timer()
-                    self._status_timers[instance_id] = asyncio.create_task(disconnect())
+                cancel_disconnect_timer()
+                self._status_timers[instance_id] = asyncio.create_task(disconnect())
 
-                async def on_disconnected(is_timeout: bool = False):
-                    if instance_id in self._connectedHosts:
-                        if is_only_active_instance():
-                            on_disconnected_tasks: List[asyncio.Task] = []
-                            if not is_timeout:
-                                on_disconnected_tasks.append(asyncio.create_task(
-                                    self._subscriptionManager.on_disconnected(data['accountId'], instance_number)))
+            async def on_disconnected(is_timeout: bool = False):
+                if instance_id in self._connectedHosts:
+                    if is_only_active_instance():
+                        on_disconnected_tasks: List[asyncio.Task] = []
+                        if not is_timeout:
+                            on_disconnected_tasks.append(asyncio.create_task(
+                                self._subscriptionManager.on_disconnected(data['accountId'], instance_number)))
 
-                            async def run_on_disconnected(listener):
-                                try:
-                                    await listener.on_disconnected(instance_index)
-                                except Exception as err:
-                                    print(f'{data["accountId"]}:{instance_index}: Failed to notify listener about '
-                                          'disconnected event', format_error(err))
-
-                            if data['accountId'] in self._synchronizationListeners:
-                                for listener in self._synchronizationListeners[data['accountId']]:
-                                    on_disconnected_tasks.append(asyncio.create_task(run_on_disconnected(listener)))
-                            if len(on_disconnected_tasks) > 0:
-                                await asyncio.gather(*on_disconnected_tasks)
-                        else:
-                            on_stream_closed_tasks: List[asyncio.Task] = []
-                            self._packetOrderer.on_stream_closed(instance_id)
-
-                            async def run_on_stream_closed(listener):
-                                try:
-                                    await listener.on_stream_closed(instance_index)
-                                except Exception as err:
-                                    print(f'{data["accountId"]}:{instance_index}: Failed to notify listener about '
-                                          'stream closed event', format_error(err))
-
-                            if data['accountId'] in self._synchronizationListeners:
-                                for listener in self._synchronizationListeners[data['accountId']]:
-                                    on_stream_closed_tasks.append(asyncio.create_task(run_on_stream_closed(listener)))
-                            if len(on_stream_closed_tasks) > 0:
-                                await asyncio.gather(*on_stream_closed_tasks)
-                        if instance_id in self._connectedHosts:
-                            del self._connectedHosts[instance_id]
-
-                if data['type'] == 'authenticated':
-                    reset_disconnect_timer()
-                    if 'sessionId' not in data or data['sessionId'] == socket_instance['sessionId']:
-                        if 'host' in data:
-                            self._connectedHosts[instance_id] = data['host']
-
-                        on_connected_tasks: List[asyncio.Task] = []
-
-                        async def run_on_connected(listener):
+                        async def run_on_disconnected(listener):
                             try:
-                                await listener.on_connected(instance_index, data['replicas'])
+                                await listener.on_disconnected(instance_index)
                             except Exception as err:
                                 print(f'{data["accountId"]}:{instance_index}: Failed to notify listener about '
-                                      'connected event', format_error(err))
+                                      'disconnected event', format_error(err))
 
                         if data['accountId'] in self._synchronizationListeners:
                             for listener in self._synchronizationListeners[data['accountId']]:
-                                on_connected_tasks.append(asyncio.create_task(run_on_connected(listener)))
-                            self._subscriptionManager.cancel_subscribe(data['accountId'] + ':' + str(instance_number))
-                        if len(on_connected_tasks) > 0:
-                            await asyncio.gather(*on_connected_tasks)
-                elif data['type'] == 'disconnected':
-                    cancel_disconnect_timer()
-                    await on_disconnected()
-                elif data['type'] == 'synchronizationStarted':
-                    on_sync_started_tasks: List[asyncio.Task] = []
+                                on_disconnected_tasks.append(asyncio.create_task(run_on_disconnected(listener)))
+                        if len(on_disconnected_tasks) > 0:
+                            await asyncio.gather(*on_disconnected_tasks)
+                    else:
+                        on_stream_closed_tasks: List[asyncio.Task] = []
+                        self._packetOrderer.on_stream_closed(instance_id)
 
-                    async def run_on_sync_started(listener):
+                        async def run_on_stream_closed(listener):
+                            try:
+                                await listener.on_stream_closed(instance_index)
+                            except Exception as err:
+                                print(f'{data["accountId"]}:{instance_index}: Failed to notify listener about '
+                                      'stream closed event', format_error(err))
+
+                        if data['accountId'] in self._synchronizationListeners:
+                            for listener in self._synchronizationListeners[data['accountId']]:
+                                on_stream_closed_tasks.append(asyncio.create_task(run_on_stream_closed(listener)))
+                        if len(on_stream_closed_tasks) > 0:
+                            await asyncio.gather(*on_stream_closed_tasks)
+                    if instance_id in self._connectedHosts:
+                        del self._connectedHosts[instance_id]
+
+            if data['type'] == 'authenticated':
+                reset_disconnect_timer()
+                if 'sessionId' not in data or data['sessionId'] == socket_instance['sessionId']:
+                    if 'host' in data:
+                        self._connectedHosts[instance_id] = data['host']
+
+                    on_connected_tasks: List[asyncio.Task] = []
+
+                    async def run_on_connected(listener):
                         try:
-                            await listener.on_synchronization_started(instance_index)
+                            await listener.on_connected(instance_index, data['replicas'])
                         except Exception as err:
                             print(f'{data["accountId"]}:{instance_index}: Failed to notify listener about '
-                                  'synchronization started event', format_error(err))
+                                  'connected event', format_error(err))
 
                     if data['accountId'] in self._synchronizationListeners:
                         for listener in self._synchronizationListeners[data['accountId']]:
-                            on_sync_started_tasks.append(asyncio.create_task(run_on_sync_started(listener)))
-                    if len(on_sync_started_tasks) > 0:
-                        await asyncio.gather(*on_sync_started_tasks)
-                elif data['type'] == 'accountInformation':
-                    if data['accountInformation'] and (data['accountId'] in self._synchronizationListeners):
-                        on_account_information_updated_tasks: List[asyncio.Task] = []
+                            on_connected_tasks.append(asyncio.create_task(run_on_connected(listener)))
+                        self._subscriptionManager.cancel_subscribe(data['accountId'] + ':' + str(instance_number))
+                    if len(on_connected_tasks) > 0:
+                        await asyncio.gather(*on_connected_tasks)
+            elif data['type'] == 'disconnected':
+                cancel_disconnect_timer()
+                await on_disconnected()
+            elif data['type'] == 'synchronizationStarted':
+                on_sync_started_tasks: List[asyncio.Task] = []
 
-                        async def run_on_account_info(listener):
-                            try:
-                                await listener.on_account_information_updated(instance_index,
-                                                                              data['accountInformation'])
-                            except Exception as err:
-                                print(f'{data["accountId"]}:{instance_index}: Failed to notify listener about ' +
-                                      'accountInformation event', format_error(err))
+                async def run_on_sync_started(listener):
+                    try:
+                        await listener.on_synchronization_started(instance_index)
+                    except Exception as err:
+                        print(f'{data["accountId"]}:{instance_index}: Failed to notify listener about '
+                              'synchronization started event', format_error(err))
 
-                        for listener in self._synchronizationListeners[data['accountId']]:
-                            on_account_information_updated_tasks.append(asyncio
-                                                                        .create_task(run_on_account_info(listener)))
-                        if len(on_account_information_updated_tasks) > 0:
-                            await asyncio.gather(*on_account_information_updated_tasks)
-                elif data['type'] == 'deals':
-                    if 'deals' in data:
-                        for deal in data['deals']:
-                            on_deal_added_tasks: List[asyncio.Task] = []
+                if data['accountId'] in self._synchronizationListeners:
+                    for listener in self._synchronizationListeners[data['accountId']]:
+                        on_sync_started_tasks.append(asyncio.create_task(run_on_sync_started(listener)))
+                if len(on_sync_started_tasks) > 0:
+                    await asyncio.gather(*on_sync_started_tasks)
+            elif data['type'] == 'accountInformation':
+                if data['accountInformation'] and (data['accountId'] in self._synchronizationListeners):
+                    on_account_information_updated_tasks: List[asyncio.Task] = []
 
-                            async def run_on_deal_added(listener):
-                                try:
-                                    await listener.on_deal_added(instance_index, deal)
-                                except Exception as err:
-                                    print(f'{data["accountId"]}:{instance_index}: Failed to notify listener about '
-                                          'deals event', format_error(err))
-
-                            if data['accountId'] in self._synchronizationListeners:
-                                for listener in self._synchronizationListeners[data['accountId']]:
-                                    on_deal_added_tasks.append(asyncio.create_task(run_on_deal_added(listener)))
-                            if len(on_deal_added_tasks) > 0:
-                                await asyncio.gather(*on_deal_added_tasks)
-                elif data['type'] == 'orders':
-                    on_order_updated_tasks: List[asyncio.Task] = []
-
-                    async def run_on_order_updated(listener):
+                    async def run_on_account_info(listener):
                         try:
-                            if 'orders' in data:
-                                await listener.on_orders_replaced(instance_index, data['orders'])
-                        except Exception as err:
-                            print(f'{data["accountId"]}:{instance_index}: Failed to notify listener about orders event',
-                                  format_error(err))
-
-                    if data['accountId'] in self._synchronizationListeners:
-                        for listener in self._synchronizationListeners[data['accountId']]:
-                            on_order_updated_tasks.append(asyncio.create_task(run_on_order_updated(listener)))
-                    if len(on_order_updated_tasks) > 0:
-                        await asyncio.gather(*on_order_updated_tasks)
-                elif data['type'] == 'historyOrders':
-                    if 'historyOrders' in data:
-                        for historyOrder in data['historyOrders']:
-                            on_history_order_added_tasks: List[asyncio.Task] = []
-
-                            async def run_on_order_added(listener):
-                                try:
-                                    await listener.on_history_order_added(instance_index, historyOrder)
-                                except Exception as err:
-                                    print(f'{data["accountId"]}:{instance_index}: Failed to notify listener about '
-                                          'historyOrders event', format_error(err))
-
-                            if data['accountId'] in self._synchronizationListeners:
-                                for listener in self._synchronizationListeners[data['accountId']]:
-                                    on_history_order_added_tasks.append(asyncio
-                                                                        .create_task(run_on_order_added(listener)))
-                            if len(on_history_order_added_tasks) > 0:
-                                await asyncio.gather(*on_history_order_added_tasks)
-                elif data['type'] == 'positions':
-                    on_position_updated_tasks: List[asyncio.Task] = []
-
-                    async def run_on_position_updated(listener):
-                        try:
-                            if 'positions' in data:
-                                await listener.on_positions_replaced(instance_index, data['positions'])
-                        except Exception as err:
-                            print(f'{data["accountId"]}:{instance_index}: Failed to notify listener about positions '
-                                  'event', format_error(err))
-
-                    if data['accountId'] in self._synchronizationListeners:
-                        for listener in self._synchronizationListeners[data['accountId']]:
-                            on_position_updated_tasks.append(asyncio
-                                                             .create_task(run_on_position_updated(listener)))
-                    if len(on_position_updated_tasks) > 0:
-                        await asyncio.gather(*on_position_updated_tasks)
-                elif data['type'] == 'update':
-                    if 'accountInformation' in data and (data['accountId'] in self._synchronizationListeners):
-                        on_account_information_updated_tasks: List[asyncio.Task] = []
-
-                        async def run_on_account_information_updated(listener):
-                            try:
-                                await listener.on_account_information_updated(instance_index,
-                                                                              data['accountInformation'])
-                            except Exception as err:
-                                print(f'{data["accountId"]}:{instance_index}: Failed to notify listener about update '
-                                      'event', format_error(err))
-
-                        for listener in self._synchronizationListeners[data['accountId']]:
-                            on_account_information_updated_tasks.append(
-                                asyncio.create_task(run_on_account_information_updated(listener)))
-                        if len(on_account_information_updated_tasks) > 0:
-                            await asyncio.gather(*on_account_information_updated_tasks)
-                    if 'updatedPositions' in data:
-                        for position in data['updatedPositions']:
-                            on_position_updated_tasks: List[asyncio.Task] = []
-
-                            async def run_on_position_updated(listener):
-                                try:
-                                    await listener.on_position_updated(instance_index, position)
-                                except Exception as err:
-                                    print(f'{data["accountId"]}:{instance_index}: Failed to notify listener about '
-                                          'update event', format_error(err))
-
-                            if data['accountId'] in self._synchronizationListeners:
-                                for listener in self._synchronizationListeners[data['accountId']]:
-                                    on_position_updated_tasks.append(
-                                        asyncio.create_task(run_on_position_updated(listener)))
-                            if len(on_position_updated_tasks) > 0:
-                                await asyncio.gather(*on_position_updated_tasks)
-                    if 'removedPositionIds' in data:
-                        for positionId in data['removedPositionIds']:
-                            on_position_removed_tasks: List[asyncio.Task] = []
-
-                            async def run_on_position_removed(listener):
-                                try:
-                                    await listener.on_position_removed(instance_index, positionId)
-                                except Exception as err:
-                                    print(f'{data["accountId"]}:{instance_index}: Failed to notify listener about '
-                                          'update event', format_error(err))
-
-                            if data['accountId'] in self._synchronizationListeners:
-                                for listener in self._synchronizationListeners[data['accountId']]:
-                                    on_position_removed_tasks.append(
-                                        asyncio.create_task(run_on_position_removed(listener)))
-                            if len(on_position_removed_tasks) > 0:
-                                await asyncio.gather(*on_position_removed_tasks)
-                    if 'updatedOrders' in data:
-                        for order in data['updatedOrders']:
-                            on_order_updated_tasks: List[asyncio.Task] = []
-
-                            async def run_on_order_updated(listener):
-                                try:
-                                    await listener.on_order_updated(instance_index, order)
-                                except Exception as err:
-                                    print(f'{data["accountId"]}:{instance_index}: Failed to notify listener about '
-                                          'update event', format_error(err))
-
-                            if data['accountId'] in self._synchronizationListeners:
-                                for listener in self._synchronizationListeners[data['accountId']]:
-                                    on_order_updated_tasks.append(
-                                        asyncio.create_task(run_on_order_updated(listener)))
-                            if len(on_order_updated_tasks) > 0:
-                                await asyncio.gather(*on_order_updated_tasks)
-                    if 'completedOrderIds' in data:
-                        for orderId in data['completedOrderIds']:
-                            on_order_completed_tasks: List[asyncio.Task] = []
-
-                            async def run_on_order_completed(listener):
-                                try:
-                                    await listener.on_order_completed(instance_index, orderId)
-                                except Exception as err:
-                                    print(f'{data["accountId"]}:{instance_index}: Failed to notify listener about '
-                                          'update event', format_error(err))
-
-                            if data['accountId'] in self._synchronizationListeners:
-                                for listener in self._synchronizationListeners[data['accountId']]:
-                                    on_order_completed_tasks.append(
-                                        asyncio.create_task(run_on_order_completed(listener)))
-                            if len(on_order_completed_tasks) > 0:
-                                await asyncio.gather(*on_order_completed_tasks)
-                    if 'historyOrders' in data:
-                        for historyOrder in data['historyOrders']:
-                            on_history_order_added_tasks: List[asyncio.Task] = []
-
-                            async def run_on_history_order_added(listener):
-                                try:
-                                    await listener.on_history_order_added(instance_index, historyOrder)
-                                except Exception as err:
-                                    print(f'{data["accountId"]}:{instance_index}: Failed to notify listener about '
-                                          'update event', format_error(err))
-
-                            if data['accountId'] in self._synchronizationListeners:
-                                for listener in self._synchronizationListeners[data['accountId']]:
-                                    on_history_order_added_tasks.append(
-                                        asyncio.create_task(run_on_history_order_added(listener)))
-                            if len(on_history_order_added_tasks) > 0:
-                                await asyncio.gather(*on_history_order_added_tasks)
-                    if 'deals' in data:
-                        for deal in data['deals']:
-                            on_deal_added_tasks: List[asyncio.Task] = []
-
-                            async def run_on_deal_added(listener):
-                                try:
-                                    await listener.on_deal_added(instance_index, deal)
-                                except Exception as err:
-                                    print(f'{data["accountId"]}:{instance_index}: Failed to notify listener about '
-                                          'update event', format_error(err))
-
-                            if data['accountId'] in self._synchronizationListeners:
-                                for listener in self._synchronizationListeners[data['accountId']]:
-                                    on_deal_added_tasks.append(
-                                        asyncio.create_task(run_on_deal_added(listener)))
-                            if len(on_deal_added_tasks) > 0:
-                                await asyncio.gather(*on_deal_added_tasks)
-                    if 'timestamps' in data:
-                        data['timestamps']['clientProcessingFinished'] = datetime.now()
-                        on_update_tasks: List[asyncio.Task] = []
-
-                        async def run_on_update(listener):
-                            try:
-                                await listener.on_update(data['accountId'], data['timestamps'])
-                            except Exception as err:
-                                print(f'{data["accountId"]}:{instance_index}: Failed to notify latency listener about '
-                                      'update event', format_error(err))
-
-                        for listener in self._latencyListeners:
-                            on_update_tasks.append(asyncio.create_task(run_on_update(listener)))
-
-                        if len(on_update_tasks) > 0:
-                            await asyncio.gather(*on_update_tasks)
-                elif data['type'] == 'dealSynchronizationFinished':
-                    if data['accountId'] in self._synchronizationListeners:
-                        on_deal_synchronization_finished_tasks: List[asyncio.Task] = []
-
-                        async def run_on_deal_synchronization_finished(listener):
-                            if socket_instance:
-                                socket_instance['synchronizationThrottler']\
-                                    .remove_synchronization_id(data['synchronizationId'])
-                            try:
-                                await listener.on_deal_synchronization_finished(instance_index,
-                                                                                data['synchronizationId'])
-                            except Exception as err:
-                                print(f'{data["accountId"]}:{instance_index}: Failed to notify listener about ' +
-                                      'dealSynchronizationFinished event', format_error(err))
-
-                        for listener in self._synchronizationListeners[data['accountId']]:
-                            on_deal_synchronization_finished_tasks.append(
-                                        asyncio.create_task(run_on_deal_synchronization_finished(listener)))
-                        if len(on_deal_synchronization_finished_tasks) > 0:
-                            await asyncio.gather(*on_deal_synchronization_finished_tasks)
-                elif data['type'] == 'orderSynchronizationFinished':
-                    if data['accountId'] in self._synchronizationListeners:
-                        on_order_synchronization_finished_tasks: List[asyncio.Task] = []
-
-                        async def run_on_order_synchronization_finished(listener):
-                            try:
-                                await listener.on_order_synchronization_finished(instance_index,
-                                                                                 data['synchronizationId'])
-                            except Exception as err:
-                                print(f'{data["accountId"]}:{instance_index}: Failed to notify listener about ' +
-                                      'orderSynchronizationFinished event', format_error(err))
-
-                        for listener in self._synchronizationListeners[data['accountId']]:
-                            on_order_synchronization_finished_tasks.append(
-                                asyncio.create_task(run_on_order_synchronization_finished(listener)))
-                        if len(on_order_synchronization_finished_tasks) > 0:
-                            await asyncio.gather(*on_order_synchronization_finished_tasks)
-                elif data['type'] == 'status':
-                    if instance_id not in self._connectedHosts:
-                        if instance_id in self._status_timers and 'authenticated' in data and data['authenticated'] \
-                                and (self._subscriptionManager.is_disconnected_retry_mode(
-                                data['accountId'], instance_number) or not
-                                self._subscriptionManager.is_account_subscribing(data['accountId'], instance_number)):
-                            self._subscriptionManager.cancel_subscribe(data['accountId'] + ':' + str(instance_number))
-                            await asyncio.sleep(0.01)
-                            print(f'[{datetime.now().isoformat()}] it seems like we are not connected to a ' +
-                                  'running API server yet, retrying subscription for account ' + instance_id)
-                            self.ensure_subscribe(data['accountId'], instance_number)
-                    else:
-                        reset_disconnect_timer()
-                        on_broker_connection_status_changed_tasks: List[asyncio.Task] = []
-
-                        async def run_on_broker_connection_status_changed(listener):
-                            try:
-                                await listener.on_broker_connection_status_changed(instance_index,
-                                                                                   bool(data['connected']))
-                            except Exception as err:
-                                print(f'{data["accountId"]}:{instance_index}: Failed to notify listener about ' +
-                                      'brokerConnectionStatusChanged event', format_error(err))
-
-                        for listener in self._synchronizationListeners[data['accountId']]:
-                            on_broker_connection_status_changed_tasks.append(
-                                asyncio.create_task(run_on_broker_connection_status_changed(listener)))
-                        if len(on_broker_connection_status_changed_tasks) > 0:
-                            await asyncio.gather(*on_broker_connection_status_changed_tasks)
-                        if 'healthStatus' in data:
-                            on_health_status_tasks: List[asyncio.Task] = []
-
-                            async def run_on_health_status(listener):
-                                try:
-                                    await listener.on_health_status(instance_index, data['healthStatus'])
-                                except Exception as err:
-                                    print(f'{data["accountId"]}:{instance_index}: Failed to notify listener about '
-                                          'server-side healthStatus event', format_error(err))
-
-                            if data['accountId'] in self._synchronizationListeners:
-                                for listener in self._synchronizationListeners[data['accountId']]:
-                                    on_health_status_tasks.append(
-                                        asyncio.create_task(run_on_health_status(listener)))
-                                if len(on_health_status_tasks) > 0:
-                                    await asyncio.gather(*on_health_status_tasks)
-                elif data['type'] == 'downgradeSubscription':
-                    print(f'{data["accountId"]}:{instance_index}: Market data subscriptions for symbol {data["symbol"]}'
-                          f' were downgraded by the server due to rate limits. Updated subscriptions: '
-                          f'{json.dumps(data["updates"]) if "updates" in data else ""}, removed subscriptions: '
-                          f'{json.dumps(data["unsubscriptions"]) if "unsubscriptions" in data else ""}. Please read '
-                          'https://metaapi.cloud/docs/client/rateLimiting/ for more details.')
-
-                    on_subscription_downgrade_tasks = []
-
-                    async def run_on_subscription_downgraded(listener):
-                        try:
-                            await listener.on_subscription_downgraded(instance_index, data['symbol'],
-                                                                      data['updates'] if 'updates' in data else None,
-                                                                      data['unsubscriptions'] if 'unsubscriptions' in
-                                                                                                 data else None)
+                            await listener.on_account_information_updated(instance_index,
+                                                                          data['accountInformation'])
                         except Exception as err:
                             print(f'{data["accountId"]}:{instance_index}: Failed to notify listener about ' +
-                                  'subscription downgrade event', format_error(err))
+                                  'accountInformation event', format_error(err))
 
-                    if data['accountId'] in self._synchronizationListeners:
-                        for listener in self._synchronizationListeners[data['accountId']]:
-                            on_subscription_downgrade_tasks.append(
-                                asyncio.create_task(run_on_subscription_downgraded(listener)))
-                        if len(on_subscription_downgrade_tasks) > 0:
-                            await asyncio.gather(*on_subscription_downgrade_tasks)
-                elif data['type'] == 'specifications':
-                    on_symbol_specifications_updated_tasks: List[asyncio.Task] = []
+                    for listener in self._synchronizationListeners[data['accountId']]:
+                        on_account_information_updated_tasks.append(asyncio
+                                                                    .create_task(run_on_account_info(listener)))
+                    if len(on_account_information_updated_tasks) > 0:
+                        await asyncio.gather(*on_account_information_updated_tasks)
+            elif data['type'] == 'deals':
+                if 'deals' in data:
+                    for deal in data['deals']:
+                        on_deal_added_tasks: List[asyncio.Task] = []
 
-                    async def run_on_symbol_specifications_updated(listener):
-                        try:
-                            await listener.on_symbol_specifications_updated(
-                                instance_index, data['specifications'] if 'specifications' in data else [],
-                                data['removedSymbols'] if 'removedSymbols' in data else [])
-                        except Exception as err:
-                            print(f'{data["accountId"]}:{instance_index}: Failed to notify listener about '
-                                  'specifications updated event', format_error(err))
-
-                    if data['accountId'] in self._synchronizationListeners:
-                        for listener in self._synchronizationListeners[data['accountId']]:
-                            on_symbol_specifications_updated_tasks.append(
-                                asyncio.create_task(run_on_symbol_specifications_updated(listener)))
-                        if len(on_symbol_specifications_updated_tasks) > 0:
-                            await asyncio.gather(*on_symbol_specifications_updated_tasks)
-
-                    if 'specifications' in data:
-                        for specification in data['specifications']:
-                            on_symbol_specification_updated_tasks: List[asyncio.Task] = []
-
-                            async def run_on_symbol_specification_updated(listener):
-                                try:
-                                    await listener.on_symbol_specification_updated(instance_index, specification)
-                                except Exception as err:
-                                    print(f'{data["accountId"]}:{instance_index}: Failed to notify listener about '
-                                          'specification updated event', format_error(err))
-
-                            if data['accountId'] in self._synchronizationListeners:
-                                for listener in self._synchronizationListeners[data['accountId']]:
-                                    on_symbol_specification_updated_tasks.append(
-                                        asyncio.create_task(run_on_symbol_specification_updated(listener)))
-                                if len(on_symbol_specification_updated_tasks) > 0:
-                                    await asyncio.gather(*on_symbol_specification_updated_tasks)
-
-                    if 'removedSymbols' in data:
-                        for removed_symbol in data['removedSymbols']:
-                            on_symbol_specification_removed_tasks = []
-
-                            async def run_on_symbol_specification_removed(listener):
-                                try:
-                                    await listener.on_symbol_specification_removed(instance_index, removed_symbol)
-                                except Exception as err:
-                                    print(f'{data["accountId"]}:{instance_index}: Failed to notify listener about '
-                                          'specifications removed event', format_error(err))
-
-                            if data['accountId'] in self._synchronizationListeners:
-                                for listener in self._synchronizationListeners[data['accountId']]:
-                                    on_symbol_specification_removed_tasks.append(
-                                        asyncio.create_task(run_on_symbol_specification_removed(listener)))
-                                if len(on_symbol_specification_removed_tasks) > 0:
-                                    await asyncio.gather(*on_symbol_specification_removed_tasks)
-                elif data['type'] == 'prices':
-                    prices = data['prices'] if 'prices' in data else []
-                    candles = data['candles'] if 'candles' in data else []
-                    ticks = data['ticks'] if 'ticks' in data else []
-                    books = data['books'] if 'books' in data else []
-                    on_symbol_prices_updated_tasks: List[asyncio.Task] = []
-                    if data['accountId'] in self._synchronizationListeners:
-                        equity = data['equity'] if 'equity' in data else None
-                        margin = data['margin'] if 'margin' in data else None
-                        free_margin = data['freeMargin'] if 'freeMargin' in data else None
-                        margin_level = data['marginLevel'] if 'marginLevel' in data else None
-                        account_currency_exchange_rate = data['accountCurrencyExchangeRate'] if \
-                            'accountCurrencyExchangeRate' in data else None
-
-                        for listener in self._synchronizationListeners[data['accountId']]:
-                            if len(prices):
-                                async def run_on_symbol_prices_updated(listener):
-                                    try:
-                                        await listener.on_symbol_prices_updated(instance_index, prices, equity, margin,
-                                                                                free_margin, margin_level,
-                                                                                account_currency_exchange_rate)
-                                    except Exception as err:
-                                        print(f'{data["accountId"]}:{instance_index}: Failed to notify listener about '
-                                              'prices event', format_error(err))
-
-                                on_symbol_prices_updated_tasks.append(
-                                    asyncio.create_task(run_on_symbol_prices_updated(listener)))
-
-                            if len(candles):
-                                async def run_on_candles_updated(listener):
-                                    try:
-                                        await listener.on_candles_updated(instance_index, candles, equity, margin,
-                                                                          free_margin, margin_level,
-                                                                          account_currency_exchange_rate)
-                                    except Exception as err:
-                                        print(f'{data["accountId"]}:{instance_index}: Failed to notify listener about '
-                                              'candles event', format_error(err))
-
-                                on_symbol_prices_updated_tasks.append(
-                                    asyncio.create_task(run_on_candles_updated(listener)))
-
-                            if len(ticks):
-                                async def run_on_ticks_updated(listener):
-                                    try:
-                                        await listener.on_ticks_updated(instance_index, ticks, equity, margin,
-                                                                        free_margin, margin_level,
-                                                                        account_currency_exchange_rate)
-                                    except Exception as err:
-                                        print(f'{data["accountId"]}:{instance_index}: Failed to notify listener about '
-                                              'ticks event', format_error(err))
-
-                                on_symbol_prices_updated_tasks.append(
-                                    asyncio.create_task(run_on_ticks_updated(listener)))
-
-                            if len(books):
-                                async def run_on_books_updated(listener):
-                                    try:
-                                        await listener.on_books_updated(instance_index, books, equity, margin,
-                                                                        free_margin, margin_level,
-                                                                        account_currency_exchange_rate)
-                                    except Exception as err:
-                                        print(f'{data["accountId"]}:{instance_index}: Failed to notify listener about '
-                                              'books event', format_error(err))
-
-                                on_symbol_prices_updated_tasks.append(
-                                    asyncio.create_task(run_on_books_updated(listener)))
-
-                        if len(on_symbol_prices_updated_tasks) > 0:
-                            await asyncio.gather(*on_symbol_prices_updated_tasks)
-
-                    for price in prices:
-                        on_symbol_price_updated_tasks: List[asyncio.Task] = []
-
-                        async def run_on_symbol_price_updated(listener):
+                        async def run_on_deal_added(listener):
                             try:
-                                await listener.on_symbol_price_updated(instance_index, price)
+                                await listener.on_deal_added(instance_index, deal)
                             except Exception as err:
-                                print(f'{data["accountId"]}:{instance_index}: Failed to notify listener about price '
-                                      'event', format_error(err))
+                                print(f'{data["accountId"]}:{instance_index}: Failed to notify listener about '
+                                      'deals event', format_error(err))
+
                         if data['accountId'] in self._synchronizationListeners:
                             for listener in self._synchronizationListeners[data['accountId']]:
-                                on_symbol_price_updated_tasks.append(
-                                    asyncio.create_task(run_on_symbol_price_updated(listener)))
-                            if len(on_symbol_price_updated_tasks) > 0:
-                                await asyncio.gather(*on_symbol_price_updated_tasks)
+                                on_deal_added_tasks.append(asyncio.create_task(run_on_deal_added(listener)))
+                        if len(on_deal_added_tasks) > 0:
+                            await asyncio.gather(*on_deal_added_tasks)
+            elif data['type'] == 'orders':
+                on_order_updated_tasks: List[asyncio.Task] = []
 
-                    for price in prices:
-                        if 'timestamps' in price:
-                            price['timestamps']['clientProcessingFinished'] = datetime.now()
-                            on_symbol_price_tasks: List[asyncio.Task] = []
+                async def run_on_order_updated(listener):
+                    try:
+                        if 'orders' in data:
+                            await listener.on_orders_replaced(instance_index, data['orders'])
+                    except Exception as err:
+                        print(f'{data["accountId"]}:{instance_index}: Failed to notify listener about orders event',
+                              format_error(err))
 
-                            async def run_on_symbol_price(listener):
+                if data['accountId'] in self._synchronizationListeners:
+                    for listener in self._synchronizationListeners[data['accountId']]:
+                        on_order_updated_tasks.append(asyncio.create_task(run_on_order_updated(listener)))
+                if len(on_order_updated_tasks) > 0:
+                    await asyncio.gather(*on_order_updated_tasks)
+            elif data['type'] == 'historyOrders':
+                if 'historyOrders' in data:
+                    for historyOrder in data['historyOrders']:
+                        on_history_order_added_tasks: List[asyncio.Task] = []
+
+                        async def run_on_order_added(listener):
+                            try:
+                                await listener.on_history_order_added(instance_index, historyOrder)
+                            except Exception as err:
+                                print(f'{data["accountId"]}:{instance_index}: Failed to notify listener about '
+                                      'historyOrders event', format_error(err))
+
+                        if data['accountId'] in self._synchronizationListeners:
+                            for listener in self._synchronizationListeners[data['accountId']]:
+                                on_history_order_added_tasks.append(asyncio
+                                                                    .create_task(run_on_order_added(listener)))
+                        if len(on_history_order_added_tasks) > 0:
+                            await asyncio.gather(*on_history_order_added_tasks)
+            elif data['type'] == 'positions':
+                on_position_updated_tasks: List[asyncio.Task] = []
+
+                async def run_on_position_updated(listener):
+                    try:
+                        if 'positions' in data:
+                            await listener.on_positions_replaced(instance_index, data['positions'])
+                    except Exception as err:
+                        print(f'{data["accountId"]}:{instance_index}: Failed to notify listener about positions '
+                              'event', format_error(err))
+
+                if data['accountId'] in self._synchronizationListeners:
+                    for listener in self._synchronizationListeners[data['accountId']]:
+                        on_position_updated_tasks.append(asyncio
+                                                         .create_task(run_on_position_updated(listener)))
+                if len(on_position_updated_tasks) > 0:
+                    await asyncio.gather(*on_position_updated_tasks)
+            elif data['type'] == 'update':
+                if 'accountInformation' in data and (data['accountId'] in self._synchronizationListeners):
+                    on_account_information_updated_tasks: List[asyncio.Task] = []
+
+                    async def run_on_account_information_updated(listener):
+                        try:
+                            await listener.on_account_information_updated(instance_index,
+                                                                          data['accountInformation'])
+                        except Exception as err:
+                            print(f'{data["accountId"]}:{instance_index}: Failed to notify listener about update '
+                                  'event', format_error(err))
+
+                    for listener in self._synchronizationListeners[data['accountId']]:
+                        on_account_information_updated_tasks.append(
+                            asyncio.create_task(run_on_account_information_updated(listener)))
+                    if len(on_account_information_updated_tasks) > 0:
+                        await asyncio.gather(*on_account_information_updated_tasks)
+                if 'updatedPositions' in data:
+                    for position in data['updatedPositions']:
+                        on_position_updated_tasks: List[asyncio.Task] = []
+
+                        async def run_on_position_updated(listener):
+                            try:
+                                await listener.on_position_updated(instance_index, position)
+                            except Exception as err:
+                                print(f'{data["accountId"]}:{instance_index}: Failed to notify listener about '
+                                      'update event', format_error(err))
+
+                        if data['accountId'] in self._synchronizationListeners:
+                            for listener in self._synchronizationListeners[data['accountId']]:
+                                on_position_updated_tasks.append(
+                                    asyncio.create_task(run_on_position_updated(listener)))
+                        if len(on_position_updated_tasks) > 0:
+                            await asyncio.gather(*on_position_updated_tasks)
+                if 'removedPositionIds' in data:
+                    for positionId in data['removedPositionIds']:
+                        on_position_removed_tasks: List[asyncio.Task] = []
+
+                        async def run_on_position_removed(listener):
+                            try:
+                                await listener.on_position_removed(instance_index, positionId)
+                            except Exception as err:
+                                print(f'{data["accountId"]}:{instance_index}: Failed to notify listener about '
+                                      'update event', format_error(err))
+
+                        if data['accountId'] in self._synchronizationListeners:
+                            for listener in self._synchronizationListeners[data['accountId']]:
+                                on_position_removed_tasks.append(
+                                    asyncio.create_task(run_on_position_removed(listener)))
+                        if len(on_position_removed_tasks) > 0:
+                            await asyncio.gather(*on_position_removed_tasks)
+                if 'updatedOrders' in data:
+                    for order in data['updatedOrders']:
+                        on_order_updated_tasks: List[asyncio.Task] = []
+
+                        async def run_on_order_updated(listener):
+                            try:
+                                await listener.on_order_updated(instance_index, order)
+                            except Exception as err:
+                                print(f'{data["accountId"]}:{instance_index}: Failed to notify listener about '
+                                      'update event', format_error(err))
+
+                        if data['accountId'] in self._synchronizationListeners:
+                            for listener in self._synchronizationListeners[data['accountId']]:
+                                on_order_updated_tasks.append(
+                                    asyncio.create_task(run_on_order_updated(listener)))
+                        if len(on_order_updated_tasks) > 0:
+                            await asyncio.gather(*on_order_updated_tasks)
+                if 'completedOrderIds' in data:
+                    for orderId in data['completedOrderIds']:
+                        on_order_completed_tasks: List[asyncio.Task] = []
+
+                        async def run_on_order_completed(listener):
+                            try:
+                                await listener.on_order_completed(instance_index, orderId)
+                            except Exception as err:
+                                print(f'{data["accountId"]}:{instance_index}: Failed to notify listener about '
+                                      'update event', format_error(err))
+
+                        if data['accountId'] in self._synchronizationListeners:
+                            for listener in self._synchronizationListeners[data['accountId']]:
+                                on_order_completed_tasks.append(
+                                    asyncio.create_task(run_on_order_completed(listener)))
+                        if len(on_order_completed_tasks) > 0:
+                            await asyncio.gather(*on_order_completed_tasks)
+                if 'historyOrders' in data:
+                    for historyOrder in data['historyOrders']:
+                        on_history_order_added_tasks: List[asyncio.Task] = []
+
+                        async def run_on_history_order_added(listener):
+                            try:
+                                await listener.on_history_order_added(instance_index, historyOrder)
+                            except Exception as err:
+                                print(f'{data["accountId"]}:{instance_index}: Failed to notify listener about '
+                                      'update event', format_error(err))
+
+                        if data['accountId'] in self._synchronizationListeners:
+                            for listener in self._synchronizationListeners[data['accountId']]:
+                                on_history_order_added_tasks.append(
+                                    asyncio.create_task(run_on_history_order_added(listener)))
+                        if len(on_history_order_added_tasks) > 0:
+                            await asyncio.gather(*on_history_order_added_tasks)
+                if 'deals' in data:
+                    for deal in data['deals']:
+                        on_deal_added_tasks: List[asyncio.Task] = []
+
+                        async def run_on_deal_added(listener):
+                            try:
+                                await listener.on_deal_added(instance_index, deal)
+                            except Exception as err:
+                                print(f'{data["accountId"]}:{instance_index}: Failed to notify listener about '
+                                      'update event', format_error(err))
+
+                        if data['accountId'] in self._synchronizationListeners:
+                            for listener in self._synchronizationListeners[data['accountId']]:
+                                on_deal_added_tasks.append(
+                                    asyncio.create_task(run_on_deal_added(listener)))
+                        if len(on_deal_added_tasks) > 0:
+                            await asyncio.gather(*on_deal_added_tasks)
+                if 'timestamps' in data:
+                    data['timestamps']['clientProcessingFinished'] = datetime.now()
+                    on_update_tasks: List[asyncio.Task] = []
+
+                    async def run_on_update(listener):
+                        try:
+                            await listener.on_update(data['accountId'], data['timestamps'])
+                        except Exception as err:
+                            print(f'{data["accountId"]}:{instance_index}: Failed to notify latency listener about '
+                                  'update event', format_error(err))
+
+                    for listener in self._latencyListeners:
+                        on_update_tasks.append(asyncio.create_task(run_on_update(listener)))
+
+                    if len(on_update_tasks) > 0:
+                        await asyncio.gather(*on_update_tasks)
+            elif data['type'] == 'dealSynchronizationFinished':
+                if data['accountId'] in self._synchronizationListeners:
+                    on_deal_synchronization_finished_tasks: List[asyncio.Task] = []
+
+                    async def run_on_deal_synchronization_finished(listener):
+                        if socket_instance:
+                            socket_instance['synchronizationThrottler']\
+                                .remove_synchronization_id(data['synchronizationId'])
+                        try:
+                            await listener.on_deal_synchronization_finished(instance_index,
+                                                                            data['synchronizationId'])
+                        except Exception as err:
+                            print(f'{data["accountId"]}:{instance_index}: Failed to notify listener about ' +
+                                  'dealSynchronizationFinished event', format_error(err))
+
+                    for listener in self._synchronizationListeners[data['accountId']]:
+                        on_deal_synchronization_finished_tasks.append(
+                                    asyncio.create_task(run_on_deal_synchronization_finished(listener)))
+                    if len(on_deal_synchronization_finished_tasks) > 0:
+                        await asyncio.gather(*on_deal_synchronization_finished_tasks)
+            elif data['type'] == 'orderSynchronizationFinished':
+                if data['accountId'] in self._synchronizationListeners:
+                    on_order_synchronization_finished_tasks: List[asyncio.Task] = []
+
+                    async def run_on_order_synchronization_finished(listener):
+                        try:
+                            await listener.on_order_synchronization_finished(instance_index,
+                                                                             data['synchronizationId'])
+                        except Exception as err:
+                            print(f'{data["accountId"]}:{instance_index}: Failed to notify listener about ' +
+                                  'orderSynchronizationFinished event', format_error(err))
+
+                    for listener in self._synchronizationListeners[data['accountId']]:
+                        on_order_synchronization_finished_tasks.append(
+                            asyncio.create_task(run_on_order_synchronization_finished(listener)))
+                    if len(on_order_synchronization_finished_tasks) > 0:
+                        await asyncio.gather(*on_order_synchronization_finished_tasks)
+            elif data['type'] == 'status':
+                if instance_id not in self._connectedHosts:
+                    if instance_id in self._status_timers and 'authenticated' in data and data['authenticated'] \
+                            and (self._subscriptionManager.is_disconnected_retry_mode(
+                            data['accountId'], instance_number) or not
+                            self._subscriptionManager.is_account_subscribing(data['accountId'], instance_number)):
+                        self._subscriptionManager.cancel_subscribe(data['accountId'] + ':' + str(instance_number))
+                        await asyncio.sleep(0.01)
+                        print(f'[{datetime.now().isoformat()}] it seems like we are not connected to a ' +
+                              'running API server yet, retrying subscription for account ' + instance_id)
+                        self.ensure_subscribe(data['accountId'], instance_number)
+                else:
+                    reset_disconnect_timer()
+                    on_broker_connection_status_changed_tasks: List[asyncio.Task] = []
+
+                    async def run_on_broker_connection_status_changed(listener):
+                        try:
+                            await listener.on_broker_connection_status_changed(instance_index,
+                                                                               bool(data['connected']))
+                        except Exception as err:
+                            print(f'{data["accountId"]}:{instance_index}: Failed to notify listener about ' +
+                                  'brokerConnectionStatusChanged event', format_error(err))
+
+                    for listener in self._synchronizationListeners[data['accountId']]:
+                        on_broker_connection_status_changed_tasks.append(
+                            asyncio.create_task(run_on_broker_connection_status_changed(listener)))
+                    if len(on_broker_connection_status_changed_tasks) > 0:
+                        await asyncio.gather(*on_broker_connection_status_changed_tasks)
+                    if 'healthStatus' in data:
+                        on_health_status_tasks: List[asyncio.Task] = []
+
+                        async def run_on_health_status(listener):
+                            try:
+                                await listener.on_health_status(instance_index, data['healthStatus'])
+                            except Exception as err:
+                                print(f'{data["accountId"]}:{instance_index}: Failed to notify listener about '
+                                      'server-side healthStatus event', format_error(err))
+
+                        if data['accountId'] in self._synchronizationListeners:
+                            for listener in self._synchronizationListeners[data['accountId']]:
+                                on_health_status_tasks.append(
+                                    asyncio.create_task(run_on_health_status(listener)))
+                            if len(on_health_status_tasks) > 0:
+                                await asyncio.gather(*on_health_status_tasks)
+            elif data['type'] == 'downgradeSubscription':
+                print(f'{data["accountId"]}:{instance_index}: Market data subscriptions for symbol {data["symbol"]}'
+                      f' were downgraded by the server due to rate limits. Updated subscriptions: '
+                      f'{json.dumps(data["updates"]) if "updates" in data else ""}, removed subscriptions: '
+                      f'{json.dumps(data["unsubscriptions"]) if "unsubscriptions" in data else ""}. Please read '
+                      'https://metaapi.cloud/docs/client/rateLimiting/ for more details.')
+
+                on_subscription_downgrade_tasks = []
+
+                async def run_on_subscription_downgraded(listener):
+                    try:
+                        await listener.on_subscription_downgraded(instance_index, data['symbol'],
+                                                                  data['updates'] if 'updates' in data else None,
+                                                                  data['unsubscriptions'] if 'unsubscriptions' in
+                                                                                             data else None)
+                    except Exception as err:
+                        print(f'{data["accountId"]}:{instance_index}: Failed to notify listener about ' +
+                              'subscription downgrade event', format_error(err))
+
+                if data['accountId'] in self._synchronizationListeners:
+                    for listener in self._synchronizationListeners[data['accountId']]:
+                        on_subscription_downgrade_tasks.append(
+                            asyncio.create_task(run_on_subscription_downgraded(listener)))
+                    if len(on_subscription_downgrade_tasks) > 0:
+                        await asyncio.gather(*on_subscription_downgrade_tasks)
+            elif data['type'] == 'specifications':
+                on_symbol_specifications_updated_tasks: List[asyncio.Task] = []
+
+                async def run_on_symbol_specifications_updated(listener):
+                    try:
+                        await listener.on_symbol_specifications_updated(
+                            instance_index, data['specifications'] if 'specifications' in data else [],
+                            data['removedSymbols'] if 'removedSymbols' in data else [])
+                    except Exception as err:
+                        print(f'{data["accountId"]}:{instance_index}: Failed to notify listener about '
+                              'specifications updated event', format_error(err))
+
+                if data['accountId'] in self._synchronizationListeners:
+                    for listener in self._synchronizationListeners[data['accountId']]:
+                        on_symbol_specifications_updated_tasks.append(
+                            asyncio.create_task(run_on_symbol_specifications_updated(listener)))
+                    if len(on_symbol_specifications_updated_tasks) > 0:
+                        await asyncio.gather(*on_symbol_specifications_updated_tasks)
+
+                if 'specifications' in data:
+                    for specification in data['specifications']:
+                        on_symbol_specification_updated_tasks: List[asyncio.Task] = []
+
+                        async def run_on_symbol_specification_updated(listener):
+                            try:
+                                await listener.on_symbol_specification_updated(instance_index, specification)
+                            except Exception as err:
+                                print(f'{data["accountId"]}:{instance_index}: Failed to notify listener about '
+                                      'specification updated event', format_error(err))
+
+                        if data['accountId'] in self._synchronizationListeners:
+                            for listener in self._synchronizationListeners[data['accountId']]:
+                                on_symbol_specification_updated_tasks.append(
+                                    asyncio.create_task(run_on_symbol_specification_updated(listener)))
+                            if len(on_symbol_specification_updated_tasks) > 0:
+                                await asyncio.gather(*on_symbol_specification_updated_tasks)
+
+                if 'removedSymbols' in data:
+                    for removed_symbol in data['removedSymbols']:
+                        on_symbol_specification_removed_tasks = []
+
+                        async def run_on_symbol_specification_removed(listener):
+                            try:
+                                await listener.on_symbol_specification_removed(instance_index, removed_symbol)
+                            except Exception as err:
+                                print(f'{data["accountId"]}:{instance_index}: Failed to notify listener about '
+                                      'specifications removed event', format_error(err))
+
+                        if data['accountId'] in self._synchronizationListeners:
+                            for listener in self._synchronizationListeners[data['accountId']]:
+                                on_symbol_specification_removed_tasks.append(
+                                    asyncio.create_task(run_on_symbol_specification_removed(listener)))
+                            if len(on_symbol_specification_removed_tasks) > 0:
+                                await asyncio.gather(*on_symbol_specification_removed_tasks)
+            elif data['type'] == 'prices':
+                prices = data['prices'] if 'prices' in data else []
+                candles = data['candles'] if 'candles' in data else []
+                ticks = data['ticks'] if 'ticks' in data else []
+                books = data['books'] if 'books' in data else []
+                on_symbol_prices_updated_tasks: List[asyncio.Task] = []
+                if data['accountId'] in self._synchronizationListeners:
+                    equity = data['equity'] if 'equity' in data else None
+                    margin = data['margin'] if 'margin' in data else None
+                    free_margin = data['freeMargin'] if 'freeMargin' in data else None
+                    margin_level = data['marginLevel'] if 'marginLevel' in data else None
+                    account_currency_exchange_rate = data['accountCurrencyExchangeRate'] if \
+                        'accountCurrencyExchangeRate' in data else None
+
+                    for listener in self._synchronizationListeners[data['accountId']]:
+                        if len(prices):
+                            async def run_on_symbol_prices_updated(listener):
                                 try:
-                                    await listener.on_symbol_price(data['accountId'], price['symbol'],
-                                                                   price['timestamps'])
+                                    await listener.on_symbol_prices_updated(instance_index, prices, equity, margin,
+                                                                            free_margin, margin_level,
+                                                                            account_currency_exchange_rate)
                                 except Exception as err:
-                                    print(f'{data["accountId"]}:{instance_index}: Failed to notify latency listener '
-                                          'about update event', format_error(err))
-                            for listener in self._latencyListeners:
-                                on_symbol_price_tasks.append(
-                                    asyncio.create_task(run_on_symbol_price(listener)))
-                            if len(on_symbol_price_tasks) > 0:
-                                await asyncio.gather(*on_symbol_price_tasks)
+                                    print(f'{data["accountId"]}:{instance_index}: Failed to notify listener about '
+                                          'prices event', format_error(err))
+
+                            on_symbol_prices_updated_tasks.append(
+                                asyncio.create_task(run_on_symbol_prices_updated(listener)))
+
+                        if len(candles):
+                            async def run_on_candles_updated(listener):
+                                try:
+                                    await listener.on_candles_updated(instance_index, candles, equity, margin,
+                                                                      free_margin, margin_level,
+                                                                      account_currency_exchange_rate)
+                                except Exception as err:
+                                    print(f'{data["accountId"]}:{instance_index}: Failed to notify listener about '
+                                          'candles event', format_error(err))
+
+                            on_symbol_prices_updated_tasks.append(
+                                asyncio.create_task(run_on_candles_updated(listener)))
+
+                        if len(ticks):
+                            async def run_on_ticks_updated(listener):
+                                try:
+                                    await listener.on_ticks_updated(instance_index, ticks, equity, margin,
+                                                                    free_margin, margin_level,
+                                                                    account_currency_exchange_rate)
+                                except Exception as err:
+                                    print(f'{data["accountId"]}:{instance_index}: Failed to notify listener about '
+                                          'ticks event', format_error(err))
+
+                            on_symbol_prices_updated_tasks.append(
+                                asyncio.create_task(run_on_ticks_updated(listener)))
+
+                        if len(books):
+                            async def run_on_books_updated(listener):
+                                try:
+                                    await listener.on_books_updated(instance_index, books, equity, margin,
+                                                                    free_margin, margin_level,
+                                                                    account_currency_exchange_rate)
+                                except Exception as err:
+                                    print(f'{data["accountId"]}:{instance_index}: Failed to notify listener about '
+                                          'books event', format_error(err))
+
+                            on_symbol_prices_updated_tasks.append(
+                                asyncio.create_task(run_on_books_updated(listener)))
+
+                    if len(on_symbol_prices_updated_tasks) > 0:
+                        await asyncio.gather(*on_symbol_prices_updated_tasks)
+
+                for price in prices:
+                    on_symbol_price_updated_tasks: List[asyncio.Task] = []
+
+                    async def run_on_symbol_price_updated(listener):
+                        try:
+                            await listener.on_symbol_price_updated(instance_index, price)
+                        except Exception as err:
+                            print(f'{data["accountId"]}:{instance_index}: Failed to notify listener about price '
+                                  'event', format_error(err))
+                    if data['accountId'] in self._synchronizationListeners:
+                        for listener in self._synchronizationListeners[data['accountId']]:
+                            on_symbol_price_updated_tasks.append(
+                                asyncio.create_task(run_on_symbol_price_updated(listener)))
+                        if len(on_symbol_price_updated_tasks) > 0:
+                            await asyncio.gather(*on_symbol_price_updated_tasks)
+
+                for price in prices:
+                    if 'timestamps' in price:
+                        price['timestamps']['clientProcessingFinished'] = datetime.now()
+                        on_symbol_price_tasks: List[asyncio.Task] = []
+
+                        async def run_on_symbol_price(listener):
+                            try:
+                                await listener.on_symbol_price(data['accountId'], price['symbol'],
+                                                               price['timestamps'])
+                            except Exception as err:
+                                print(f'{data["accountId"]}:{instance_index}: Failed to notify latency listener '
+                                      'about update event', format_error(err))
+                        for listener in self._latencyListeners:
+                            on_symbol_price_tasks.append(
+                                asyncio.create_task(run_on_symbol_price(listener)))
+                        if len(on_symbol_price_tasks) > 0:
+                            await asyncio.gather(*on_symbol_price_tasks)
         except Exception as err:
             print('Failed to process incoming synchronization packet', format_error(err))
 
@@ -1636,6 +1682,7 @@ class MetaApiWebsocketClient:
                         print(f'[{datetime.now().isoformat()}] Failed to notify reconnect listener',
                               format_error(err))
 
-                asyncio.create_task(on_reconnected_task(listener))
+                self.queue_event(listener['accountId'],
+                                 asyncio.wait({asyncio.create_task(on_reconnected_task(listener))}))
         except Exception as err:
             print(f'[{datetime.now().isoformat()}] Failed to process reconnected event', format_error(err))

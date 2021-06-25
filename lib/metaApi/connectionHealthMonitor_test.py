@@ -73,7 +73,7 @@ prices = []
 
 @pytest.fixture(autouse=True)
 async def run_around_tests():
-    with patch('lib.metaApi.connectionHealthMonitor.asyncio.sleep', new=lambda x: sleep(x / 10)):
+    with patch('lib.metaApi.connectionHealthMonitor.asyncio.sleep', new=lambda x: sleep(x / 300)):
         global connection
         connection = MockConnection()
         global health_monitor

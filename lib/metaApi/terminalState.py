@@ -287,7 +287,7 @@ class TerminalState(SynchronizationListener):
         state = self._get_state(instance_index)
         order = next((p for p in state['orders'] if p['id'] == order_id), None)
         if order is None:
-            for key in state['completedOrders']:
+            for key in list(state['completedOrders'].keys()):
                 e = state['completedOrders'][key]
                 if e + 5 * 60 < datetime.now().timestamp():
                     del state['completedOrders'][key]

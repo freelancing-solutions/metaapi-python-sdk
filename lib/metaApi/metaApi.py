@@ -20,6 +20,7 @@ from typing_extensions import TypedDict
 
 
 class RetryOpts(TypedDict):
+    """Request retry options."""
     retries: Optional[int]
     """Maximum amount of request retries, default value is 5."""
     minDelayInSeconds: Optional[float]
@@ -28,6 +29,12 @@ class RetryOpts(TypedDict):
     """Maximum delay in seconds until request retry, default value is 30."""
     subscribeCooldownInSeconds: Optional[float]
     """Time to disable new subscriptions for """
+
+
+class EventProcessingOpts(TypedDict):
+    """Options for processing websocket client events."""
+    sequentialProcessing: Optional[bool]
+    """An option to process synchronization events after finishing previous ones."""
 
 
 class MetaApiOpts(TypedDict):
@@ -56,6 +63,8 @@ class MetaApiOpts(TypedDict):
     """Options for synchronization throttler."""
     retryOpts: Optional[RetryOpts]
     """Options for request retries."""
+    eventProcessing: Optional[EventProcessingOpts]
+    """Options for processing events."""
 
 
 class MetaApi:
@@ -81,6 +90,7 @@ class MetaApi:
         synchronization_throttler = opts['synchronizationThrottler'] if 'synchronizationThrottler' in opts else {}
         demo_account_request_timeout = opts['demoAccountRequestTimeout'] if \
             'demoAccountRequestTimeout' in opts else 240
+        event_processing = opts['eventProcessing'] if 'eventProcessing' in opts else {}
         if not re.search(r"[a-zA-Z0-9_]+", application):
             raise ValidationException('Application name must be non-empty string consisting ' +
                                       'from letters, digits and _ only')
@@ -92,6 +102,7 @@ class MetaApi:
                     'connectTimeout': connect_timeout, 'packetLogger': packet_logger,
                     'packetOrderingTimeout': packet_ordering_timeout,
                     'synchronizationThrottler': synchronization_throttler,
+                    'eventProcessing': event_processing,
                     'retryOpts': retry_opts})
         self._provisioningProfileApi = ProvisioningProfileApi(ProvisioningProfileClient(http_client, token, domain))
         self._connectionRegistry = ConnectionRegistry(self._metaApiWebsocketClient, application)

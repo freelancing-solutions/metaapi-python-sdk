@@ -24,7 +24,7 @@ Please check `this short video <https://youtu.be/LIqFOOOLP-g>`_ to see how you c
 
 You can find code examples at `examples folder of our github repo <https://github.com/agiliumtrade-ai/metaapi-python-sdk/tree/master/examples>`_ or in the examples folder of the pip package.
 
-We have composed a `short guide explaining how to use the example code <https://metaapi.cloud/docs/client/usingCodeExamples>`_
+We have composed a `short guide explaining how to use the example code <https://metaapi.cloud/docs/client/usingCodeExamples/>`_
 
 Installation
 ============

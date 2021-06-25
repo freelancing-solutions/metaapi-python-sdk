@@ -38,12 +38,12 @@ class ConnectionHealthMonitor(SynchronizationListener):
 
         async def update_quote_health_job():
             while True:
-                await asyncio.sleep(1)
+                await asyncio.sleep(30)
                 self._update_quote_health_status()
 
         async def measure_uptime_job():
             while True:
-                await asyncio.sleep(1)
+                await asyncio.sleep(30)
                 self._measure_uptime()
 
         self._quotesHealthy = False

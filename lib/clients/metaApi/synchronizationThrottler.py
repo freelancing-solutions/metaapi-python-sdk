@@ -5,6 +5,7 @@ import asyncio
 from typing_extensions import TypedDict
 from typing import Optional, List
 from functools import reduce
+from ..timeoutException import TimeoutException
 import math
 
 
@@ -62,20 +63,22 @@ class SynchronizationThrottler:
 
     def stop(self):
         """Deinitializes the throttler."""
-        self._removeOldSyncIdsInterval.cancel()
-        self._removeOldSyncIdsInterval = None
-        self._processQueueInterval.cancel()
-        self._processQueueInterval = None
+        if self._removeOldSyncIdsInterval:
+            self._removeOldSyncIdsInterval.cancel()
+            self._removeOldSyncIdsInterval = None
+        if self._processQueueInterval:
+            self._processQueueInterval.cancel()
+            self._processQueueInterval = None
 
     async def _remove_old_sync_ids_job(self):
         now = datetime.now().timestamp()
         for key in list(self._synchronizationIds.keys()):
             if (now - self._synchronizationIds[key]) > self._synchronizationTimeoutInSeconds:
                 del self._synchronizationIds[key]
-                self._advance_queue()
         while len(self._synchronizationQueue) and \
                 (datetime.now().timestamp() - self._synchronizationQueue[0]['queueTime']) > self._queueTimeoutInSeconds:
-            self._remove_from_queue(self._synchronizationQueue[0]['synchronizationId'])
+            self._remove_from_queue(self._synchronizationQueue[0]['synchronizationId'], 'timeout')
+        self._advance_queue()
         await asyncio.sleep(1)
 
     def update_synchronization_id(self, synchronization_id: str):
@@ -132,7 +135,7 @@ class SynchronizationThrottler:
             for key in list(self._accountsBySynchronizationIds.keys()):
                 if self._accountsBySynchronizationIds[key]['accountId'] == account_id and \
                         self._accountsBySynchronizationIds[key]['instanceIndex'] == instance_index:
-                    self._remove_from_queue(key)
+                    self._remove_from_queue(key, 'cancel')
                     del self._accountsBySynchronizationIds[key]
         if synchronization_id in self._synchronizationIds:
             del self._synchronizationIds[synchronization_id]
@@ -140,27 +143,40 @@ class SynchronizationThrottler:
 
     def on_disconnect(self):
         """Clears synchronization ids on disconnect."""
+        for synchronization in self._synchronizationQueue:
+            if not synchronization['promise'].done():
+                synchronization['promise'].set_result('cancel')
         self._synchronizationIds = {}
-        self._advance_queue()
+        self._accountsBySynchronizationIds = {}
+        self._synchronizationQueue = []
+        self.stop()
+        self.start()
 
     def _advance_queue(self):
-        if self.is_synchronization_available and len(self._synchronizationQueue):
-            if not self._synchronizationQueue[0]['promise'].done():
-                self._synchronizationQueue[0]['promise'].set_result(True)
+        index = 0
+        while self.is_synchronization_available and len(self._synchronizationQueue) and index < \
+                len(self._synchronizationQueue):
+            queue_item = self._synchronizationQueue[index]
+            if not queue_item['promise'].done():
+                queue_item['promise'].set_result('synchronize')
+                self.update_synchronization_id(queue_item['synchronizationId'])
+            index += 1
 
-    def _remove_from_queue(self, synchronization_id: str):
+    def _remove_from_queue(self, synchronization_id: str, result: str):
         for i in range(len(self._synchronizationQueue)):
-            if self._synchronizationQueue[i]['synchronizationId'] == synchronization_id and \
-              not self._synchronizationQueue[i]['promise'].done():
-                self._synchronizationQueue[i]['promise'].set_result(False)
+            sync_item = self._synchronizationQueue[i]
+            if sync_item['synchronizationId'] == synchronization_id and not sync_item['promise'].done():
+                sync_item['promise'].set_result(result)
         self._synchronizationQueue = deque(filter(lambda item: item['synchronizationId'] != synchronization_id,
                                                   self._synchronizationQueue))
 
     async def _process_queue_job(self):
-        while len(self._synchronizationQueue) and (len(self._synchronizationIds.values()) <
-                                                   self.max_concurrent_synchronizations):
-            await self._synchronizationQueue[0]['promise']
-            self._synchronizationQueue.popleft()
+        while len(self._synchronizationQueue):
+            queue_item = self._synchronizationQueue[0]
+            await queue_item['promise']
+            if len(self._synchronizationQueue) and self._synchronizationQueue[0]['synchronizationId'] == \
+                    queue_item['synchronizationId']:
+                self._synchronizationQueue.popleft()
 
     async def schedule_synchronize(self, account_id: str, request: Dict):
         """Schedules to send a synchronization request for account.
@@ -186,7 +202,11 @@ class SynchronizationThrottler:
                 'queueTime': datetime.now().timestamp()
             })
             result = await request_resolve
-            if not result:
-                return None
+            if result == 'cancel':
+                return False
+            elif result == 'timeout':
+                raise TimeoutException(f'Account {account_id} synchronization {synchronization_id} timed out in '
+                                       f'synchronization queue')
         self.update_synchronization_id(synchronization_id)
-        return await self._client._rpc_request(account_id, request)
+        await self._client._rpc_request(account_id, request)
+        return True

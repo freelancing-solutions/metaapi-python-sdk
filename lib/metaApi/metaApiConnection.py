@@ -677,13 +677,13 @@ class MetaApiConnection(SynchronizationListener, ReconnectListener):
             if subscriptions:
                 for subscription in unsubscriptions:
                     subscriptions = list(filter(lambda s: s['type'] == subscription['type'], subscriptions))
-            await self.unsubscribe_from_market_data(symbol, unsubscriptions)
+            asyncio.create_task(self.unsubscribe_from_market_data(symbol, unsubscriptions))
         if updates and len(updates):
             if subscriptions:
                 for subscription in updates:
                     for s in list(filter(lambda s: s['type'] == subscription['type'], subscriptions)):
                         s['intervalInMilliiseconds'] = subscription['intervalInMilliseconds']
-            await self.subscribe_to_market_data(symbol, updates)
+            asyncio.create_task(self.subscribe_to_market_data(symbol, updates))
         if subscriptions and (not len(subscriptions)):
             del self._subscriptions[symbol]
 
@@ -839,7 +839,7 @@ class MetaApiConnection(SynchronizationListener, ReconnectListener):
         state['shouldSynchronize'] = key
         state['synchronizationRetryIntervalInSeconds'] = 1
         state['synchronized'] = False
-        await self._ensure_synchronized(instance_index, key)
+        asyncio.create_task(self._ensure_synchronized(instance_index, key))
         indices = []
         for i in range(replicas):
             indices.append(i)
@@ -901,15 +901,18 @@ class MetaApiConnection(SynchronizationListener, ReconnectListener):
         Returns:
             A coroutine which resolves when the asynchronous event is processed.
         """
+        async def subscribe_task(symbol):
+            try:
+                instance = self.get_instance_number(instance_index)
+                await self.subscribe_to_market_data(symbol, self._subscriptions[symbol]['subscriptions'],
+                                                    instance)
+            except Exception as err:
+                print(f'[{datetime.now().isoformat()}] MetaApi websocket client for account ' + self.account.id +
+                      ':' + str(instance_index) + ' failed to resubscribe to symbol ' + symbol, format_error(err))
+
         for symbol in self.subscribed_symbols:
             if not self._terminalState.price(symbol):
-                try:
-                    instance = self.get_instance_number(instance_index)
-                    await self.subscribe_to_market_data(symbol, self._subscriptions[symbol]['subscriptions'],
-                                                        instance)
-                except Exception as err:
-                    print(f'[{datetime.now().isoformat()}] MetaApi websocket client for account ' + self.account.id +
-                          ':' + str(instance_index) + ' failed to resubscribe to symbol ' + symbol, format_error(err))
+                asyncio.create_task(subscribe_task(symbol))
 
     async def on_reconnected(self):
         """Invoked when connection to MetaApi websocket API restored after a disconnect.
@@ -917,7 +920,7 @@ class MetaApiConnection(SynchronizationListener, ReconnectListener):
         Returns:
             A coroutine which resolves when connection to MetaApi websocket API restored after a disconnect.
         """
-        pass
+        self._stateByInstanceIndex = {}
 
     async def on_stream_closed(self, instance_index: str):
         """Invoked when a stream for an instance index is closed.
@@ -1054,9 +1057,10 @@ class MetaApiConnection(SynchronizationListener, ReconnectListener):
         state = self._get_state(instance_index)
         if state and not self._closed:
             try:
-                await self.synchronize(instance_index)
-                state['synchronized'] = True
-                state['synchronizationRetryIntervalInSeconds'] = 1
+                synchronization_result = await self.synchronize(instance_index)
+                if synchronization_result:
+                    state['synchronized'] = True
+                    state['synchronizationRetryIntervalInSeconds'] = 1
             except Exception as err:
                 print(f'[{datetime.now().isoformat()}] MetaApi websocket client for account ' + self.account.id +
                       ':' + str(instance_index) + ' failed to synchronize', format_error(err))
