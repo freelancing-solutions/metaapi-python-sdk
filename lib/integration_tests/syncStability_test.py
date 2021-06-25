@@ -177,13 +177,14 @@ class FakeServer:
 fake_server: FakeServer = None
 
 
-@pytest.fixture(autouse=True)
-async def run_around_tests():
+@pytest.fixture(autouse=True, params=[True, False])
+async def run_around_tests(request):
     global fake_server
     fake_server = FakeServer()
     await fake_server.start()
     global api
     api = MetaApi('token', {'application': 'application', 'domain': 'project-stock.agiliumlabs.cloud',
+                            'eventProcessing': {'sequentialProcessing': request.param},
                             'requestTimeout': 3, 'retryOpts': {'retries': 3, 'minDelayInSeconds': 0.1,
                                                                'maxDelayInSeconds': 0.5,
                                                                'subscribeCooldownInSeconds': 6}})
@@ -234,7 +235,7 @@ class TestSyncStability:
             connection = await account.connect()
             await connection.wait_synchronized({'timeoutInSeconds': 10})
             await sio.disconnect(client_sid)
-            await sleep(0.1)
+            await sleep(0.3)
             response = await connection.get_account_information()
             assert response == account_information
             assert connection.synchronized and connection.terminal_state.connected and \
@@ -336,8 +337,8 @@ class TestSyncStability:
             connection = await account.connect()
             await connection.wait_synchronized({'timeoutInSeconds': 10})
             fake_server.delete_status_task('accountId')
-            await sio.emit('synchronization', {'type': 'disconnected', 'accountId': 'accountId', 'host': 'ps-mpa-0',
-                                               'instanceIndex': 0})
+            await sio.emit('synchronization', {'type': 'disconnected', 'accountId': 'accountId',
+                                               'host': 'ps-mpa-0', 'instanceIndex': 0})
             fake_server.disable_sync()
             await sleep(0.4)
             assert not connection.synchronized

@@ -3,6 +3,7 @@ import pytest
 from asyncio import sleep
 import asyncio
 from freezegun import freeze_time
+from datetime import datetime
 from .metaApiWebsocket_client import MetaApiWebsocketClient
 from .synchronizationThrottler import SynchronizationThrottler
 
@@ -168,10 +169,10 @@ class TestSynchronizationThrottler:
         """Should clear existing sync ids on disconnect."""
         await throttler.schedule_synchronize('accountId1', {'requestId': 'test1'})
         await throttler.schedule_synchronize('accountId2', {'requestId': 'test2'})
-        asyncio.create_task(throttler.schedule_synchronize('accountId3', {'requestId': 'test3'}))
         await sleep(0.2)
         assert client._rpc_request.call_count == 2
         throttler.on_disconnect()
+        await throttler.schedule_synchronize('accountId3', {'requestId': 'test3'})
         await sleep(0.2)
         assert client._rpc_request.call_count == 3
 
@@ -231,3 +232,44 @@ class TestSynchronizationThrottler:
             client._rpc_request.assert_any_call('accountId1', {'requestId': 'test1'})
             client._rpc_request.assert_any_call('accountId2', {'requestId': 'test2'})
             client._rpc_request.assert_any_call('accountId5', {'requestId': 'test5'})
+
+    @pytest.mark.asyncio
+    async def test_should_not_get_stuck_due_to_app_limit(self):
+        """Should not get queue stuck due to app synchronizations limit."""
+        with patch('lib.clients.metaApi.synchronizationThrottler.asyncio.sleep', new=lambda x: sleep(x / 50)):
+            throttler._client._socketInstances = [{'synchronizationThrottler': MagicMock()},
+                                                  {'synchronizationThrottler': throttler}]
+            throttler._client.socket_instances[0]['synchronizationThrottler'].synchronizing_accounts = [
+                'accountId21', 'accountId22', 'accountId23', 'accountId24', 'accountId25', 'accountId26', 'accountId27',
+                'accountId28', 'accountId29', 'accountId210', 'accountId211', 'accountId212', 'accountId213',
+                'accountId214', 'accountId215']
+            asyncio.create_task(throttler.schedule_synchronize('accountId1', {'requestId': 'test1'}))
+            asyncio.create_task(throttler.schedule_synchronize('accountId2', {'requestId': 'test2'}))
+            asyncio.create_task(throttler.schedule_synchronize('accountId3', {'requestId': 'test3'}))
+            await sleep(0.11)
+            client._rpc_request.assert_not_called()
+            throttler._client.socket_instances[0]['synchronizationThrottler'].synchronizing_accounts = \
+                throttler._client.socket_instances[0]['synchronizationThrottler'].synchronizing_accounts[1:]
+            await sleep(0.11)
+            assert client._rpc_request.call_count == 1
+            throttler._client.socket_instances[0]['synchronizationThrottler'].synchronizing_accounts = \
+                throttler._client.socket_instances[0]['synchronizationThrottler'].synchronizing_accounts[1:]
+            await sleep(0.11)
+            assert client._rpc_request.call_count == 2
+
+    @pytest.mark.asyncio
+    async def test_should_not_skip_queue_items(self):
+        """Should not skip queue items when synchronization id is removed."""
+        with patch('lib.clients.metaApi.synchronizationThrottler.asyncio.sleep', new=lambda x: sleep(x / 20)):
+            asyncio.create_task(throttler.schedule_synchronize('accountId1', {'requestId': 'test1'}))
+            asyncio.create_task(throttler.schedule_synchronize('accountId2', {'requestId': 'test2'}))
+            asyncio.create_task(throttler.schedule_synchronize('accountId3', {'requestId': 'test3'}))
+            asyncio.create_task(throttler.schedule_synchronize('accountId4', {'requestId': 'test4'}))
+            asyncio.create_task(throttler.schedule_synchronize('accountId5', {'requestId': 'test5'}))
+            await sleep(0.1)
+            throttler.remove_synchronization_id('test3')
+            await sleep(0.1)
+            throttler.remove_synchronization_id('test1')
+            throttler.remove_synchronization_id('test2')
+            await sleep(0.1)
+            assert client._rpc_request.call_count == 4

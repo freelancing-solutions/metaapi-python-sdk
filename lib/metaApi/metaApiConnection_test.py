@@ -931,6 +931,7 @@ class TestMetaApiConnection:
                                                              {'doneTime': date('2020-01-01T00:00:00.000Z')})
             await api.history_storage.on_deal_added('1:ps-mpa-1', {'time': date('2020-01-02T00:00:00.000Z')})
             await api.on_connected('1:ps-mpa-1', 1)
+            await asyncio.sleep(0.05)
             client.synchronize.assert_called_with('accountId', 1, 'ps-mpa-1', 'synchronizationId',
                                                   date('2020-01-01T00:00:00.000Z'), date('2020-01-02T00:00:00.000Z'))
 
@@ -944,6 +945,7 @@ class TestMetaApiConnection:
                                                              {'doneTime': date('2020-01-01T00:00:00.000Z')})
             await api.history_storage.on_deal_added('1:ps-mpa-1', {'time': date('2020-01-02T00:00:00.000Z')})
             await api.on_connected('1:ps-mpa-1', 1)
+            await asyncio.sleep(0.05)
             client.synchronize.assert_called_with('accountId', 1,  'ps-mpa-1', 'synchronizationId',
                                                   date('2020-01-01T00:00:00.000Z'), date('2020-01-02T00:00:00.000Z'))
 
@@ -976,6 +978,7 @@ class TestMetaApiConnection:
         await api.subscribe_to_market_data('AUDNZD')
         client.subscribe_to_market_data = AsyncMock()
         await api.on_account_information_updated('1:ps-mpa-1', {})
+        await asyncio.sleep(0.05)
         assert client.subscribe_to_market_data.call_count == 1
         client.subscribe_to_market_data.assert_called_with('accountId', 1, 'AUDNZD', None)
 
@@ -1036,6 +1039,7 @@ class TestMetaApiConnection:
         """Should set synchronized false on disconnect."""
         client.synchronize = AsyncMock()
         await api.on_connected('1:ps-mpa-1', 2)
+        await asyncio.sleep(0.05)
         assert api.synchronized
         client.subscribe = AsyncMock()
         account.reload = AsyncMock()
@@ -1047,6 +1051,7 @@ class TestMetaApiConnection:
         """Should delete state if stream closed."""
         client.synchronize = AsyncMock()
         await api.on_connected('1:ps-mpa-1', 2)
+        await asyncio.sleep(0.05)
         assert api.synchronized
         await api.on_stream_closed('1:ps-mpa-1')
         assert not api.synchronized

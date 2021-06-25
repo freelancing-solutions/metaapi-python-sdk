@@ -15,6 +15,9 @@
   - improve stability during server-side application redeployments
   - disable synchronization after connection is closed
   - fix equity calculation
+  - fixed synchronization queue
+  - breaking change: added sequential packet processing
+  - increased health status tracking interval to decrease CPU load
 
 12.4.0
   - added clientId to query websocket url
