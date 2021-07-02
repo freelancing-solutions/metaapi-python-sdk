@@ -18,6 +18,7 @@
   - fixed synchronization queue
   - breaking change: added sequential packet processing
   - increased health status tracking interval to decrease CPU load
+  - added copyFactoryRoles field to MetatraderAccount entity
 
 12.4.0
   - added clientId to query websocket url
