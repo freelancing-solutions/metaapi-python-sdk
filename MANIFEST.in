@@ -8,6 +8,8 @@ exclude examples/mt4/.env
 prune examples/mt4/.metaapi
 exclude examples/streamQuotes/.env
 prune examples/streamQuotes/.metaapi
+exclude examples/retrieveHistoricalMarketData/.env
+prune examples/retrieveHistoricalMarketData/.metaapi
 prune examples/synchronizeManyAccounts
 exclude examples/synchronizeManyAccounts/.env
 prune examples/synchronizeManyAccounts/.metaapi
