@@ -5,6 +5,7 @@ from typing_extensions import TypedDict
 import asyncio
 from datetime import datetime
 import functools
+from random import uniform
 
 
 class ConnectionHealthStatus(TypedDict):
@@ -38,12 +39,12 @@ class ConnectionHealthMonitor(SynchronizationListener):
 
         async def update_quote_health_job():
             while True:
-                await asyncio.sleep(30)
+                await asyncio.sleep(uniform(1, 60))
                 self._update_quote_health_status()
 
         async def measure_uptime_job():
             while True:
-                await asyncio.sleep(30)
+                await asyncio.sleep(uniform(1, 60))
                 self._measure_uptime()
 
         self._quotesHealthy = False

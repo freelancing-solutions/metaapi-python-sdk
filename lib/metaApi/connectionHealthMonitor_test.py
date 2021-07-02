@@ -74,20 +74,21 @@ prices = []
 @pytest.fixture(autouse=True)
 async def run_around_tests():
     with patch('lib.metaApi.connectionHealthMonitor.asyncio.sleep', new=lambda x: sleep(x / 300)):
-        global connection
-        connection = MockConnection()
-        global health_monitor
-        health_monitor = ConnectionHealthMonitor(connection)
-        health_monitor._quotesHealthy = True
-        global prices
-        prices = [{
-          'symbol': 'EURUSD',
-          'brokerTime': broker_times[0],
-        }, {
-          'symbol': 'EURUSD',
-          'brokerTime': broker_times[1],
-        }]
-        yield
+        with patch('lib.metaApi.connectionHealthMonitor.uniform', new=MagicMock(return_value=30)):
+            global connection
+            connection = MockConnection()
+            global health_monitor
+            health_monitor = ConnectionHealthMonitor(connection)
+            health_monitor._quotesHealthy = True
+            global prices
+            prices = [{
+              'symbol': 'EURUSD',
+              'brokerTime': broker_times[0],
+            }, {
+              'symbol': 'EURUSD',
+              'brokerTime': broker_times[1],
+            }]
+            yield
 
 
 class TestConnectionHealthMonitor:

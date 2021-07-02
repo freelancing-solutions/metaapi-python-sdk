@@ -169,6 +169,7 @@ class SubscriptionManager:
                         await asyncio.sleep(1)
                     if account_id in self._awaitingResubscribe:
                         del self._awaitingResubscribe[account_id]
+                    await asyncio.sleep(uniform(0, 5))
                     asyncio.create_task(self.subscribe(account_id))
             except Exception as err:
                 print(f'[{datetime.now().isoformat()}] Account {account_id} resubscribe task failed',

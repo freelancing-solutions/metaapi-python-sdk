@@ -184,6 +184,7 @@ async def run_around_tests(request):
     await fake_server.start()
     global api
     api = MetaApi('token', {'application': 'application', 'domain': 'project-stock.agiliumlabs.cloud',
+                            'useSharedClientApi': True,
                             'eventProcessing': {'sequentialProcessing': request.param},
                             'requestTimeout': 3, 'retryOpts': {'retries': 3, 'minDelayInSeconds': 0.1,
                                                                'maxDelayInSeconds': 0.5,
@@ -846,7 +847,6 @@ class TestSyncStability:
             assert subscribe_counter == previous_subscribe_counter
             assert not connection.synchronized
             assert not connection.terminal_state.connected
-            assert not connection.terminal_state.connected_to_broker
 
     @pytest.mark.asyncio
     async def test_not_resubscribe_on_timeout_if_connection_closed(self):

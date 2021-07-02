@@ -10,7 +10,7 @@ from .synchronizationThrottler import SynchronizationThrottler
 
 class MockClient(MetaApiWebsocketClient):
     def __init__(self, token):
-        super().__init__(token)
+        super().__init__(MagicMock(), token)
         self._subscribed_account_ids = ['accountId1'] * 11
 
     async def _rpc_request(self, account_id: str, request: dict, timeout_in_seconds: float = None):
@@ -273,3 +273,25 @@ class TestSynchronizationThrottler:
             throttler.remove_synchronization_id('test2')
             await sleep(0.1)
             assert client._rpc_request.call_count == 4
+
+    @pytest.mark.asyncio
+    async def test_should_remove_id_by_parameters(self):
+        """Should remove id by parameters."""
+        await throttler.schedule_synchronize('accountId1', {'requestId': 'test1'})
+        await throttler.schedule_synchronize('accountId2', {'requestId': 'test2', 'instanceIndex': 0,
+                                                            'host': 'ps-mpa-0'})
+        asyncio.create_task(throttler.schedule_synchronize('accountId3', {'requestId': 'test3'}))
+        asyncio.create_task(throttler.schedule_synchronize('accountId2', {'requestId': 'test4', 'instanceIndex': 1,
+                                                           'host': 'ps-mpa-1'}))
+        asyncio.create_task(throttler.schedule_synchronize('accountId2', {'requestId': 'test5', 'instanceIndex': 0,
+                                                           'host': 'ps-mpa-2'}))
+        asyncio.create_task(throttler.schedule_synchronize('accountId4', {'requestId': 'test6'}))
+        await sleep(0.05)
+        throttler.remove_id_by_parameters('accountId2', 0, 'ps-mpa-0')
+        throttler.remove_id_by_parameters('accountId2', 1, 'ps-mpa-1')
+        throttler.remove_synchronization_id('test1')
+        await sleep(0.1)
+        client._rpc_request.assert_any_call('accountId3', {'requestId': 'test3'})
+        client._rpc_request.assert_any_call('accountId2', {'requestId': 'test5', 'instanceIndex': 0,
+                                                           'host': 'ps-mpa-2'})
+        assert client._rpc_request.call_count == 4

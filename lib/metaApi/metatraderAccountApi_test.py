@@ -83,7 +83,7 @@ async def run_around_tests():
     global client
     client = MockClient(MagicMock(), MagicMock())
     global websocket_client
-    websocket_client = MockWebsocketClient('token')
+    websocket_client = MockWebsocketClient(MagicMock(), 'token')
     global registry
     registry = MockRegistry(websocket_client)
     global api

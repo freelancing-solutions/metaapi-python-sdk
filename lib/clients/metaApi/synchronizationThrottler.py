@@ -123,6 +123,20 @@ class SynchronizationThrottler:
             return False
         return len(self.synchronizing_accounts) < self.max_concurrent_synchronizations
 
+    def remove_id_by_parameters(self, account_id: str, instance_index: int = None, host: str = None):
+        """Removes synchronizations from queue and from the list by parameters.
+
+        Args:
+            account_id: Account id.
+            instance_index: Account instance index.
+            host: Account host name.
+        """
+        for key in list(self._accountsBySynchronizationIds.keys()):
+            if self._accountsBySynchronizationIds[key]['accountId'] == account_id and \
+                    self._accountsBySynchronizationIds[key]['instanceIndex'] == instance_index and \
+                    self._accountsBySynchronizationIds[key]['host'] == host:
+                self.remove_synchronization_id(key)
+
     def remove_synchronization_id(self, synchronization_id: str):
         """Removes synchronization id from slots and removes ids for the same account from the queue.
 
@@ -132,9 +146,11 @@ class SynchronizationThrottler:
         if synchronization_id in self._accountsBySynchronizationIds:
             account_id = self._accountsBySynchronizationIds[synchronization_id]['accountId']
             instance_index = self._accountsBySynchronizationIds[synchronization_id]['instanceIndex']
+            host = self._accountsBySynchronizationIds[synchronization_id]['host']
             for key in list(self._accountsBySynchronizationIds.keys()):
                 if self._accountsBySynchronizationIds[key]['accountId'] == account_id and \
-                        self._accountsBySynchronizationIds[key]['instanceIndex'] == instance_index:
+                        self._accountsBySynchronizationIds[key]['instanceIndex'] == instance_index and \
+                        self._accountsBySynchronizationIds[key]['host'] == host:
                     self._remove_from_queue(key, 'cancel')
                     del self._accountsBySynchronizationIds[key]
         if synchronization_id in self._synchronizationIds:
@@ -192,7 +208,8 @@ class SynchronizationThrottler:
                     (request['instanceIndex'] if 'instanceIndex' in request else None):
                 self.remove_synchronization_id(key)
         self._accountsBySynchronizationIds[synchronization_id] = {
-            'accountId': account_id, 'instanceIndex': request['instanceIndex'] if 'instanceIndex' in request else None
+            'accountId': account_id, 'instanceIndex': request['instanceIndex'] if 'instanceIndex' in request else None,
+            'host': request['host'] if 'host' in request else None
         }
         if not self.is_synchronization_available:
             request_resolve = asyncio.Future()

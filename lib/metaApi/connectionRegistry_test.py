@@ -90,7 +90,7 @@ def create_connection_mock():
 @pytest.fixture(autouse=True)
 async def run_around_tests():
     global mock_client
-    mock_client = MockClient('token')
+    mock_client = MockClient(MagicMock(), 'token')
     global mock_storage
     mock_storage = MockStorage()
     global registry

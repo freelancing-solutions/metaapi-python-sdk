@@ -138,7 +138,7 @@ async def run_around_tests():
     global auto_account
     auto_account = AutoMockAccount(MagicMock(), MagicMock(), MagicMock(), MagicMock(), MagicMock(), MagicMock())
     global client
-    client = MockClient('token')
+    client = MockClient(MagicMock(), 'token')
     storage = MagicMock()
     storage.last_history_order_time = AsyncMock(return_value=datetime.now())
     storage.last_deal_time = AsyncMock(return_value=datetime.now())

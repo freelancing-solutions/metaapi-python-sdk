@@ -2,6 +2,7 @@ from .metaApiWebsocket_client import MetaApiWebsocketClient
 from socketio import AsyncServer
 from aiohttp import web
 from ...metaApi.models import date, format_date
+from ..httpClient import HttpClient
 import pytest
 import asyncio
 import copy
@@ -14,8 +15,10 @@ from copy import deepcopy
 from datetime import datetime, timedelta
 from freezegun import freeze_time
 sio = None
+http_client = HttpClient()
 client: MetaApiWebsocketClient = None
 future_close = asyncio.Future()
+fake_server = None
 
 
 async def close_client():
@@ -28,8 +31,7 @@ class FakeServer:
         self.app = web.Application()
         self.runner = None
 
-    async def start(self):
-        port = 8080
+    async def start(self, port=8080):
         global sio
         sio = AsyncServer(async_mode='aiohttp')
 
@@ -52,14 +54,18 @@ class FakeServer:
 
 @pytest.fixture(autouse=True)
 async def run_around_tests():
+    global http_client
+    http_client = HttpClient()
     FinalMock.__await__ = lambda x: async_magic_close().__await__()
+    global fake_server
     fake_server = FakeServer()
     await fake_server.start()
     global client
-    client = MetaApiWebsocketClient('token', {'application': 'application', 'domain': 'project-stock.agiliumlabs.cloud',
-                                              'requestTimeout': 3, 'retryOpts': {'retries': 3,
-                                                                                 'minDelayInSeconds': 0.1,
-                                                                                 'maxDelayInSeconds': 0.5}})
+    client = MetaApiWebsocketClient(http_client, 'token', {'application': 'application',
+                                                           'domain': 'project-stock.agiliumlabs.cloud',
+                                                           'requestTimeout': 3, 'useSharedClientApi': True,
+                                                           'retryOpts': {'retries': 3, 'minDelayInSeconds': 0.1,
+                                                                         'maxDelayInSeconds': 0.5}})
     client.set_url('http://localhost:8080')
     client._socketInstancesByAccounts = {'accountId': 0}
     await client.connect()
@@ -122,6 +128,55 @@ class TestMetaApiWebsocketClient:
             frozen_datetime.tick(1.5)
             await asyncio.sleep(0.05)
             assert connect_amount >= 3
+
+    @pytest.mark.asyncio
+    async def test_connect_to_dedicated_server(self):
+        """Should connect to dedicated server."""
+        positions = [{
+            'id': '46214692',
+            'type': 'POSITION_TYPE_BUY',
+            'symbol': 'GBPUSD',
+            'magic': 1000,
+            'time': '2020-04-15T02:45:06.521Z',
+            'updateTime': '2020-04-15T02:45:06.521Z',
+            'openPrice': 1.26101,
+            'currentPrice': 1.24883,
+            'currentTickValue': 1,
+            'volume': 0.07,
+            'swap': 0,
+            'profit': -85.25999999999966,
+            'commission': -0.25,
+            'clientId': 'TE_GBPUSD_7hyINWqAlE',
+            'stopLoss': 1.17721,
+            'unrealizedProfit': -85.25999999999901,
+            'realizedProfit': -6.536993168992922e-13
+        }]
+        tasks = [task for task in asyncio.all_tasks() if task is not
+                 asyncio.tasks.current_task()]
+        list(map(lambda task: task.cancel(), tasks))
+        await fake_server.stop()
+        fake_server2 = FakeServer()
+        await fake_server2.start(8081)
+        http_client.request = AsyncMock(return_value={'url': 'http://localhost:8081'})
+        client = MetaApiWebsocketClient(http_client, 'token', {'application': 'application',
+                                                               'domain': 'project-stock.agiliumlabs.cloud',
+                                                               'requestTimeout': 3, 'useSharedClientApi': False,
+                                                               'retryOpts': {'retries': 3, 'minDelayInSeconds': 0.1,
+                                                                             'maxDelayInSeconds': 0.5}})
+
+        @sio.on('request')
+        async def on_request(sid, data):
+            if data['type'] == 'getPositions' and data['accountId'] == 'accountId' \
+                    and data['application'] == 'RPC':
+                await sio.emit('response', {'type': 'response', 'accountId': data['accountId'],
+                                            'requestId': data['requestId'], 'positions': positions})
+            else:
+                raise Exception('Wrong request')
+
+        actual = await client.get_positions('accountId')
+        positions[0]['time'] = date(positions[0]['time'])
+        positions[0]['updateTime'] = date(positions[0]['updateTime'])
+        assert actual == positions
 
     @pytest.mark.asyncio
     async def test_retrieve_account(self):

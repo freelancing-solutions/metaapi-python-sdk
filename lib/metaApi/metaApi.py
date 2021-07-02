@@ -65,6 +65,8 @@ class MetaApiOpts(TypedDict):
     """Options for request retries."""
     eventProcessing: Optional[EventProcessingOpts]
     """Options for processing events."""
+    useSharedClientApi: Optional[bool]
+    """Option to use a shared server."""
 
 
 class MetaApi:
@@ -91,6 +93,7 @@ class MetaApi:
         demo_account_request_timeout = opts['demoAccountRequestTimeout'] if \
             'demoAccountRequestTimeout' in opts else 240
         event_processing = opts['eventProcessing'] if 'eventProcessing' in opts else {}
+        use_shared_client_api = opts['useSharedClientApi'] if 'useSharedClientApi' in opts else False
         if not re.search(r"[a-zA-Z0-9_]+", application):
             raise ValidationException('Application name must be non-empty string consisting ' +
                                       'from letters, digits and _ only')
@@ -98,12 +101,12 @@ class MetaApi:
         historical_market_data_http_client = HttpClient(historical_market_data_request_timeout, retry_opts)
         demo_account_http_client = HttpClient(demo_account_request_timeout, retry_opts)
         self._metaApiWebsocketClient = MetaApiWebsocketClient(
-            token, {'application': application, 'domain': domain, 'requestTimeout': request_timeout,
-                    'connectTimeout': connect_timeout, 'packetLogger': packet_logger,
-                    'packetOrderingTimeout': packet_ordering_timeout,
-                    'synchronizationThrottler': synchronization_throttler,
-                    'eventProcessing': event_processing,
-                    'retryOpts': retry_opts})
+            http_client, token, {'application': application, 'domain': domain, 'requestTimeout': request_timeout,
+                                 'connectTimeout': connect_timeout, 'packetLogger': packet_logger,
+                                 'packetOrderingTimeout': packet_ordering_timeout,
+                                 'synchronizationThrottler': synchronization_throttler,
+                                 'eventProcessing': event_processing, 'retryOpts': retry_opts,
+                                 'useSharedClientApi': use_shared_client_api})
         self._provisioningProfileApi = ProvisioningProfileApi(ProvisioningProfileClient(http_client, token, domain))
         self._connectionRegistry = ConnectionRegistry(self._metaApiWebsocketClient, application)
         historical_market_data_client = HistoricalMarketDataClient(historical_market_data_http_client, token, domain)

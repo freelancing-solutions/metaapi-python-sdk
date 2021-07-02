@@ -21,15 +21,16 @@ manager: SubscriptionManager = None
 
 @pytest.fixture(autouse=True)
 async def run_around_tests():
-    global client
-    client = MockClient('token')
-    client._socketInstances = [{'socket': MagicMock()}, {'socket': MagicMock()}]
-    client._socketInstances[0]['socket'].connected = True
-    client._socketInstances[1]['socket'].connected = False
-    client._socketInstancesByAccounts = {'accountId': 0}
-    global manager
-    manager = SubscriptionManager(client)
-    yield
+    with patch('lib.clients.metaApi.subscriptionManager.uniform', new=MagicMock(return_value=1)):
+        global client
+        client = MockClient(MagicMock(), 'token')
+        client._socketInstances = [{'socket': MagicMock()}, {'socket': MagicMock()}]
+        client._socketInstances[0]['socket'].connected = True
+        client._socketInstances[1]['socket'].connected = False
+        client._socketInstancesByAccounts = {'accountId': 0}
+        global manager
+        manager = SubscriptionManager(client)
+        yield
 
 
 class TestSubscriptionManager:
@@ -108,7 +109,7 @@ class TestSubscriptionManager:
             asyncio.create_task(manager.subscribe('accountId3'))
             await sleep(0.1)
             manager.on_reconnected(0, ['accountId', 'accountId2'])
-            await sleep(0.1)
+            await sleep(0.2)
             assert client.subscribe.call_count == 5
 
     @pytest.mark.asyncio
@@ -124,7 +125,7 @@ class TestSubscriptionManager:
             asyncio.create_task(manager.subscribe('accountId'))
             await sleep(0.1)
             manager.on_reconnected(0, ['accountId'])
-            await sleep(0.2)
+            await sleep(0.3)
             assert client.subscribe.call_count == 2
 
     @pytest.mark.asyncio
