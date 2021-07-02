@@ -56,7 +56,7 @@ def format_error(err: Exception):
     Args:
         err: Exception to process.
     """
-    error = {'name': err.__class__.__name__, 'message': err.args[0]}
+    error = {'name': err.__class__.__name__, 'message': err if isinstance(err, str) else err.args[0]}
     if hasattr(err, 'status_code'):
         error['status_code'] = err.status_code
     if err.__class__.__name__ == 'ValidationException':

@@ -28,10 +28,11 @@ import json
 class MetaApiWebsocketClient:
     """MetaApi websocket API client (see https://metaapi.cloud/docs/client/websocket/overview/)"""
 
-    def __init__(self, token: str, opts: Dict = None):
+    def __init__(self, http_client, token: str, opts: Dict = None):
         """Inits MetaApi websocket API client instance.
 
         Args:
+            http_client: HTTP client.
             token: Authorization token.
             opts: Websocket client options.
         """
@@ -39,8 +40,10 @@ class MetaApiWebsocketClient:
         opts['packetOrderingTimeout'] = opts['packetOrderingTimeout'] if 'packetOrderingTimeout' in opts else 60
         opts['synchronizationThrottler'] = opts['synchronizationThrottler'] if 'synchronizationThrottler' in \
                                                                                opts else {}
+        self._httpClient = http_client
         self._application = opts['application'] if 'application' in opts else 'MetaApi'
-        self._url = f'https://mt-client-api-v1.{opts["domain"] if "domain" in opts else "agiliumtrade.agiliumtrade.ai"}'
+        self._domain = opts["domain"] if "domain" in opts else "agiliumtrade.agiliumtrade.ai"
+        self._url = f'https://mt-client-api-v1.{self._domain}'
         self._request_timeout = opts['requestTimeout'] if 'requestTimeout' in opts else 60
         self._connect_timeout = opts['connectTimeout'] if 'connectTimeout' in opts else 60
         retry_opts = opts['retryOpts'] if 'retryOpts' in opts else {}
@@ -53,6 +56,7 @@ class MetaApiWebsocketClient:
         event_processing = opts['eventProcessing'] if 'eventProcessing' in opts else {}
         self._sequentialEventProcessing = event_processing['sequentialProcessing'] if \
             'sequentialProcessing' in event_processing else False
+        self._useSharedClientApi = opts['useSharedClientApi'] if 'useSharedClientApi' in opts else False
         self._token = token
         self._synchronizationListeners = {}
         self._latencyListeners = []
@@ -278,7 +282,8 @@ class MetaApiWebsocketClient:
         while not socket_instance.connected:
             try:
                 client_id = "{:01.10f}".format(random())
-                url = f'{self._url}?auth-token={self._token}&clientId={client_id}&protocol=2'
+                server_url = await self._get_server_url()
+                url = f'{server_url}?auth-token={self._token}&clientId={client_id}&protocol=2'
                 instance['sessionId'] = random_id()
                 await asyncio.wait_for(socket_instance.connect(url, socketio_path='ws',
                                                                headers={'Client-Id': client_id}),
@@ -910,10 +915,11 @@ class MetaApiWebsocketClient:
                 try:
                     await instance['socket'].disconnect()
                     client_id = "{:01.10f}".format(random())
-                    url = f'{self._url}?auth-token={self._token}&clientId={client_id}&protocol=2'
                     instance['connectResult'] = asyncio.Future()
                     instance['resolved'] = False
                     instance['sessionId'] = random_id()
+                    server_url = await self._get_server_url()
+                    url = f'{server_url}?auth-token={self._token}&clientId={client_id}&protocol=2'
                     await asyncio.wait_for(instance['socket'].connect(url, socketio_path='ws',
                                                                       headers={'Client-Id': client_id}),
                                            timeout=self._connect_timeout)
@@ -1121,6 +1127,8 @@ class MetaApiWebsocketClient:
                     else:
                         on_stream_closed_tasks: List[asyncio.Task] = []
                         self._packetOrderer.on_stream_closed(instance_id)
+                        socket_instance['synchronizationThrottler'].remove_id_by_parameters(
+                            data['accountId'], instance_number, data['host'] if 'host' in data else None)
 
                         async def run_on_stream_closed(listener):
                             try:
@@ -1686,3 +1694,17 @@ class MetaApiWebsocketClient:
                                  asyncio.wait({asyncio.create_task(on_reconnected_task(listener))}))
         except Exception as err:
             print(f'[{datetime.now().isoformat()}] Failed to process reconnected event', format_error(err))
+
+    async def _get_server_url(self):
+        if self._useSharedClientApi:
+            return self._url
+        else:
+            opts = {
+                'url': f"https://mt-provisioning-api-v1.{self._domain}/users/current/servers/mt-client-api",
+                'method': 'GET',
+                'headers': {
+                    'auth-token': self._token
+                }
+            }
+            response = await self._httpClient.request(opts)
+            return response['url']
