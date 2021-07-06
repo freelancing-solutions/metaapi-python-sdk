@@ -1,3 +1,6 @@
+13.0.1
+  - added logging URL on websocket connection
+
 13.0.0
   - added baseCurrency field to the MetaTraderAccount model
   - fixed history storage timestamp processing (issue #6)

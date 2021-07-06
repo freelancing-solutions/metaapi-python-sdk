@@ -15,7 +15,7 @@ tests_require = [
 
 setuptools.setup(
     name="metaapi_cloud_sdk",
-    version="13.0.0",
+    version="13.0.1",
     author="Agilium Labs LLC",
     author_email="agiliumtrade@agiliumtrade.ai",
     description="SDK for MetaApi, a professional cloud forex API which includes MetaTrader REST API "
