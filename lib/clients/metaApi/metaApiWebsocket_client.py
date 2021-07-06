@@ -197,12 +197,21 @@ class MetaApiWebsocketClient:
         socket_instance = instance['socket']
         self._socketInstances.append(instance)
         instance['connected'] = True
+        first_connect = True
         if len(self._socketInstances) == 1:
             self._packetOrderer.start()
 
         @socket_instance.on('connect')
         async def on_connect():
-            print(f'[{datetime.now().isoformat()}] MetaApi websocket client connected to the MetaApi server')
+            is_shared_client_api = socket_instance.connection_url.split("?")[0] == self._url
+            print(f'[{datetime.now().isoformat()}] MetaApi websocket client connected to the MetaApi server via '
+                  f'{socket_instance.connection_url.split("?")[0]} '
+                  f'via {"shared" if is_shared_client_api else "dedicated"} server')
+            nonlocal first_connect
+            if socket_instance_index == 0 and first_connect and not is_shared_client_api:
+                print('Please note that it can take up to 3 minutes for your dedicated server to start for the '
+                      'first time. During this time it is OK if you see some connection errors.')
+                first_connect = False
             if not instance['resolved']:
                 instance['resolved'] = True
                 instance['connectResult'].set_result(None)
