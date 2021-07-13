@@ -2,6 +2,7 @@ from ..timeoutException import TimeoutException
 from .tradeException import TradeException
 from ..errorHandler import ValidationException, NotFoundException, InternalException, UnauthorizedException, \
     TooManyRequestsException
+from ..optionsValidator import OptionsValidator
 from .notSynchronizedException import NotSynchronizedException
 from .notConnectedException import NotConnectedException
 from .synchronizationListener import SynchronizationListener
@@ -36,27 +37,37 @@ class MetaApiWebsocketClient:
             token: Authorization token.
             opts: Websocket client options.
         """
+        validator = OptionsValidator()
         opts = opts or {}
-        opts['packetOrderingTimeout'] = opts['packetOrderingTimeout'] if 'packetOrderingTimeout' in opts else 60
+        opts['packetOrderingTimeout'] = validator.validate_non_zero(
+            opts['packetOrderingTimeout'] if 'packetOrderingTimeout' in opts else None, 60, 'packetOrderingTimeout')
         opts['synchronizationThrottler'] = opts['synchronizationThrottler'] if 'synchronizationThrottler' in \
                                                                                opts else {}
         self._httpClient = http_client
         self._application = opts['application'] if 'application' in opts else 'MetaApi'
         self._domain = opts["domain"] if "domain" in opts else "agiliumtrade.agiliumtrade.ai"
         self._url = f'https://mt-client-api-v1.{self._domain}'
-        self._request_timeout = opts['requestTimeout'] if 'requestTimeout' in opts else 60
-        self._connect_timeout = opts['connectTimeout'] if 'connectTimeout' in opts else 60
+        self._request_timeout = validator.validate_non_zero(
+            opts['requestTimeout'] if 'requestTimeout' in opts else None, 60, 'requestTimeout')
+        self._connect_timeout = validator.validate_non_zero(
+            opts['connectTimeout'] if 'connectTimeout' in opts else None, 60, 'connectTimeout')
         retry_opts = opts['retryOpts'] if 'retryOpts' in opts else {}
-        self._retries = retry_opts['retries'] if 'retries' in retry_opts else 5
-        self._minRetryDelayInSeconds = retry_opts['minDelayInSeconds'] if 'minDelayInSeconds' in retry_opts else 1
-        self._maxRetryDelayInSeconds = retry_opts['maxDelayInSeconds'] if 'maxDelayInSeconds' in retry_opts else 30
+        self._retries = validator.validate_number(
+            retry_opts['retries'] if 'retries' in retry_opts else None, 5, 'retries')
+        self._minRetryDelayInSeconds = validator.validate_non_zero(
+            retry_opts['minDelayInSeconds'] if 'minDelayInSeconds' in retry_opts else None, 1, 'minDelayInSeconds')
+        self._maxRetryDelayInSeconds = validator.validate_non_zero(
+            retry_opts['maxDelayInSeconds'] if 'maxDelayInSeconds' in retry_opts else None, 30, 'maxDelayInSeconds')
         self._maxAccountsPerInstance = 100
-        self._subscribeCooldownInSeconds = retry_opts['subscribeCooldownInSeconds'] if 'subscribeCooldownInSeconds' \
-            in retry_opts else 600
+        self._subscribeCooldownInSeconds = validator.validate_non_zero(
+            retry_opts['subscribeCooldownInSeconds'] if 'subscribeCooldownInSeconds' in retry_opts else None, 600,
+            'subscribeCooldownInSeconds')
         event_processing = opts['eventProcessing'] if 'eventProcessing' in opts else {}
-        self._sequentialEventProcessing = event_processing['sequentialProcessing'] if \
-            'sequentialProcessing' in event_processing else False
-        self._useSharedClientApi = opts['useSharedClientApi'] if 'useSharedClientApi' in opts else False
+        self._sequentialEventProcessing = validator.validate_boolean(
+            event_processing['sequentialProcessing'] if 'sequentialProcessing' in event_processing else None, False,
+            'sequentialProcessing')
+        self._useSharedClientApi = validator.validate_boolean(
+            opts['useSharedClientApi'] if 'useSharedClientApi' in opts else None, False, 'useSharedClientApi')
         self._token = token
         self._synchronizationListeners = {}
         self._latencyListeners = []
@@ -206,7 +217,7 @@ class MetaApiWebsocketClient:
             is_shared_client_api = socket_instance.connection_url.split("?")[0] == self._url
             print(f'[{datetime.now().isoformat()}] MetaApi websocket client connected to the MetaApi server via '
                   f'{socket_instance.connection_url.split("?")[0]} '
-                  f'via {"shared" if is_shared_client_api else "dedicated"} server')
+                  f'{"shared" if is_shared_client_api else "dedicated"} server')
             nonlocal first_connect
             if socket_instance_index == 0 and first_connect and not is_shared_client_api:
                 print('Please note that it can take up to 3 minutes for your dedicated server to start for the '
@@ -1006,6 +1017,8 @@ class MetaApiWebsocketClient:
                     retry_counter += 1
                 else:
                     raise err
+                if account_id not in self._socketInstancesByAccounts:
+                    raise err
             except Exception as err:
                 if err.__class__.__name__ in ['NotSynchronizedException', 'TimeoutException',
                                               'NotAuthenticatedException', 'InternalException'] and retry_counter < \
@@ -1014,6 +1027,8 @@ class MetaApiWebsocketClient:
                                             self._maxRetryDelayInSeconds))
                     retry_counter += 1
                 else:
+                    raise err
+                if account_id not in self._socketInstancesByAccounts:
                     raise err
 
     async def _make_request(self, account_id: str, request: dict, timeout_in_seconds: float = None):

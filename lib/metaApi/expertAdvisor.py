@@ -49,7 +49,8 @@ class ExpertAdvisor:
         return self._data['fileUploaded']
 
     async def reload(self):
-        """Reloads expert advisor from API.
+        """Reloads expert advisor from API
+        (see https://metaapi.cloud/docs/provisioning/api/expertAdvisor/readExpertAdvisor/).
 
         Returns:
             A coroutine resolving when expert advisor is updated.
@@ -57,7 +58,8 @@ class ExpertAdvisor:
         self._data = await self._expertAdvisorClient.get_expert_advisor(self._accountId, self.expert_id)
 
     async def update(self, expert: NewExpertAdvisorDto):
-        """Updates expert advisor data.
+        """Updates expert advisor data
+        (see https://metaapi.cloud/docs/provisioning/api/expertAdvisor/updateExpertAdvisor/).
 
         Args:
             expert: New expert advisor data.
@@ -69,7 +71,8 @@ class ExpertAdvisor:
         await self.reload()
 
     async def upload_file(self, file: str or memoryview):
-        """Uploads expert advisor file.
+        """Uploads an expert advisor file. EAs which use DLLs are not supported
+        (see https://metaapi.cloud/docs/provisioning/api/expertAdvisor/uploadEAFile/).
 
         Args:
             file: Expert advisor file.
@@ -81,7 +84,7 @@ class ExpertAdvisor:
         await self.reload()
 
     async def remove(self):
-        """Removes expert advisor.
+        """Removes expert advisor (see https://metaapi.cloud/docs/provisioning/api/expertAdvisor/deleteExpertAdvisor/).
 
         Returns:
             A coroutine resolving when expert advisor is removed.

@@ -1,5 +1,6 @@
 from .terminalState import TerminalState
 import pytest
+import asyncio
 from datetime import datetime
 state = TerminalState()
 
@@ -89,6 +90,16 @@ class TestTerminalState:
                                              'symbol': 'EURUSD', 'bid': 1, 'ask': 1.2}])
         assert state.price('EURUSD') == {'time': datetime.fromtimestamp(1000000),
                                          'symbol': 'EURUSD', 'bid': 1, 'ask': 1.2}
+
+    @pytest.mark.asyncio
+    async def test_wait_for_price(self):
+        """Should wait for price."""
+        assert state.price('EURUSD') is None
+        promise = asyncio.create_task(state.wait_for_price('EURUSD'))
+        await state.on_symbol_prices_updated('1:ps-mpa-1', [{'time': datetime.fromtimestamp(1000000),
+                                             'symbol': 'EURUSD', 'bid': 1, 'ask': 1.1}])
+        assert (await promise) == {'time': datetime.fromtimestamp(1000000),
+                                   'symbol': 'EURUSD', 'bid': 1, 'ask': 1.1}
 
     @pytest.mark.asyncio
     async def test_update_account_equity_and_position(self):

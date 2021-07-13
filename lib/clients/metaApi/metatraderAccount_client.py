@@ -107,6 +107,11 @@ class MetatraderAccountDto(TypedDict):
     brokers. You should not alter this setting unless you understand what you are doing."""
     copyFactoryRoles: List[str]
     """Account roles for CopyFactory2 application. Allowed values are `PROVIDER` and `SUBSCRIBER`."""
+    resourceSlots: int
+    """Number of resource slots to allocate to account. Allocating extra resource slots results in better account
+    performance under load which is useful for some applications. E.g. if you have many accounts copying the same
+    strategy via CopyFactory API, then you can increase resourceSlots to get a lower trade copying latency. Please
+    note that allocating extra resource slots is a paid option. Default is 1."""
 
 
 class NewMetatraderAccountDto(TypedDict):
@@ -148,6 +153,13 @@ class NewMetatraderAccountDto(TypedDict):
     """3-character ISO currency code of the account base currency. Default value is USD.
     The setting is to be used for copy trading accounts which use national currencies only, such as some Brazilian
     brokers. You should not alter this setting unless you understand what you are doing."""
+    copyFactoryRoles: List[str]
+    """Account roles for CopyFactory2 application. Allowed values are `PROVIDER` and `SUBSCRIBER`."""
+    resourceSlots: int
+    """Number of resource slots to allocate to account. Allocating extra resource slots results in better account
+    performance under load which is useful for some applications. E.g. if you have many accounts copying the same
+    strategy via CopyFactory API, then you can increase resourceSlots to get a lower trade copying latency. Please
+    note that allocating extra resource slots is a paid option. Default is 1."""
 
 
 class MetatraderAccountUpdateDto(TypedDict):
@@ -171,6 +183,13 @@ class MetatraderAccountUpdateDto(TypedDict):
     """API extensions."""
     metadata: Dict
     """Extra information which can be stored together with your account."""
+    copyFactoryRoles: List[str]
+    """Account roles for CopyFactory2 application. Allowed values are `PROVIDER` and `SUBSCRIBER`."""
+    resourceSlots: int
+    """Number of resource slots to allocate to account. Allocating extra resource slots results in better account
+    performance under load which is useful for some applications. E.g. if you have many accounts copying the same
+    strategy via CopyFactory API, then you can increase resourceSlots to get a lower trade copying latency. Please
+    note that allocating extra resource slots is a paid option. Default is 1."""
 
 
 class MetatraderAccountClient(MetaApiClient):

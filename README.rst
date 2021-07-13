@@ -180,7 +180,7 @@ Deploying, undeploying and redeploying an account (API server) via API
 
 Manage custom experts (EAs)
 ---------------------------
-Custom expert advisors can only be used for MT4 accounts on g1 infrastructure
+Custom expert advisors can only be used for MT4 accounts on g1 infrastructure. EAs which use DLLs are not supported.
 
 Creating an expert advisor via API
 ----------------------------------
