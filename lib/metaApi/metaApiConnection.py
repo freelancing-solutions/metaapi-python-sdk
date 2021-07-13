@@ -78,6 +78,7 @@ class MetaApiConnection(SynchronizationListener, ReconnectListener):
         self._subscriptions = {}
         self._stateByInstanceIndex = {}
         self._synchronized = False
+        self._synchronizationListeners = []
 
     def get_account_information(self) -> 'Coroutine[asyncio.Future[MetatraderAccountInformation]]':
         """Returns account information (see
@@ -615,8 +616,8 @@ class MetaApiConnection(SynchronizationListener, ReconnectListener):
         if not self._closed:
             self._websocketClient.ensure_subscribe(self._account.id)
 
-    def subscribe_to_market_data(self, symbol: str, subscriptions: List[MarketDataSubscription] = None,
-                                 instance_index: int = None) -> Coroutine:
+    async def subscribe_to_market_data(self, symbol: str, subscriptions: List[MarketDataSubscription] = None,
+                                       instance_index: int = None, timeout_in_seconds: float = None) -> Coroutine:
         """Subscribes on market data of specified symbol (see
         https://metaapi.cloud/docs/client/websocket/marketDataStreaming/subscribeToMarketData/).
 
@@ -625,13 +626,14 @@ class MetaApiConnection(SynchronizationListener, ReconnectListener):
             subscriptions: Array of market data subscription to create or update. Please note that this feature is
             not fully implemented on server-side yet.
             instance_index: Instance index.
+            timeout_in_seconds: Timeout to wait for prices in seconds, default is 30.
 
         Returns:
             Promise which resolves when subscription request was processed.
         """
         self._subscriptions[symbol] = {'subscriptions': subscriptions or None}
-        return self._websocketClient.subscribe_to_market_data(self._account.id, instance_index, symbol,
-                                                              subscriptions)
+        await self._websocketClient.subscribe_to_market_data(self._account.id, instance_index, symbol, subscriptions)
+        return await self.terminal_state.wait_for_price(symbol, timeout_in_seconds)
 
     def unsubscribe_from_market_data(self, symbol: str, subscriptions: List[MarketDataUnsubscription] = None,
                                      instance_index: int = None) -> Coroutine:
@@ -814,6 +816,7 @@ class MetaApiConnection(SynchronizationListener, ReconnectListener):
         Args:
             listener: Synchronization listener to add.
         """
+        self._synchronizationListeners.append(listener)
         self._websocketClient.add_synchronization_listener(self._account.id, listener)
 
     def remove_synchronization_listener(self, listener):
@@ -822,6 +825,7 @@ class MetaApiConnection(SynchronizationListener, ReconnectListener):
         Args:
             listener: Synchronization listener to remove.
         """
+        self._synchronizationListeners = list(filter(lambda l: l != listener, self._synchronizationListeners))
         self._websocketClient.remove_synchronization_listener(self._account.id, listener)
 
     async def on_connected(self, instance_index: str, replicas: int):
@@ -1007,6 +1011,8 @@ class MetaApiConnection(SynchronizationListener, ReconnectListener):
             self._websocketClient.remove_synchronization_listener(self._account.id, self._terminalState)
             self._websocketClient.remove_synchronization_listener(self._account.id, self._historyStorage)
             self._websocketClient.remove_synchronization_listener(self._account.id, self._healthMonitor)
+            for listener in self._synchronizationListeners:
+                self._websocketClient.remove_synchronization_listener(self._account.id, listener)
             self._websocketClient.remove_reconnect_listener(self)
             self._connection_registry.remove(self._account.id)
             self._healthMonitor.stop()

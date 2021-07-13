@@ -9,6 +9,7 @@ import functools
 import shutil
 from copy import deepcopy
 from ...metaApi.models import date, format_error
+from ..optionsValidator import OptionsValidator
 
 
 class PacketLoggerOpts(TypedDict):
@@ -35,11 +36,17 @@ class PacketLogger:
         Args:
             opts: Packet logger options.
         """
+        validator = OptionsValidator()
         opts = opts or {}
-        self._fileNumberLimit = opts['fileNumberLimit'] if 'fileNumberLimit' in opts else 12
-        self._logFileSizeInHours = opts['logFileSizeInHours'] if 'logFileSizeInHours' in opts else 4
-        self._compressSpecifications = opts['compressSpecifications'] if 'compressSpecifications' in opts else True
-        self._compressPrices = opts['compressPrices'] if 'compressPrices' in opts else True
+        self._fileNumberLimit = validator.validate_non_zero(
+            opts['fileNumberLimit'] if 'fileNumberLimit' in opts else None, 12, 'packetLogger.fileNumberLimit')
+        self._logFileSizeInHours = validator.validate_non_zero(
+            opts['logFileSizeInHours'] if 'logFileSizeInHours' in opts else None, 4, 'packetLogger.logFileSizeInHours')
+        self._compressSpecifications = validator.validate_boolean(
+            opts['compressSpecifications'] if 'compressSpecifications' in opts else None, True,
+            'packetLogger.compressSpecifications')
+        self._compressPrices = validator.validate_boolean(
+            opts['compressPrices'] if 'compressPrices' in opts else None, True, 'packetLogger.compressPrices')
         self._previousPrices = {}
         self._lastSNPacket = {}
         self._writeQueue = {}

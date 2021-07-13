@@ -11,6 +11,7 @@ from .metatraderDemoAccountApi import MetatraderDemoAccountApi
 from ..clients.metaApi.synchronizationThrottler import SynchronizationThrottlerOpts
 from ..clients.metaApi.metatraderDemoAccount_client import MetatraderDemoAccountClient
 from ..clients.metaApi.historicalMarketData_client import HistoricalMarketDataClient
+from ..clients.optionsValidator import OptionsValidator
 from .latencyMonitor import LatencyMonitor
 from ..clients.metaApi.expertAdvisor_client import ExpertAdvisorClient
 import re
@@ -79,19 +80,25 @@ class MetaApi:
             token: Authorization token.
             opts: Application options.
         """
+        validator = OptionsValidator()
         opts: MetaApiOpts = opts or {}
         application = opts['application'] if 'application' in opts else 'MetaApi'
         domain = opts['domain'] if 'domain' in opts else 'agiliumtrade.agiliumtrade.ai'
-        request_timeout = opts['requestTimeout'] if 'requestTimeout' in opts else 60
-        historical_market_data_request_timeout = opts['historicalMarketDataRequestTimeout'] if \
-            'historicalMarketDataRequestTimeout' in opts else 240
-        connect_timeout = opts['connectTimeout'] if 'connectTimeout' in opts else 60
-        packet_ordering_timeout = opts['packetOrderingTimeout'] if 'packetOrderingTimeout' in opts else 60
+        request_timeout = validator.validate_non_zero(opts['requestTimeout'] if 'requestTimeout' in opts else None,
+                                                      60, 'requestTimeout')
+        historical_market_data_request_timeout = validator.validate_non_zero(
+            opts['historicalMarketDataRequestTimeout'] if 'historicalMarketDataRequestTimeout' in opts else None, 240,
+            'historicalMarketDataRequestTimeout')
+        connect_timeout = validator.validate_non_zero(opts['connectTimeout'] if 'connectTimeout' in opts else None, 60,
+                                                      'connectTimeout')
+        packet_ordering_timeout = validator.validate_non_zero(
+            opts['packetOrderingTimeout'] if 'packetOrderingTimeout' in opts else None, 60, 'packetOrderingTimeout')
         retry_opts = opts['retryOpts'] if 'retryOpts' in opts else {}
         packet_logger = opts['packetLogger'] if 'packetLogger' in opts else {}
         synchronization_throttler = opts['synchronizationThrottler'] if 'synchronizationThrottler' in opts else {}
-        demo_account_request_timeout = opts['demoAccountRequestTimeout'] if \
-            'demoAccountRequestTimeout' in opts else 240
+        demo_account_request_timeout = validator.validate_non_zero(
+            opts['demoAccountRequestTimeout'] if 'demoAccountRequestTimeout' in opts else None, 240,
+            'demoAccountRequestTimeout')
         event_processing = opts['eventProcessing'] if 'eventProcessing' in opts else {}
         use_shared_client_api = opts['useSharedClientApi'] if 'useSharedClientApi' in opts else False
         if not re.search(r"[a-zA-Z0-9_]+", application):

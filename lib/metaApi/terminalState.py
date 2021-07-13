@@ -31,6 +31,7 @@ class TerminalState(SynchronizationListener):
         """Inits the instance of terminal state class"""
         super().__init__()
         self._stateByInstanceIndex = {}
+        self._waitForPriceResolves = {}
 
     @property
     def connected(self) -> bool:
@@ -111,6 +112,25 @@ class TerminalState(SynchronizationListener):
         state = self._get_best_state()
         return state['pricesBySymbol'][symbol] if \
             (symbol in state['pricesBySymbol']) else None
+
+    async def wait_for_price(self, symbol: str, timeout_in_seconds: float = 30):
+        """Waits for price to be received.
+
+        Args:
+            symbol: Symbol (e.g. currency pair or an index).
+            timeout_in_seconds: Timeout in seconds, default is 30.
+
+        Returns:
+            A coroutine resolving with price or undefined if price has not been received.
+        """
+        self._waitForPriceResolves[symbol] = self._waitForPriceResolves[symbol] if symbol in \
+            self._waitForPriceResolves else []
+        if self.price(symbol) is None:
+            future = asyncio.Future
+            self._waitForPriceResolves[symbol].append(future)
+            await asyncio.wait_for(future, timeout=timeout_in_seconds)
+
+        return self.price(symbol)
 
     async def on_connected(self, instance_index: str, replicas: int):
         """Invoked when connection to MetaTrader terminal established.
@@ -364,6 +384,14 @@ class TerminalState(SynchronizationListener):
                                                              order['type'] == 'ORDER_TYPE_BUY_STOP' or
                                                              order['type'] == 'ORDER_TYPE_BUY_STOP_LIMIT') else \
                         price['bid']
+                price_resolves = self._waitForPriceResolves[price['symbol']] if price['symbol'] in \
+                    self._waitForPriceResolves else []
+                if len(price_resolves):
+                    resolve: asyncio.Future
+                    for resolve in price_resolves:
+                        if not resolve.done():
+                            resolve.set_result(True)
+                    del self._waitForPriceResolves[price['symbol']]
         if state['accountInformation']:
             if state['positionsInitialized'] and prices_initialized:
                 if state['accountInformation']['platform'] == 'mt5':

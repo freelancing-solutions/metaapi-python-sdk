@@ -139,6 +139,47 @@ class MetatraderAccountModel(ABC):
 
     @property
     @abstractmethod
+    def tags(self) -> List[str]:
+        """Returns user-defined account tags.
+
+        Returns:
+            User-defined account tag.
+        """
+
+    @property
+    @abstractmethod
+    def copy_factory_roles(self) -> List[str]:
+        """Returns account roles for CopyFactory2 application.
+
+        Returns:
+            Account roles for CopyFactory2 application.
+        """
+
+    @property
+    @abstractmethod
+    def resource_slots(self) -> int:
+        """Returns number of resource slots to allocate to account. Allocating extra resource slots
+        results in better account performance under load which is useful for some applications. E.g. if you have many
+        accounts copying the same strategy via CooyFactory API, then you can increase resourceSlots to get a lower
+        trade copying latency. Please note that allocating extra resource slots is a paid option. Default is 1
+
+        Returns:
+            Number of resource slots to allocate to account.
+        """
+
+    @property
+    @abstractmethod
+    def base_currency(self) -> str:
+        """Returns 3-character ISO currency code of the account base currency. Default value is USD. The setting is to
+        be used for copy trading accounts which use national currencies only, such as some Brazilian brokers. You
+        should not alter this setting unless you understand what you are doing.
+
+        Returns:
+            3-character ISO currency code of the account base currency.
+        """
+
+    @property
+    @abstractmethod
     def reliability(self) -> str:
         """Returns reliability value. Possible values are regular and high.
 

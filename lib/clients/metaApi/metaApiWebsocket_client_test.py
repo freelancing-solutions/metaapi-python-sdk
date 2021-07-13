@@ -1657,6 +1657,35 @@ class TestMetaApiWebsocketClient:
             await client.close()
 
     @pytest.mark.asyncio
+    async def test_not_retry_if_connection_closed_between_retries(self):
+        """Should not retry request if connection closed between retries."""
+        request_counter = 0
+        response = {'type': 'response', 'accountId': 'accountId'}
+
+        @sio.on('request')
+        async def on_request(sid, data):
+            if data['type'] == 'unsubscribe' and data['accountId'] == 'accountId':
+                await sio.emit('response', {'requestId': data['requestId'], **response})
+
+            if data['type'] == 'getOrders' and data['accountId'] == 'accountId' \
+                    and data['application'] == 'RPC':
+                nonlocal request_counter
+                request_counter += 1
+                await sio.emit('processingError',
+                               {'id': 1, 'error': 'NotSynchronizedError', 'message': 'Error message',
+                                'requestId': data['requestId']})
+
+        asyncio.create_task(client.unsubscribe('accountId'))
+        try:
+            await client.get_orders('accountId')
+            raise Exception('NotSynchronizedException expected')
+        except Exception as err:
+            assert err.__class__.__name__ == 'NotSynchronizedException'
+            await client.close()
+        assert request_counter == 1
+        assert 'accountId' not in client.socket_instances_by_accounts
+
+    @pytest.mark.asyncio
     async def test_timeout_on_no_response(self):
         """Should return timeout error if no server response received."""
 

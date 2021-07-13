@@ -744,7 +744,10 @@ class TestMetaApiConnection:
     async def test_subscribe_to_market_data(self):
         """Should subscribe to market data."""
         client.subscribe_to_market_data = AsyncMock()
-        await api.subscribe_to_market_data('EURUSD', [{'type': 'quotes'}], 1)
+        promise = asyncio.create_task(api.subscribe_to_market_data('EURUSD', [{'type': 'quotes'}], 1))
+        await api.terminal_state.on_symbol_prices_updated('1:ps-mpa-1', [{'time': datetime.fromtimestamp(1000000),
+                                                          'symbol': 'EURUSD', 'bid': 1, 'ask': 1.1}])
+        await promise
         assert 'EURUSD' in api.subscribed_symbols
         client.subscribe_to_market_data.assert_called_with('accountId', 1, 'EURUSD', [{'type': 'quotes'}])
 
@@ -753,6 +756,8 @@ class TestMetaApiConnection:
         """Should unsubscribe from market data."""
         client.subscribe_to_market_data = AsyncMock()
         client.unsubscribe_from_market_data = AsyncMock()
+        await api.terminal_state.on_symbol_prices_updated('1:ps-mpa-1', [{'time': datetime.fromtimestamp(1000000),
+                                                                          'symbol': 'EURUSD', 'bid': 1, 'ask': 1.1}])
         await api.subscribe_to_market_data('EURUSD', [{'type': 'quotes'}], 1)
         assert 'EURUSD' in api.subscribed_symbols
         await api.unsubscribe_from_market_data('EURUSD', [{'type': 'quotes'}], 1)
@@ -966,11 +971,14 @@ class TestMetaApiConnection:
     @pytest.mark.asyncio
     async def test_restore_market_data_subs_on_sync(self):
         """Should restore market data subscriptions on synchronization."""
+        call_count = 0
+
         def get_price(symbol):
-            if symbol == 'EURUSD':
-                return {'symbol': symbol}
-            else:
+            nonlocal call_count
+            call_count += 1
+            if call_count == 6:
                 return None
+            return {'symbol': symbol}
 
         client.subscribe_to_market_data = AsyncMock()
         api.terminal_state.price = get_price

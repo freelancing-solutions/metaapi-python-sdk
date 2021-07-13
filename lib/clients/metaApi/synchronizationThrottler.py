@@ -6,6 +6,7 @@ from typing_extensions import TypedDict
 from typing import Optional, List
 from functools import reduce
 from ..timeoutException import TimeoutException
+from ..optionsValidator import OptionsValidator
 import math
 
 
@@ -31,12 +32,17 @@ class SynchronizationThrottler:
             socket_instance_index: Index of socket instance that uses the throttler.
             opts: Synchronization throttler options.
         """
+        validator = OptionsValidator()
         opts: SynchronizationThrottlerOpts = opts or {}
-        self._maxConcurrentSynchronizations = opts['maxConcurrentSynchronizations'] if \
-            'maxConcurrentSynchronizations' in opts else 15
-        self._queueTimeoutInSeconds = opts['queueTimeoutInSeconds'] if 'queueTimeoutInSeconds' in opts else 300
-        self._synchronizationTimeoutInSeconds = opts['synchronizationTimeoutInSeconds'] if \
-            'synchronizationTimeoutInSeconds' in opts else 10
+        self._maxConcurrentSynchronizations = validator.validate_non_zero(
+            opts['maxConcurrentSynchronizations'] if 'maxConcurrentSynchronizations' in opts else None, 15,
+            'synchronizationThrottler.maxConcurrentSynchronizations')
+        self._queueTimeoutInSeconds = validator.validate_non_zero(
+            opts['queueTimeoutInSeconds'] if 'queueTimeoutInSeconds' in opts else None, 300,
+            'synchronizationThrottler.queueTimeoutInSeconds')
+        self._synchronizationTimeoutInSeconds = validator.validate_non_zero(
+            opts['synchronizationTimeoutInSeconds'] if 'synchronizationTimeoutInSeconds' in opts else None, 10,
+            'synchronizationThrottler.synchronizationTimeoutInSeconds')
         self._client = client
         self._socketInstanceIndex = socket_instance_index
         self._synchronizationIds = {}

@@ -1,5 +1,11 @@
-13.0.1
+13.2.0
+  - added options validation
+  - added waitForPrice method into TerminalState class to make it possible to wait for price to arrive
+
+13.1.0
+  - added resourceSlots field to MetatraderAccount model so that user can request extra resource allocation for specific accounts for an extra fee
   - added logging URL on websocket connection
+  - remove synchronization listeners on connection close
 
 13.0.0
   - added baseCurrency field to the MetaTraderAccount model
