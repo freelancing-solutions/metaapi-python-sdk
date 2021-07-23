@@ -2103,3 +2103,69 @@ class TestMetaApiWebsocketClient:
         await asyncio.sleep(0.1)
         listener.on_reconnected.assert_called_once()
         assert request_counter == 2
+
+    @pytest.mark.asyncio
+    async def test_process_packet_in_order(self):
+        with patch('lib.clients.metaApi.metaApiWebsocket_client.asyncio.sleep', new=lambda x: sleep(x / 60)):
+            orders_call_time = 0
+            positions_call_time = 0
+            disconnected_call_time = 0
+
+            async def on_disconnected(instance_index: str):
+                await sleep(0.15)
+                nonlocal disconnected_call_time
+                disconnected_call_time = datetime.now().timestamp()
+
+            async def on_orders_replaced(instance_index: str, orders):
+                await sleep(0.25)
+                nonlocal orders_call_time
+                orders_call_time = datetime.now().timestamp()
+
+            async def on_positions_replaced(instance_index: str, positions):
+                await sleep(0.05)
+                nonlocal positions_call_time
+                positions_call_time = datetime.now().timestamp()
+
+            tasks = [task for task in asyncio.all_tasks() if task is not
+                     asyncio.tasks.current_task()]
+            list(map(lambda task: task.cancel(), tasks))
+            await fake_server.stop()
+            fake_server2 = FakeServer()
+            await fake_server2.start(8081)
+            http_client.request = AsyncMock(return_value={'url': 'http://localhost:8081'})
+            client = MetaApiWebsocketClient(http_client, 'token', {'application': 'application',
+                                                                   'domain': 'project-stock.agiliumlabs.cloud',
+                                                                   'requestTimeout': 3, 'useSharedClientApi': False,
+                                                                   'retryOpts': {'retries': 3, 'minDelayInSeconds': 0.1,
+                                                                                 'maxDelayInSeconds': 0.5},
+                                                                   'eventProcessing': {'sequentialProcessing': True}})
+
+            listener = MagicMock()
+            listener.on_connected = AsyncMock()
+            listener.on_disconnected = on_disconnected
+            listener.on_orders_replaced = on_orders_replaced
+            listener.on_positions_replaced = on_positions_replaced
+            client.add_synchronization_listener('accountId', listener)
+
+            @sio.on('request')
+            async def on_request(sid, data):
+                if data['type'] == 'getPositions' and data['accountId'] == 'accountId' \
+                        and data['application'] == 'RPC':
+                    await sio.emit('response', {'type': 'response', 'accountId': data['accountId'],
+                                                'requestId': data['requestId'], 'positions': []})
+                else:
+                    raise Exception('Wrong request')
+
+            await client.get_positions('accountId')
+            await sio.emit('synchronization', {'type': 'authenticated', 'accountId': 'accountId', 'host': 'ps-mpa-1',
+                                               'instanceIndex': 1, 'replicas': 2})
+            await sleep(0.95)
+
+            await sio.emit('synchronization', {'type': 'orders', 'accountId': 'accountId', 'orders': [],
+                                               'instanceIndex': 1, 'host': 'ps-mpa-1'})
+            await sleep(0.1)
+            await sio.emit('synchronization', {'type': 'positions', 'accountId': 'accountId', 'positions': [],
+                                               'instanceIndex': 1, 'host': 'ps-mpa-1'})
+            await sleep(0.5)
+
+            assert orders_call_time < disconnected_call_time < positions_call_time

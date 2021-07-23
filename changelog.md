@@ -1,6 +1,7 @@
 13.2.0
   - added options validation
   - added waitForPrice method into TerminalState class to make it possible to wait for price to arrive
+  - fixed sequential packet processing
 
 13.1.0
   - added resourceSlots field to MetatraderAccount model so that user can request extra resource allocation for specific accounts for an extra fee
