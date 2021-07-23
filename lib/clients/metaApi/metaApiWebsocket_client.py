@@ -892,8 +892,7 @@ class MetaApiWebsocketClient:
         account_id = packet['accountId']
         packets = self._packetOrderer.restore_order(packet)
         if self._sequentialEventProcessing:
-            events = list(map(lambda packet: asyncio.wait({
-                asyncio.create_task(self._process_synchronization_packet(packet))}), packets))
+            events = list(map(lambda packet: self._process_synchronization_packet(packet), packets))
             if account_id not in self._eventQueues:
                 self._eventQueues[account_id] = deque(events)
                 asyncio.create_task(self._call_account_events(account_id))
@@ -1123,7 +1122,7 @@ class MetaApiWebsocketClient:
                     await asyncio.sleep(60)
                     if is_only_active_instance():
                         self._subscriptionManager.on_timeout(data["accountId"], instance_number)
-                    self.queue_event(data["accountId"], asyncio.wait({asyncio.create_task(on_disconnected(True))}))
+                    self.queue_event(data["accountId"], on_disconnected(True))
 
                 cancel_disconnect_timer()
                 self._status_timers[instance_id] = asyncio.create_task(disconnect())
@@ -1714,8 +1713,7 @@ class MetaApiWebsocketClient:
                         print(f'[{datetime.now().isoformat()}] Failed to notify reconnect listener',
                               format_error(err))
 
-                self.queue_event(listener['accountId'],
-                                 asyncio.wait({asyncio.create_task(on_reconnected_task(listener))}))
+                self.queue_event(listener['accountId'], on_reconnected_task(listener))
         except Exception as err:
             print(f'[{datetime.now().isoformat()}] Failed to process reconnected event', format_error(err))
 

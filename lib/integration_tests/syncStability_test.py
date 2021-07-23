@@ -236,7 +236,7 @@ class TestSyncStability:
             connection = await account.connect()
             await connection.wait_synchronized({'timeoutInSeconds': 10})
             await sio.disconnect(client_sid)
-            await sleep(0.3)
+            await sleep(0.5)
             response = await connection.get_account_information()
             assert response == account_information
             assert connection.synchronized and connection.terminal_state.connected and \
