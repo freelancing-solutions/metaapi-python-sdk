@@ -1,3 +1,6 @@
+13.2.1
+  - output websocket server url before connection
+
 13.2.0
   - added options validation
   - added waitForPrice method into TerminalState class to make it possible to wait for price to arrive

@@ -81,6 +81,7 @@ class MetaApiWebsocketClient:
         self._status_timers = {}
         self._eventQueues = {}
         self._subscribeLock = None
+        self._firstConnect = True
         if 'packetLogger' in opts and 'enabled' in opts['packetLogger'] and opts['packetLogger']['enabled']:
             self._packetLogger = PacketLogger(opts['packetLogger'])
             self._packetLogger.start()
@@ -208,21 +209,12 @@ class MetaApiWebsocketClient:
         socket_instance = instance['socket']
         self._socketInstances.append(instance)
         instance['connected'] = True
-        first_connect = True
         if len(self._socketInstances) == 1:
             self._packetOrderer.start()
 
         @socket_instance.on('connect')
         async def on_connect():
-            is_shared_client_api = socket_instance.connection_url.split("?")[0] == self._url
-            print(f'[{datetime.now().isoformat()}] MetaApi websocket client connected to the MetaApi server via '
-                  f'{socket_instance.connection_url.split("?")[0]} '
-                  f'{"shared" if is_shared_client_api else "dedicated"} server')
-            nonlocal first_connect
-            if socket_instance_index == 0 and first_connect and not is_shared_client_api:
-                print('Please note that it can take up to 3 minutes for your dedicated server to start for the '
-                      'first time. During this time it is OK if you see some connection errors.')
-                first_connect = False
+            print(f'[{datetime.now().isoformat()}] MetaApi websocket client connected to the MetaApi server')
             if not instance['resolved']:
                 instance['resolved'] = True
                 instance['connectResult'].set_result(None)
@@ -1719,7 +1711,7 @@ class MetaApiWebsocketClient:
 
     async def _get_server_url(self):
         if self._useSharedClientApi:
-            return self._url
+            url = self._url
         else:
             opts = {
                 'url': f"https://mt-provisioning-api-v1.{self._domain}/users/current/servers/mt-client-api",
@@ -1729,4 +1721,12 @@ class MetaApiWebsocketClient:
                 }
             }
             response = await self._httpClient.request(opts)
-            return response['url']
+            url = response['url']
+        is_shared_client_api = url == self._url
+        print(f'[{datetime.now().isoformat()}] Connecting MetaApi websocket client to the MetaApi server via '
+              f'{url} {"shared" if is_shared_client_api else "dedicated"} server')
+        if self._firstConnect and not is_shared_client_api:
+            print('Please note that it can take up to 3 minutes for your dedicated server to start for the '
+                  'first time. During this time it is OK if you see some connection errors.')
+            self._firstConnect = False
+        return url
