@@ -68,6 +68,9 @@ class MetaApiWebsocketClient:
             'sequentialProcessing')
         self._useSharedClientApi = validator.validate_boolean(
             opts['useSharedClientApi'] if 'useSharedClientApi' in opts else None, False, 'useSharedClientApi')
+        self._enableSocketioDebugger = validator.validate_boolean(
+            opts['enableSocketioDebugger'] if 'enableSocketioDebugger' in opts else None, False,
+            'enableSocketioDebugger')
         self._token = token
         self._synchronizationListeners = {}
         self._latencyListeners = []
@@ -200,7 +203,8 @@ class MetaApiWebsocketClient:
             'connectResult': asyncio.Future(),
             'sessionId': random_id(),
             'isReconnecting': False,
-            'socket': socketio.AsyncClient(reconnection=False, request_timeout=self._request_timeout),
+            'socket': socketio.AsyncClient(reconnection=False, request_timeout=self._request_timeout,
+                                           engineio_logger=self._enableSocketioDebugger),
             'synchronizationThrottler': SynchronizationThrottler(self, socket_instance_index,
                                                                  self._synchronizationThrottlerOpts),
             'subscribeLock': None
