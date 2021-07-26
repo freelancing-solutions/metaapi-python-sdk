@@ -1,5 +1,5 @@
 13.2.2
-  - add enableSocketioDebugger parameter
+  - add enableSocketioDebugger option to make it possible to enable socketio debugger
 
 13.2.1
   - output websocket server url before connection
