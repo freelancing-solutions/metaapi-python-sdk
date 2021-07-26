@@ -1,3 +1,6 @@
+13.2.2
+  - add enableSocketioDebugger parameter
+
 13.2.1
   - output websocket server url before connection
 

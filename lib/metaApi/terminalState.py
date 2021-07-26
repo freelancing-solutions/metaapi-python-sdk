@@ -126,7 +126,7 @@ class TerminalState(SynchronizationListener):
         self._waitForPriceResolves[symbol] = self._waitForPriceResolves[symbol] if symbol in \
             self._waitForPriceResolves else []
         if self.price(symbol) is None:
-            future = asyncio.Future
+            future = asyncio.Future()
             self._waitForPriceResolves[symbol].append(future)
             await asyncio.wait_for(future, timeout=timeout_in_seconds)
 

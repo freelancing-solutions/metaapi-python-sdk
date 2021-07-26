@@ -68,6 +68,8 @@ class MetaApiOpts(TypedDict):
     """Options for processing events."""
     useSharedClientApi: Optional[bool]
     """Option to use a shared server."""
+    enableSocketioDebugger: Optional[bool]
+    """Option to enable debug mode."""
 
 
 class MetaApi:
@@ -101,6 +103,7 @@ class MetaApi:
             'demoAccountRequestTimeout')
         event_processing = opts['eventProcessing'] if 'eventProcessing' in opts else {}
         use_shared_client_api = opts['useSharedClientApi'] if 'useSharedClientApi' in opts else False
+        enable_socketio_debugger = opts['enableSocketioDebugger'] if 'enableSocketioDebugger' in opts else False
         if not re.search(r"[a-zA-Z0-9_]+", application):
             raise ValidationException('Application name must be non-empty string consisting ' +
                                       'from letters, digits and _ only')
@@ -113,7 +116,8 @@ class MetaApi:
                                  'packetOrderingTimeout': packet_ordering_timeout,
                                  'synchronizationThrottler': synchronization_throttler,
                                  'eventProcessing': event_processing, 'retryOpts': retry_opts,
-                                 'useSharedClientApi': use_shared_client_api})
+                                 'useSharedClientApi': use_shared_client_api,
+                                 'enableSocketioDebugger': enable_socketio_debugger})
         self._provisioningProfileApi = ProvisioningProfileApi(ProvisioningProfileClient(http_client, token, domain))
         self._connectionRegistry = ConnectionRegistry(self._metaApiWebsocketClient, application)
         historical_market_data_client = HistoricalMarketDataClient(historical_market_data_http_client, token, domain)

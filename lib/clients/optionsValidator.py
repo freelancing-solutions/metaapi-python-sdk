@@ -45,7 +45,7 @@ class OptionsValidator:
             raise ValidationException(f'Parameter {name} must be bigger than 0')
         return value
 
-    def validate_boolean(self, value: bool or None, default_value: int or float, name: str):
+    def validate_boolean(self, value: bool or None, default_value: bool, name: str):
         """Validates a number parameter.
 
         Args:
