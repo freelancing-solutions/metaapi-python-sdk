@@ -18,6 +18,8 @@ import re
 from typing import Optional
 from ..metaApi.models import format_error
 from typing_extensions import TypedDict
+import asyncio
+from ..logger import LoggerManager
 
 
 class RetryOpts(TypedDict):
@@ -35,7 +37,15 @@ class RetryOpts(TypedDict):
 class EventProcessingOpts(TypedDict):
     """Options for processing websocket client events."""
     sequentialProcessing: Optional[bool]
-    """An option to process synchronization events after finishing previous ones."""
+    """An option to process synchronization events after finishing previous ones. Default value is true."""
+
+
+class RefreshSubscriptionsOpts(TypedDict):
+    """Subscriptions refresh options."""
+    minDelayInSeconds: Optional[float]
+    """Minimum delay in seconds until subscriptions refresh request, default value is 1."""
+    maxDelayInSeconds: Optional[float]
+    """Maximum delay in seconds until subscriptions refresh request, default value is 600."""
 
 
 class MetaApiOpts(TypedDict):
@@ -70,6 +80,8 @@ class MetaApiOpts(TypedDict):
     """Option to use a shared server."""
     enableSocketioDebugger: Optional[bool]
     """Option to enable debug mode."""
+    refreshSubscriptionsOpts: Optional[RefreshSubscriptionsOpts]
+    """Subscriptions refresh options."""
 
 
 class MetaApi:
@@ -104,6 +116,7 @@ class MetaApi:
         event_processing = opts['eventProcessing'] if 'eventProcessing' in opts else {}
         use_shared_client_api = opts['useSharedClientApi'] if 'useSharedClientApi' in opts else False
         enable_socketio_debugger = opts['enableSocketioDebugger'] if 'enableSocketioDebugger' in opts else False
+        refresh_subscriptions_opts = opts['refreshSubscriptionsOpts'] if 'refreshSubscriptionsOpts' in opts else {}
         if not re.search(r"[a-zA-Z0-9_]+", application):
             raise ValidationException('Application name must be non-empty string consisting ' +
                                       'from letters, digits and _ only')
@@ -119,7 +132,8 @@ class MetaApi:
                                  'useSharedClientApi': use_shared_client_api,
                                  'enableSocketioDebugger': enable_socketio_debugger})
         self._provisioningProfileApi = ProvisioningProfileApi(ProvisioningProfileClient(http_client, token, domain))
-        self._connectionRegistry = ConnectionRegistry(self._metaApiWebsocketClient, application)
+        self._connectionRegistry = ConnectionRegistry(self._metaApiWebsocketClient, application,
+                                                      refresh_subscriptions_opts)
         historical_market_data_client = HistoricalMarketDataClient(historical_market_data_http_client, token, domain)
         self._metatraderAccountApi = MetatraderAccountApi(MetatraderAccountClient(http_client, token, domain),
                                                           self._metaApiWebsocketClient, self._connectionRegistry,
@@ -131,6 +145,12 @@ class MetaApi:
                                                                                    opts['enableLatencyMonitor']):
             self._latencyMonitor = LatencyMonitor()
             self._metaApiWebsocketClient.add_latency_listener(self._latencyMonitor)
+
+    @staticmethod
+    def enable_logging():
+        """Enables using Logging logger with extended log levels for debugging instead of
+        print function. Note that Logging configuration is performed by the user."""
+        LoggerManager.use_logging()
 
     @property
     def provisioning_profile_api(self) -> ProvisioningProfileApi:
@@ -178,5 +198,6 @@ class MetaApi:
 
     def close(self):
         """Closes all clients and connections"""
-        self._metaApiWebsocketClient.remove_latency_listener(self._latencyMonitor)
-        self._metaApiWebsocketClient.close()
+        if hasattr(self, '_latencyMonitor'):
+            self._metaApiWebsocketClient.remove_latency_listener(self._latencyMonitor)
+        asyncio.create_task(self._metaApiWebsocketClient.close())

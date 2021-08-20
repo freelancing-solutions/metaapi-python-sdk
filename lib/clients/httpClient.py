@@ -10,6 +10,7 @@ import sys
 import httpx
 from datetime import datetime
 from httpx import HTTPError, Response
+from .optionsValidator import OptionsValidator
 
 
 if sys.version_info[0] == 3 and sys.version_info[1] >= 8 and sys.platform.startswith('win'):
@@ -34,13 +35,19 @@ class HttpClient:
         Args:
             timeout: Request timeout in seconds.
         """
+        validator = OptionsValidator()
         timeout = timeout or 60
         if retry_opts is None:
             retry_opts = {}
         self._timeout = timeout
-        self._retries = retry_opts['retries'] if 'retries' in retry_opts else 5
-        self._minRetryDelayInSeconds = retry_opts['minDelayInSeconds'] if 'minDelayInSeconds' in retry_opts else 1
-        self._maxRetryDelayInSeconds = retry_opts['maxDelayInSeconds'] if 'maxDelayInSeconds' in retry_opts else 30
+        self._retries = validator.validate_number(retry_opts['retries'] if 'retries' in retry_opts else None, 5,
+                                                  'retryOpts.retries')
+        self._minRetryDelayInSeconds = validator.validate_non_zero(
+            retry_opts['minDelayInSeconds'] if 'minDelayInSeconds' in retry_opts else None, 1,
+            'retryOpts.minDelayInSeconds')
+        self._maxRetryDelayInSeconds = validator.validate_non_zero(
+            retry_opts['maxDelayInSeconds'] if 'maxDelayInSeconds' in retry_opts else None, 30,
+            'retryOpts.maxDelayInSeconds')
 
     async def request(self, options: RequestOptions, retry_counter: int = 0, end_time: float = None) -> Response:
         """Performs a request. Response errors are returned as ApiException or subclasses.

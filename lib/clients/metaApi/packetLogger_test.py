@@ -262,25 +262,25 @@ class TestPacketLogger:
         """Should delete expired folders."""
         with freeze_time(start_time) as frozen_datetime:
             packet_logger.log_packet(packets['accountInformation'])
-            await sleep(0.3)
+            await sleep(0.2)
             folder_list = os.listdir(folder)
             assert folder_list == ['2020-10-10-00']
 
-            frozen_datetime.move_to('2020-10-10 05:00:01.000')
+            frozen_datetime.move_to('2020-10-10 05:10:00.000')
             packet_logger.log_packet(packets['accountInformation'])
             await sleep(0.3)
             folder_list = os.listdir(folder)
             folder_list.sort()
-            assert os.listdir(folder) == ['2020-10-10-00', '2020-10-10-01']
+            assert folder_list == ['2020-10-10-00', '2020-10-10-01']
 
-            frozen_datetime.move_to('2020-10-10 09:00:01.000')
+            frozen_datetime.move_to('2020-10-10 09:10:00.000')
             packet_logger.log_packet(packets['accountInformation'])
             await sleep(0.3)
             folder_list = os.listdir(folder)
             folder_list.sort()
             assert folder_list == ['2020-10-10-00', '2020-10-10-01', '2020-10-10-02']
 
-            frozen_datetime.move_to('2020-10-10 13:00:01.000')
+            frozen_datetime.move_to('2020-10-10 13:10:00.000')
             packet_logger.log_packet(packets['accountInformation'])
             await sleep(0.3)
             folder_list = os.listdir(folder)

@@ -95,23 +95,32 @@ class MetatraderAccountDto(TypedDict):
     2.5 seconds. Intervals less than 2.5 seconds are supported only for G2."""
     tags: Optional[List[str]]
     """MetaTrader account tags."""
-    extensions: List[Extension]
+    extensions: Optional[List[Extension]]
     """API extensions."""
-    metadata: Dict
+    metadata: Optional[Dict]
     """Extra information which can be stored together with your account."""
-    reliability: str
+    reliability: Optional[str]
     """Used to increase the reliability of the account. Allowed values are regular and high. Default is regular."""
-    baseCurrency: str
+    baseCurrency: Optional[str]
     """3-character ISO currency code of the account base currency. Default value is USD.
     The setting is to be used for copy trading accounts which use national currencies only, such as some Brazilian
     brokers. You should not alter this setting unless you understand what you are doing."""
-    copyFactoryRoles: List[str]
+    copyFactoryRoles: Optional[List[str]]
     """Account roles for CopyFactory2 application. Allowed values are `PROVIDER` and `SUBSCRIBER`."""
-    resourceSlots: int
-    """Number of resource slots to allocate to account. Allocating extra resource slots results in better account
-    performance under load which is useful for some applications. E.g. if you have many accounts copying the same
-    strategy via CopyFactory API, then you can increase resourceSlots to get a lower trade copying latency. Please
-    note that allocating extra resource slots is a paid option. Default is 1."""
+    resourceSlots: Optional[int]
+    """Number of resource slots to allocate to account. Allocating extra resource slots
+    results in better account performance under load which is useful for some applications. E.g. if you have many
+    accounts copying the same strategy via CopyFactory API, then you can increase resourceSlots to get a lower trade
+    copying latency. Please note that allocating extra resource slots is a paid option. Please note that high
+    reliability accounts use redundant infrastructure, so that each resource slot for a high reliability account
+    is billed as 2 standard resource slots. Default is 1."""
+    copyFactoryResourceSlots: Optional[int]
+    """Number of CopyFactory 2 resource slots to allocate to account.
+    Allocating extra resource slots results in lower trade copying latency. Please note that allocating extra resource
+    slots is a paid option. Please also note that CopyFactory 2 uses redundant infrastructure so that
+    each CopyFactory resource slot is billed as 2 standard resource slots. You will be billed for CopyFactory 2
+    resource slots only if you have added your account to CopyFactory 2 by specifying copyFactoryRoles field.
+    Default is 1."""
 
 
 class NewMetatraderAccountDto(TypedDict):

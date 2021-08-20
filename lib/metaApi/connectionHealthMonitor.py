@@ -1,11 +1,12 @@
 from ..clients.metaApi.synchronizationListener import SynchronizationListener, HealthStatus
 from .reservoir.reservoir import Reservoir
-from .models import MetatraderSymbolPrice, date, format_error
+from .models import MetatraderSymbolPrice, date, string_format_error
 from typing_extensions import TypedDict
 import asyncio
 from datetime import datetime
 import functools
 from random import uniform
+from ..logger import LoggerManager
 
 
 class ConnectionHealthStatus(TypedDict):
@@ -59,9 +60,11 @@ class ConnectionHealthMonitor(SynchronizationListener):
             '1d': Reservoir(24 * 60, 24 * 60 * 60 * 1000),
             '1w': Reservoir(24 * 7, 7 * 24 * 60 * 60 * 1000),
         }
+        self._logger = LoggerManager.get_logger('ConnectionHealthMonitor')
 
     def stop(self):
         """Stops health monitor."""
+        self._logger.debug(f'{self._connection.account.id}: Stopping the monitor')
         self._updateQuoteHealthStatusInterval.cancel()
         self._measureUptimeInterval.cancel()
 
@@ -78,8 +81,8 @@ class ConnectionHealthMonitor(SynchronizationListener):
             self._offset = self._priceUpdatedAt.timestamp() - broker_timestamp
 
         except Exception as err:
-            print(f'[{datetime.now().isoformat()}] failed to update quote streaming health status on price ' +
-                  'update for account ' + self._connection.account.id, format_error(err))
+            self._logger.error(f'{self._connection.account.id}: Failed to update quote streaming health '
+                               f'status on price update ' + string_format_error(err))
 
     async def on_health_status(self, instance_index: str, status: HealthStatus):
         """Invoked when a server-side application health status is received from MetaApi.
@@ -174,8 +177,8 @@ class ConnectionHealthMonitor(SynchronizationListener):
                     self._connection.terminal_state.connected and self._connection.terminal_state.connected_to_broker
                     and self._connection.synchronized and self._quotesHealthy) else 0)
         except Exception as err:
-            print(f'[{datetime.now().isoformat()}] failed to measure uptime for account ' +
-                  self._connection.account.id, format_error(err))
+            self._logger.error(f'failed to measure uptime for account {self._connection.account.id} '
+                               f'{string_format_error(err)}')
 
     def _update_quote_health_status(self):
         try:
@@ -208,5 +211,5 @@ class ConnectionHealthMonitor(SynchronizationListener):
                                   ((datetime.now().timestamp() - self._priceUpdatedAt.timestamp()) <
                                    self._minQuoteInterval)
         except Exception as err:
-            print(f'[{datetime.now().isoformat()}] failed to update quote streaming health status for account ' +
-                  self._connection.account.id, format_error(err))
+            self._logger.error(f'failed to update quote streaming health status for account '
+                               f'{self._connection.account.id} {string_format_error(err)}')

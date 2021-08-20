@@ -83,6 +83,7 @@ async def test_meta_api_synchronization():
         print('orders:', terminal_state.orders)
         print('specifications:', terminal_state.specifications)
         print('EURUSD specification:', terminal_state.specification('EURUSD'))
+        await connection.subscribe_to_market_data('EURUSD')
         print('EURUSD price:', terminal_state.price('EURUSD'))
 
         # trade

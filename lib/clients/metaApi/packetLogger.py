@@ -8,8 +8,9 @@ import asyncio
 import functools
 import shutil
 from copy import deepcopy
-from ...metaApi.models import date, format_error
+from ...metaApi.models import date, string_format_error
 from ..optionsValidator import OptionsValidator
+from ...logger import LoggerManager
 
 
 class PacketLoggerOpts(TypedDict):
@@ -51,6 +52,7 @@ class PacketLogger:
         self._lastSNPacket = {}
         self._writeQueue = {}
         self._root = './.metaapi/logs'
+        self._logger = LoggerManager.get_logger('PacketLogger')
         self._recordInterval: asyncio.Task or None = None
         self._deleteOldLogsInterval: asyncio.Task or None = None
         if not os.path.exists('./.metaapi'):
@@ -202,12 +204,12 @@ class PacketLogger:
 
     async def _append_logs(self):
         """Writes logs to files."""
-        for key in self._writeQueue:
-            queue = self._writeQueue[key]
+        for account_id in self._writeQueue:
+            queue = self._writeQueue[account_id]
             if (not queue['isWriting']) and len(queue['queue']):
                 queue['isWriting'] = True
                 try:
-                    file_path = self.get_file_path(key)
+                    file_path = self.get_file_path(account_id)
                     write_string = functools.reduce(
                         lambda a, b: a + f'[{datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]}] {b}\r',
                         queue['queue'], '')
@@ -216,7 +218,7 @@ class PacketLogger:
                     f.write(write_string)
                     f.close()
                 except Exception as err:
-                    print('Error writing log', format_error(err))
+                    self._logger.error(f'{account_id}: Failed to record packet log ' + string_format_error(err))
                 queue['isWriting'] = False
 
     async def _delete_old_data(self):

@@ -10,15 +10,19 @@ import asyncio
 class ConnectionRegistry(ConnectionRegistryModel):
     """Manages account connections"""
 
-    def __init__(self, meta_api_websocket_client: MetaApiWebsocketClient, application: str = 'MetaApi'):
+    def __init__(self, meta_api_websocket_client: MetaApiWebsocketClient, application: str = 'MetaApi',
+                 refresh_subscriptions_opts: dict = None):
         """Inits a MetaTrader connection registry instance.
 
         Args:
             meta_api_websocket_client: MetaApi websocket client.
             application: Application type.
+            refresh_subscriptions_opts: Subscriptions refresh options.
         """
+        refresh_subscriptions_opts = refresh_subscriptions_opts or {}
         self._meta_api_websocket_client = meta_api_websocket_client
         self._application = application
+        self._refresh_subscriptions_opts = refresh_subscriptions_opts
         self._connections = {}
         self._connectionLocks = {}
 
@@ -44,7 +48,7 @@ class ConnectionRegistry(ConnectionRegistryModel):
             connection_lock = asyncio.Future()
             self._connectionLocks[account.id] = {'promise': connection_lock}
             connection = MetaApiConnection(self._meta_api_websocket_client, account, history_storage, self,
-                                           history_start_time)
+                                           history_start_time, self._refresh_subscriptions_opts)
             try:
                 await connection.initialize()
                 await connection.subscribe()

@@ -2,6 +2,8 @@ from .terminalState import TerminalState
 import pytest
 import asyncio
 from datetime import datetime
+from ..metaApi.models import date
+from hashlib import md5
 state = TerminalState()
 
 
@@ -51,6 +53,8 @@ class TestTerminalState:
         await state.on_position_updated('1:ps-mpa-1', {'id': '1', 'profit': 11})
         assert len(state.positions) == 2
         await state.on_position_removed('1:ps-mpa-1', '2')
+        await state.on_position_removed('1:ps-mpa-1', '3')
+        await state.on_position_removed('1:ps-mpa-1', '3')
         assert len(state.positions) == 1
         assert state.positions == [{'id': '1', 'profit': 11}]
 
@@ -58,11 +62,11 @@ class TestTerminalState:
     async def test_return_orders(self):
         """Should return orders."""
         assert len(state.orders) == 0
-        await state.on_order_updated('1:ps-mpa-1', {'id': '1', 'openPrice': 10})
-        await state.on_order_updated('1:ps-mpa-1', {'id': '2'})
-        await state.on_order_updated('1:ps-mpa-1', {'id': '1', 'openPrice': 11})
+        await state.on_pending_order_updated('1:ps-mpa-1', {'id': '1', 'openPrice': 10})
+        await state.on_pending_order_updated('1:ps-mpa-1', {'id': '2'})
+        await state.on_pending_order_updated('1:ps-mpa-1', {'id': '1', 'openPrice': 11})
         assert len(state.orders) == 2
-        await state.on_order_completed('1:ps-mpa-1', '2')
+        await state.on_pending_order_completed('1:ps-mpa-1', '2')
         assert len(state.orders) == 1
         assert state.orders == [{'id': '1', 'openPrice': 11}]
 
@@ -125,6 +129,7 @@ class TestTerminalState:
             'profit': 100,
             'volume': 2
         })
+        await state.on_positions_synchronized('1:ps-mpa-1', 'synchronizationId')
         await state.on_symbol_specifications_updated('1:ps-mpa-1', [
             {'symbol': 'EURUSD', 'tickSize': 0.01, 'digits': 5}, {'symbol': 'AUDUSD', 'tickSize': 0.01, 'digits': 5}],
                                                      [])
@@ -165,13 +170,13 @@ class TestTerminalState:
     async def test_update_order_current_price_on_price_update(self):
         """Should update order currentPrice on price update."""
 
-        await state.on_order_updated('1:ps-mpa-1', {
+        await state.on_pending_order_updated('1:ps-mpa-1', {
           'id': '1',
           'symbol': 'EURUSD',
           'type': 'ORDER_TYPE_BUY_LIMIT',
           'currentPrice': 9
         })
-        await state.on_order_updated('1:ps-mpa-1', {
+        await state.on_pending_order_updated('1:ps-mpa-1', {
             'id': '2',
             'symbol': 'AUDUSD',
             'type': 'ORDER_TYPE_SELL_LIMIT',
@@ -198,3 +203,187 @@ class TestTerminalState:
                                          'symbol': 'EURUSD', 'bid': 1, 'ask': 1.1}
         await state.on_stream_closed('1:ps-mpa-1')
         assert not state.price('EURUSD')
+
+    @pytest.mark.asyncio
+    async def test_on_synchronization_started(self):
+        """Should reset state on synchronization started event."""
+        specification = {'symbol': 'EURUSD', 'tickSize': 0.01}
+        positions = [{
+            'id': '1',
+            'symbol': 'EURUSD',
+            'type': 'POSITION_TYPE_BUY',
+            'currentPrice': 9,
+            'currentTickValue': 0.5,
+            'openPrice': 8,
+            'profit': 100,
+            'volume': 2
+        }]
+        orders = [{
+          'id': '1',
+          'symbol': 'EURUSD',
+          'type': 'ORDER_TYPE_BUY_LIMIT',
+          'currentPrice': 9
+        }]
+        await state.on_account_information_updated('1:ps-mpa-1', {'balance': 1000})
+        await state.on_symbol_specifications_updated('1:ps-mpa-1', [specification], [])
+        await state.on_positions_replaced('1:ps-mpa-1', positions)
+        await state.on_pending_orders_replaced('1:ps-mpa-1', orders)
+        assert state.account_information == {'balance': 1000}
+        assert state.specification('EURUSD') == specification
+        await state.on_synchronization_started('1:ps-mpa-1', specifications_updated=False, positions_updated=False,
+                                               orders_updated=False)
+        assert not state.account_information
+        assert state.specification('EURUSD') == specification
+        assert state.orders == orders
+        assert state.positions == positions
+        await state.on_synchronization_started('1:ps-mpa-1', specifications_updated=True, positions_updated=False,
+                                               orders_updated=False)
+        assert not state.specification('EURUSD')
+        assert state.orders == orders
+        assert state.positions == positions
+        await state.on_synchronization_started('1:ps-mpa-1', specifications_updated=True, positions_updated=False,
+                                               orders_updated=True)
+        assert state.orders == []
+        assert state.positions == positions
+        await state.on_synchronization_started('1:ps-mpa-1', specifications_updated=True, positions_updated=True,
+                                               orders_updated=True)
+        assert state.positions == []
+
+    @pytest.mark.asyncio
+    async def test_return_hashes_g1(self):
+        """Should return hashes for terminal state data for cloud-g1 accounts."""
+        empty_hash = 'd751713988987e9331980363e24189ce'
+        specifications_hash = md5(
+            ('[{"symbol":"AUDNZD","tickSize":0.01000000},{"symbol":"EURUSD",'
+             '"tickSize":0.00000100,"contractSize":1.00000000,"maxVolume":30000.00000000,'
+             '"hedgedMarginUsesLargerLeg":false,"digits":3}]').encode()).hexdigest()
+        positions_hash = md5(
+            ('[{"id":"46214692","type":"POSITION_TYPE_BUY","symbol":"GBPUSD","magic":1000,'
+             '"openPrice":1.26101000,"volume":0.07000000,"swap":0.00000000,"commission":-0.25000000,'
+             '"stopLoss":1.17721000}]'
+             ).encode()).hexdigest()
+        orders_hash = md5(('[{"id":"46871284","type":"ORDER_TYPE_BUY_LIMIT","state":"ORDER_STATE_PLACED",'
+                           '"symbol":"AUDNZD","magic":123456,"platform":"mt5","openPrice":1.03000000,'
+                           '"volume":0.01000000,"currentVolume":0.01000000}]').encode()).hexdigest()
+        hashes = state.get_hashes('cloud-g1')
+        assert hashes['specificationsMd5'] == empty_hash
+        assert hashes['positionsMd5'] == empty_hash
+        assert hashes['ordersMd5'] == empty_hash
+        await state.on_symbol_specifications_updated('1:ps-mpa-1', [
+            {'symbol': 'AUDNZD', 'tickSize': 0.01, "description": "Test1"},
+            {'symbol': 'EURUSD', 'tickSize': 0.000001, "contractSize": 1, "maxVolume": 30000,
+             "hedgedMarginUsesLargerLeg": False, 'digits': 3, "description": "Test2"}], [])
+        await state.on_positions_replaced('1:ps-mpa-1', [{
+            'id': '46214692',
+            'type': 'POSITION_TYPE_BUY',
+            'symbol': 'GBPUSD',
+            'magic': 1000,
+            'time': date('2020-04-15T02:45:06.521Z'),
+            'updateTime': date('2020-04-15T02:45:06.521Z'),
+            'openPrice': 1.26101,
+            'currentPrice': 1.24883,
+            'currentTickValue': 1,
+            'volume': 0.07,
+            'swap': 0,
+            'profit': -85.25999999999966,
+            'commission': -0.25,
+            'clientId': 'TE_GBPUSD_7hyINWqAlE',
+            'stopLoss': 1.17721,
+            'unrealizedProfit': -85.25999999999901,
+            'realizedProfit': -6.536993168992922e-13,
+            'updateSequenceNumber': 13246,
+            'accountCurrencyExchangeRate': 1,
+            'comment': 'test',
+            'originalComment': 'test2',
+        }])
+        await state.on_pending_orders_replaced('1:ps-mpa-1', [{
+            'id': '46871284',
+            'type': 'ORDER_TYPE_BUY_LIMIT',
+            'state': 'ORDER_STATE_PLACED',
+            'symbol': 'AUDNZD',
+            'magic': 123456,
+            'platform': 'mt5',
+            'time': '2020-04-20T08:38:58.270Z',
+            'openPrice': 1.03,
+            'currentPrice': 1.05206,
+            'volume': 0.01,
+            'currentVolume': 0.01,
+            'comment': 'COMMENT2',
+            'updateSequenceNumber': 13246,
+            'accountCurrencyExchangeRate': 1,
+            'originalComment': 'test2',
+            'clientId': 'TE_GBPUSD_7hyINWqAlE',
+        }])
+        hashes = state.get_hashes('cloud-g1')
+        assert hashes['specificationsMd5'] == specifications_hash
+        assert hashes['positionsMd5'] == positions_hash
+        assert hashes['ordersMd5'] == orders_hash
+
+    @pytest.mark.asyncio
+    async def test_return_hashes_g2(self):
+        """Should return hashes for terminal state data for cloud-g2 accounts."""
+        empty_hash = 'd751713988987e9331980363e24189ce'
+        specifications_hash = md5(
+            ('[{"symbol":"AUDNZD","tickSize":0.01,"description":"Test1"},{"symbol":"EURUSD","tickSize":0.000001,'
+             '"contractSize":1,"maxVolume":30000,"hedgedMarginUsesLargerLeg":false,"description":"Test2"}]'
+             ).encode()).hexdigest()
+        positions_hash = md5(
+            ('[{"id":"46214692","type":"POSITION_TYPE_BUY","symbol":"GBPUSD","magic":1000,'
+             '"time":"2020-04-15T02:45:06.521Z","updateTime":"2020-04-15T02:45:06.521Z","openPrice":1.26101,'
+             '"volume":0.07,"swap":0,"commission":-0.25,"stopLoss":1.17721}]').encode()).hexdigest()
+        orders_hash = md5(('[{"id":"46871284","type":"ORDER_TYPE_BUY_LIMIT","state":"ORDER_STATE_PLACED",'
+                           '"symbol":"AUDNZD","magic":123456,"platform":"mt5","time":"2020-04-20T08:38:58.270Z",'
+                           '"openPrice":1.03,"volume":0.01,"currentVolume":0.01}]').encode()).hexdigest()
+        hashes = state.get_hashes('cloud-g2')
+        assert hashes['specificationsMd5'] == empty_hash
+        assert hashes['positionsMd5'] == empty_hash
+        assert hashes['ordersMd5'] == empty_hash
+        await state.on_symbol_specifications_updated('1:ps-mpa-1', [
+            {'symbol': 'AUDNZD', 'tickSize': 0.01, "description": "Test1"},
+            {'symbol': 'EURUSD', 'tickSize': 0.000001, "contractSize": 1, "maxVolume": 30000,
+             "hedgedMarginUsesLargerLeg": False, "description": "Test2"}], [])
+        await state.on_positions_replaced('1:ps-mpa-1', [{
+            'id': '46214692',
+            'type': 'POSITION_TYPE_BUY',
+            'symbol': 'GBPUSD',
+            'magic': 1000,
+            'time': date('2020-04-15T02:45:06.521Z'),
+            'updateTime': date('2020-04-15T02:45:06.521Z'),
+            'openPrice': 1.26101,
+            'currentPrice': 1.24883,
+            'currentTickValue': 1,
+            'volume': 0.07,
+            'swap': 0,
+            'profit': -85.25999999999966,
+            'commission': -0.25,
+            'clientId': 'TE_GBPUSD_7hyINWqAlE',
+            'stopLoss': 1.17721,
+            'unrealizedProfit': -85.25999999999901,
+            'realizedProfit': -6.536993168992922e-13,
+            'updateSequenceNumber': 13246,
+            'accountCurrencyExchangeRate': 1,
+            'comment': 'test',
+            'originalComment': 'test2',
+        }])
+        await state.on_pending_orders_replaced('1:ps-mpa-1', [{
+            'id': '46871284',
+            'type': 'ORDER_TYPE_BUY_LIMIT',
+            'state': 'ORDER_STATE_PLACED',
+            'symbol': 'AUDNZD',
+            'magic': 123456,
+            'platform': 'mt5',
+            'time': '2020-04-20T08:38:58.270Z',
+            'openPrice': 1.03,
+            'currentPrice': 1.05206,
+            'volume': 0.01,
+            'currentVolume': 0.01,
+            'comment': 'COMMENT2',
+            'updateSequenceNumber': 13246,
+            'accountCurrencyExchangeRate': 1,
+            'originalComment': 'test2',
+            'clientId': 'TE_GBPUSD_7hyINWqAlE',
+        }])
+        hashes = state.get_hashes('cloud-g2')
+        assert hashes['specificationsMd5'] == specifications_hash
+        assert hashes['positionsMd5'] == positions_hash
+        assert hashes['ordersMd5'] == orders_hash

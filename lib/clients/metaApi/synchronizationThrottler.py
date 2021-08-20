@@ -7,6 +7,8 @@ from typing import Optional, List
 from functools import reduce
 from ..timeoutException import TimeoutException
 from ..optionsValidator import OptionsValidator
+from ...logger import LoggerManager
+from ...metaApi.models import string_format_error
 import math
 
 
@@ -50,6 +52,7 @@ class SynchronizationThrottler:
         self._synchronizationQueue = deque([])
         self._removeOldSyncIdsInterval = None
         self._processQueueInterval = None
+        self._logger = LoggerManager.get_logger('SynchronizationThrottler')
 
     def start(self):
         """Initializes the synchronization throttler."""
@@ -170,7 +173,7 @@ class SynchronizationThrottler:
                 synchronization['promise'].set_result('cancel')
         self._synchronizationIds = {}
         self._accountsBySynchronizationIds = {}
-        self._synchronizationQueue = []
+        self._synchronizationQueue = deque([])
         self.stop()
         self.start()
 
@@ -193,12 +196,15 @@ class SynchronizationThrottler:
                                                   self._synchronizationQueue))
 
     async def _process_queue_job(self):
-        while len(self._synchronizationQueue):
-            queue_item = self._synchronizationQueue[0]
-            await queue_item['promise']
-            if len(self._synchronizationQueue) and self._synchronizationQueue[0]['synchronizationId'] == \
-                    queue_item['synchronizationId']:
-                self._synchronizationQueue.popleft()
+        try:
+            while len(self._synchronizationQueue):
+                queue_item = self._synchronizationQueue[0]
+                await queue_item['promise']
+                if len(self._synchronizationQueue) and self._synchronizationQueue[0]['synchronizationId'] == \
+                        queue_item['synchronizationId']:
+                    self._synchronizationQueue.popleft()
+        except Exception as err:
+            self._logger.error('Error processing queue job ' + string_format_error(err))
 
     async def schedule_synchronize(self, account_id: str, request: Dict):
         """Schedules to send a synchronization request for account.
@@ -211,7 +217,9 @@ class SynchronizationThrottler:
         for key in list(self._accountsBySynchronizationIds.keys()):
             if self._accountsBySynchronizationIds[key]['accountId'] == account_id and \
                      self._accountsBySynchronizationIds[key]['instanceIndex'] == \
-                    (request['instanceIndex'] if 'instanceIndex' in request else None):
+                    (request['instanceIndex'] if 'instanceIndex' in request else None) and \
+                    self._accountsBySynchronizationIds[key]['host'] == \
+                    (request['host'] if 'host' in request else None):
                 self.remove_synchronization_id(key)
         self._accountsBySynchronizationIds[synchronization_id] = {
             'accountId': account_id, 'instanceIndex': request['instanceIndex'] if 'instanceIndex' in request else None,

@@ -129,6 +129,7 @@ account: MockAccount = None
 auto_account: AutoMockAccount = None
 client: MockClient = None
 api: MetaApiConnection = None
+empty_hash = 'd41d8cd98f00b204e9800998ecf8427e'
 
 
 @pytest.fixture(autouse=True)
@@ -725,7 +726,8 @@ class TestMetaApiConnection:
             await api.history_storage.on_deal_added('1:ps-mpa-1', {'time': date('2020-01-02T00:00:00.000Z')})
             await api.synchronize('1:ps-mpa-1')
             client.synchronize.assert_called_with('accountId', 1, 'ps-mpa-1', 'synchronizationId',
-                                                  date('2020-01-01T00:00:00.000Z'), date('2020-01-02T00:00:00.000Z'))
+                                                  date('2020-01-01T00:00:00.000Z'), date('2020-01-02T00:00:00.000Z'),
+                                                  empty_hash, empty_hash, empty_hash)
 
     @pytest.mark.asyncio
     async def test_synchronize_state_with_terminal_from_time(self):
@@ -738,18 +740,27 @@ class TestMetaApiConnection:
             await api.history_storage.on_deal_added('1:ps-mpa-1', {'time': date('2020-01-02T00:00:00.000Z')})
             await api.synchronize('1:ps-mpa-1')
             client.synchronize.assert_called_with('accountId', 1, 'ps-mpa-1', 'synchronizationId',
-                                                  date('2020-10-07T00:00:00.000Z'), date('2020-10-07T00:00:00.000Z'))
+                                                  date('2020-10-07T00:00:00.000Z'), date('2020-10-07T00:00:00.000Z'),
+                                                  empty_hash, empty_hash, empty_hash)
 
     @pytest.mark.asyncio
     async def test_subscribe_to_market_data(self):
         """Should subscribe to market data."""
         client.subscribe_to_market_data = AsyncMock()
-        promise = asyncio.create_task(api.subscribe_to_market_data('EURUSD', [{'type': 'quotes'}], 1))
+        promise = asyncio.create_task(api.subscribe_to_market_data('EURUSD', None, 1))
         await api.terminal_state.on_symbol_prices_updated('1:ps-mpa-1', [{'time': datetime.fromtimestamp(1000000),
                                                           'symbol': 'EURUSD', 'bid': 1, 'ask': 1.1}])
         await promise
         assert 'EURUSD' in api.subscribed_symbols
         client.subscribe_to_market_data.assert_called_with('accountId', 1, 'EURUSD', [{'type': 'quotes'}])
+        assert api.subscriptions('EURUSD') == [{'type': 'quotes'}]
+        await api.subscribe_to_market_data('EURUSD', [{'type': 'books'}, {'type': 'candles', 'timeframe': '1m'}], 1)
+        assert api.subscriptions('EURUSD') == [{'type': 'quotes'}, {'type': 'books'},
+                                               {'type': 'candles', 'timeframe': '1m'}]
+        await api.subscribe_to_market_data('EURUSD', [{'type': 'quotes'}, {'type': 'candles', 'timeframe': '5m'}], 1)
+        assert api.subscriptions('EURUSD') == [{'type': 'quotes'}, {'type': 'books'},
+                                               {'type': 'candles', 'timeframe': '1m'},
+                                               {'type': 'candles', 'timeframe': '5m'}]
 
     @pytest.mark.asyncio
     async def test_unsubscribe_from_market_data(self):
@@ -763,6 +774,15 @@ class TestMetaApiConnection:
         await api.unsubscribe_from_market_data('EURUSD', [{'type': 'quotes'}], 1)
         assert 'EURUSD' not in api.subscribed_symbols
         client.unsubscribe_from_market_data.assert_called_with('accountId', 1, 'EURUSD', [{'type': 'quotes'}])
+        await api.subscribe_to_market_data('EURUSD', [{'type': 'quotes'}, {'type': 'books'},
+                                                      {'type': 'candles', 'timeframe': '1m'},
+                                                      {'type': 'candles', 'timeframe': '5m'}], 1)
+        assert api.subscriptions('EURUSD') == [{'type': 'quotes'}, {'type': 'books'},
+                                               {'type': 'candles', 'timeframe': '1m'},
+                                               {'type': 'candles', 'timeframe': '5m'}]
+        await api.unsubscribe_from_market_data('EURUSD', [{'type': 'quotes'},
+                                                          {'type': 'candles', 'timeframe': '5m'}], 1)
+        assert api.subscriptions('EURUSD') == [{'type': 'books'}, {'type': 'candles', 'timeframe': '1m'}]
 
     @pytest.mark.asyncio
     async def test_unsubscribe_during_subscription_downgrade(self):
@@ -938,7 +958,8 @@ class TestMetaApiConnection:
             await api.on_connected('1:ps-mpa-1', 1)
             await asyncio.sleep(0.05)
             client.synchronize.assert_called_with('accountId', 1, 'ps-mpa-1', 'synchronizationId',
-                                                  date('2020-01-01T00:00:00.000Z'), date('2020-01-02T00:00:00.000Z'))
+                                                  date('2020-01-01T00:00:00.000Z'), date('2020-01-02T00:00:00.000Z'),
+                                                  empty_hash, empty_hash, empty_hash)
 
     @pytest.mark.asyncio
     async def test_maintain_sync(self):
@@ -952,7 +973,8 @@ class TestMetaApiConnection:
             await api.on_connected('1:ps-mpa-1', 1)
             await asyncio.sleep(0.05)
             client.synchronize.assert_called_with('accountId', 1,  'ps-mpa-1', 'synchronizationId',
-                                                  date('2020-01-01T00:00:00.000Z'), date('2020-01-02T00:00:00.000Z'))
+                                                  date('2020-01-01T00:00:00.000Z'), date('2020-01-02T00:00:00.000Z'),
+                                                  empty_hash, empty_hash, empty_hash)
 
     @pytest.mark.asyncio
     async def test_not_sync_if_connection_closed(self):
@@ -988,7 +1010,7 @@ class TestMetaApiConnection:
         await api.on_account_information_updated('1:ps-mpa-1', {})
         await asyncio.sleep(0.05)
         assert client.subscribe_to_market_data.call_count == 1
-        client.subscribe_to_market_data.assert_called_with('accountId', 1, 'AUDNZD', None)
+        client.subscribe_to_market_data.assert_called_with('accountId', 1, 'AUDNZD', [{'type': 'quotes'}])
 
     @pytest.mark.asyncio
     async def test_unsubscribe_from_events_on_close(self):
@@ -1015,8 +1037,8 @@ class TestMetaApiConnection:
             raise Exception('TimeoutError is expected')
         except Exception as err:
             assert err.__class__.__name__ == 'TimeoutException'
-        await api.on_order_synchronization_finished('1:ps-mpa-1', 'synchronizationId')
-        await api.on_deal_synchronization_finished('1:ps-mpa-1', 'synchronizationId')
+        await api.on_history_orders_synchronized('1:ps-mpa-1', 'synchronizationId')
+        await api.on_deals_synchronized('1:ps-mpa-1', 'synchronizationId')
         promise = api.wait_synchronized({'applicationPattern': 'app.*', 'synchronizationId': 'synchronizationId',
                                          'timeoutInSeconds': 1, 'intervalInMilliseconds': 10})
         start_time = datetime.now()
@@ -1063,3 +1085,29 @@ class TestMetaApiConnection:
         assert api.synchronized
         await api.on_stream_closed('1:ps-mpa-1')
         assert not api.synchronized
+
+    @pytest.mark.asyncio
+    async def test_create_refresh_market_data_subscriptions_job(self):
+        """Should create refresh subscriptions job."""
+        with patch('lib.metaApi.metaApiConnection.asyncio.sleep', new=lambda x: sleep(x / 10)):
+            with patch('lib.metaApi.metaApiConnection.uniform', new=MagicMock(return_value=1)):
+                client.refresh_market_data_subscriptions = AsyncMock()
+                client.subscribe_to_market_data = AsyncMock()
+                client.add_synchronization_listener = MagicMock()
+                client.remove_synchronization_listener = MagicMock()
+                client.unsubscribe = AsyncMock()
+                api.terminal_state.wait_for_price = AsyncMock()
+                await api.on_synchronization_started('1:ps-mpa-1')
+                await sleep(0.05)
+                client.refresh_market_data_subscriptions.assert_called_with('accountId', 1, [])
+                await api.subscribe_to_market_data('EURUSD', [{'type': 'quotes'}], 1)
+                await sleep(0.11)
+                client.refresh_market_data_subscriptions.assert_called_with(
+                    'accountId', 1, [{'symbol': 'EURUSD', 'subscriptions': [{'type': 'quotes'}]}])
+                assert client.refresh_market_data_subscriptions.call_count == 2
+                await api.on_synchronization_started('1:ps-mpa-1')
+                await sleep(0.05)
+                assert client.refresh_market_data_subscriptions.call_count == 3
+                await api.close()
+                await sleep(0.11)
+                assert client.refresh_market_data_subscriptions.call_count == 3
