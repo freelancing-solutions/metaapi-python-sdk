@@ -1,1 +1,1 @@
-metaapi-cloud-sdk==13.2.2
+metaapi-cloud-sdk==14.3.0
