@@ -90,8 +90,9 @@ class HistoryStorage(SynchronizationListener, ABC):
         """
         pass
 
-    async def on_deal_synchronization_finished(self, instance_index: str, synchronization_id: str):
-        """Invoked when a synchronization of history deals on a MetaTrader account have finished.
+    async def on_deals_synchronized(self, instance_index: str, synchronization_id: str):
+        """Invoked when a synchronization of history deals on a MetaTrader account have finished to indicate progress
+        of an initial terminal state synchronization.
 
         Args:
             instance_index: Index of an account instance connected.
@@ -103,15 +104,16 @@ class HistoryStorage(SynchronizationListener, ABC):
         instance = str(self.get_instance_number(instance_index))
         self._dealSynchronizationFinished[instance] = True
 
-    async def on_order_synchronization_finished(self, instance_index: str, synchronization_id: str):
-        """Invoked when a synchronization of history orders on a MetaTrader account have finished.
+    async def on_history_orders_synchronized(self, instance_index: str, synchronization_id: str):
+        """Invoked when a synchronization of history orders on a MetaTrader account have finished to indicate progress
+        of an initial terminal state synchronization.
 
         Args:
             instance_index: Index of an account instance connected.
             synchronization_id: Synchronization request id.
 
         Returns:
-             A coroutine which resolves when the asynchronous event is processed.
+            A coroutine which resolves when the asynchronous event is processed.
         """
         instance = str(self.get_instance_number(instance_index))
         self._orderSynchronizationFinished[instance] = True

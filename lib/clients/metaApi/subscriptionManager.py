@@ -1,9 +1,10 @@
 import asyncio
 from random import uniform
 from ..errorHandler import TooManyRequestsException
-from ...metaApi.models import date, format_error
+from ...metaApi.models import date, format_error, string_format_error
 from datetime import datetime
 from typing import List
+from ...logger import LoggerManager
 
 
 class SubscriptionManager:
@@ -18,6 +19,7 @@ class SubscriptionManager:
         self._websocketClient = websocket_client
         self._subscriptions = {}
         self._awaitingResubscribe = {}
+        self._logger = LoggerManager.get_logger('SubscriptionManager')
 
     def is_account_subscribing(self, account_id: str, instance_number: int = None):
         """Returns whether an account is currently subscribing.
@@ -71,7 +73,7 @@ class SubscriptionManager:
                     except TooManyRequestsException as err:
                         socket_instance_index = self._websocketClient.socket_instances_by_accounts[account_id]
                         if err.metadata['type'] == 'LIMIT_ACCOUNT_SUBSCRIPTIONS_PER_USER':
-                            print(format_error(err))
+                            self._logger.error(f'{instance_id}: Failed to subscribe ' + string_format_error(err))
                         if err.metadata['type'] in ['LIMIT_ACCOUNT_SUBSCRIPTIONS_PER_USER',
                                                     'LIMIT_ACCOUNT_SUBSCRIPTIONS_PER_SERVER',
                                                     'LIMIT_ACCOUNT_SUBSCRIPTIONS_PER_USER_PER_SERVER']:
@@ -172,8 +174,7 @@ class SubscriptionManager:
                     await asyncio.sleep(uniform(0, 5))
                     asyncio.create_task(self.subscribe(account_id))
             except Exception as err:
-                print(f'[{datetime.now().isoformat()}] Account {account_id} resubscribe task failed',
-                      format_error(err))
+                self._logger.error(f'{account_id}: Account resubscribe task failed ' + string_format_error(err))
 
         try:
             socket_instances_by_accounts = self._websocketClient.socket_instances_by_accounts
@@ -186,5 +187,4 @@ class SubscriptionManager:
             for account_id in reconnect_account_ids:
                 asyncio.create_task(wait_resubscribe(account_id))
         except Exception as err:
-            print(f'[{datetime.now().isoformat()}] Failed to process subscribe manager reconnected event',
-                  format_error(err))
+            self._logger.error(f'Failed to process subscribe manager reconnected event ' + string_format_error(err))

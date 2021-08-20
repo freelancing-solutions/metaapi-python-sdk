@@ -3,7 +3,7 @@ from .models import date
 from mock import AsyncMock, MagicMock, patch
 from datetime import datetime
 import pytest
-storage = None
+storage: MemoryHistoryStorage = None
 
 
 @pytest.fixture(autouse=True)
@@ -144,7 +144,7 @@ class TestMemoryHistoryStorage:
         """Should return saved order synchronization status."""
 
         assert not storage.order_synchronization_finished
-        await storage.on_order_synchronization_finished('1:ps-mpa-1', 'synchronizationId')
+        await storage.on_history_orders_synchronized('1:ps-mpa-1', 'synchronizationId')
         assert storage.order_synchronization_finished
 
     @pytest.mark.asyncio
@@ -153,7 +153,7 @@ class TestMemoryHistoryStorage:
 
         storage._fileManager.update_disk_storage = AsyncMock()
         assert not storage.deal_synchronization_finished
-        await storage.on_deal_synchronization_finished('1:ps-mpa-1', 'synchronizationId')
+        await storage.on_deals_synchronized('1:ps-mpa-1', 'synchronizationId')
         storage._fileManager.update_disk_storage.assert_called()
         assert storage.deal_synchronization_finished
 

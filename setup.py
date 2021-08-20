@@ -5,8 +5,8 @@ with open("README.rst", "r") as fh:
 
 install_requires = [
    'aiohttp==3.7.4', 'python-engineio==3.14.2', 'typing-extensions==3.7.4.3', 'iso8601', 'pytz',
-   'python-socketio[asyncio_client]==4.6.0', 'requests==2.24.0', 'websockets==8.1', 'httpx==0.16.1',
-   'metaapi-cloud-copyfactory-sdk~=2.1.0', 'metaapi-cloud-metastats-sdk~=1.0.0'
+   'python-socketio[asyncio_client]==4.6.0', 'requests==2.24.0', 'websockets==9.1', 'httpx==0.16.1',
+   'metaapi-cloud-copyfactory-sdk~=2.2.0', 'metaapi-cloud-metastats-sdk~=1.0.0'
 ]
 
 tests_require = [
@@ -15,7 +15,7 @@ tests_require = [
 
 setuptools.setup(
     name="metaapi_cloud_sdk",
-    version="13.2.2",
+    version="14.3.0",
     author="Agilium Labs LLC",
     author_email="agiliumtrade@agiliumtrade.ai",
     description="SDK for MetaApi, a professional cloud forex API which includes MetaTrader REST API "

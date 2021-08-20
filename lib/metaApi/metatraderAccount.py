@@ -188,13 +188,28 @@ class MetatraderAccount(MetatraderAccountModel):
     def resource_slots(self) -> int:
         """Returns number of resource slots to allocate to account. Allocating extra resource slots
         results in better account performance under load which is useful for some applications. E.g. if you have many
-        accounts copying the same strategy via CopyFactory API, then you can increase resourceSlots to get a lower
-        trade copying latency. Please note that allocating extra resource slots is a paid option. Default is 1
+        accounts copying the same strategy via CooyFactory API, then you can increase resourceSlots to get a lower
+        trade copying latency. Please note that allocating extra resource slots is a paid option. Please note that high
+        reliability accounts use redundant infrastructure, so that each resource slot for a high reliability account
+        is billed as 2 standard resource slots. Default is 1.
 
         Returns:
             Number of resource slots to allocate to account.
         """
         return self._data['resourceSlots'] if 'resourceSlots' in self._data else None
+
+    @property
+    def copyfactory_resource_slots(self) -> int:
+        """Returns the number of CopyFactory 2 resource slots to allocate to account. Allocating extra resource slots
+        results in lower trade copying latency. Please note that allocating extra resource slots is a paid option.
+        Please also note that CopyFactory 2 uses redundant infrastructure so that each CopyFactory resource slot is
+        billed as 2 standard resource slots. You will be billed for CopyFactory 2 resource slots only if you have
+        added your account to CopyFactory 2 by specifying copyFactoryRoles field. Default is 1.
+
+        Returns:
+            Number of CopyFactory 2 resource slots to allocate to account.
+        """
+        return self._data['copyFactoryResourceSlots'] if 'copyFactoryResourceSlots' in self._data else None
 
     @property
     def base_currency(self) -> str:

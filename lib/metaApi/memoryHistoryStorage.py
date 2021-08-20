@@ -210,8 +210,9 @@ class MemoryHistoryStorage(MemoryHistoryStorageModel):
             self._deals.insert(insert_index, new_deal)
             self._fileManager.set_start_new_deal_index(insert_index)
 
-    async def on_deal_synchronization_finished(self, instance_index: str, synchronization_id: str):
-        """Invoked when a synchronization of history deals on a MetaTrader account have finished.
+    async def on_deals_synchronized(self, instance_index: str, synchronization_id: str):
+        """Invoked when a synchronization of history deals on a MetaTrader account have finished to indicate progress
+        of an initial terminal state synchronization.
 
         Args:
             instance_index: Index of an account instance connected.

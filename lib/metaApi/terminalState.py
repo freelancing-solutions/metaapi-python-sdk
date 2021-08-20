@@ -1,20 +1,23 @@
 from ..clients.metaApi.synchronizationListener import SynchronizationListener
 from .models import MetatraderAccountInformation, MetatraderPosition, MetatraderOrder, \
-    MetatraderSymbolSpecification, MetatraderSymbolPrice
+    MetatraderSymbolSpecification, MetatraderSymbolPrice, G1Encoder, G2Encoder
 import functools
 from typing import List, Dict, Optional
 from typing_extensions import TypedDict
 import asyncio
 from datetime import datetime
+from hashlib import md5
+from copy import copy
+import json
 
 
 class TerminalStateDict(TypedDict):
+    instanceIndex: str or None
     connected: bool
     connectedToBroker: bool
     accountInformation: Optional[dict]
     positions: List[dict]
     orders: List[dict]
-    specifications: List[dict]
     specificationsBySymbol: dict
     pricesBySymbol: dict
     completedOrders: dict
@@ -22,6 +25,14 @@ class TerminalStateDict(TypedDict):
     ordersInitialized: bool
     positionsInitialized: bool
     lastUpdateTime: float
+    initializationCounter: int
+    specificationCount: int
+
+
+class TerminalStateHashes(TypedDict):
+    specificationsMd5: str
+    positionsMd5: str
+    ordersMd5: str
 
 
 class TerminalState(SynchronizationListener):
@@ -85,7 +96,95 @@ class TerminalState(SynchronizationListener):
         Returns:
              A local copy of symbol specifications available in MetaTrader trading terminal.
         """
-        return self._get_best_state()['specifications']
+        return list(self._get_best_state()['specificationsBySymbol'].values())
+
+    def get_hashes(self, account_type: str) -> TerminalStateHashes:
+        """Returns hashes of terminal state data for incremental synchronization.
+
+        Args:
+            account_type: Account type.
+
+        Returns:
+            Hashes of terminal state data.
+        """
+        specifications = copy(self.specifications)
+        for i in range(len(specifications)):
+            specifications[i] = copy(specifications[i])
+        specifications = sorted(specifications, key=lambda s: s['symbol'])
+        if account_type == 'cloud-g1':
+            specification: dict
+            for specification in specifications:
+                del specification['description']
+                for key in list(specification.keys()):
+                    if isinstance(specification[key], int) and not isinstance(specification[key], bool) and \
+                            key != 'digits':
+                        specification[key] = float(specification[key])
+        specifications_hash = self._get_hash(specifications, account_type)
+
+        positions = copy(self.positions)
+        for i in range(len(positions)):
+            positions[i] = copy(positions[i])
+        positions = sorted(positions, key=lambda p: p['id'])
+        position: dict
+        for position in positions:
+            del position['profit']
+            if 'unrealizedProfit' in position:
+                del position['unrealizedProfit']
+            if 'realizedProfit' in position:
+                del position['realizedProfit']
+            if 'currentPrice' in position:
+                del position['currentPrice']
+            if 'currentTickValue' in position:
+                del position['currentTickValue']
+            if 'updateSequenceNumber' in position:
+                del position['updateSequenceNumber']
+            if 'accountCurrencyExchangeRate' in position:
+                del position['accountCurrencyExchangeRate']
+            if 'comment' in position:
+                del position['comment']
+            if 'originalComment' in position:
+                del position['originalComment']
+            if 'clientId' in position:
+                del position['clientId']
+            if account_type == 'cloud-g1':
+                del position['time']
+                del position['updateTime']
+                for key in list(position.keys()):
+                    if isinstance(position[key], int) and not isinstance(position[key], bool) and \
+                            key != 'magic':
+                        position[key] = float(position[key])
+        positions_hash = self._get_hash(positions, account_type)
+
+        orders = copy(self.orders)
+        for i in range(len(orders)):
+            orders[i] = copy(orders[i])
+        orders = sorted(orders, key=lambda p: p['id'])
+        order: dict
+        for order in orders:
+            del order['currentPrice']
+            if 'updateSequenceNumber' in order:
+                del order['updateSequenceNumber']
+            if 'accountCurrencyExchangeRate' in order:
+                del order['accountCurrencyExchangeRate']
+            if 'comment' in order:
+                del order['comment']
+            if 'originalComment' in order:
+                del order['originalComment']
+            if 'clientId' in order:
+                del order['clientId']
+            if account_type == 'cloud-g1':
+                del order['time']
+                for key in list(order.keys()):
+                    if isinstance(order[key], int) and not isinstance(order[key], bool) and \
+                            key != 'magic':
+                        order[key] = float(order[key])
+        orders_hash = self._get_hash(orders, account_type)
+
+        return {
+            'specificationsMd5': specifications_hash,
+            'positionsMd5': positions_hash,
+            'ordersMd5': orders_hash
+        }
 
     def specification(self, symbol: str) -> MetatraderSymbolSpecification:
         """Returns MetaTrader symbol specification by symbol.
@@ -96,7 +195,7 @@ class TerminalState(SynchronizationListener):
         Returns:
             MetatraderSymbolSpecification found or undefined if specification for a symbol is not found.
         """
-        state = self._get_best_state()
+        state = self._get_best_state(symbol, 'specification')
         return state['specificationsBySymbol'][symbol] if \
             (symbol in state['specificationsBySymbol']) else None
 
@@ -109,7 +208,7 @@ class TerminalState(SynchronizationListener):
         Returns:
             MetatraderSymbolPrice found or undefined if price for a symbol is not found.
         """
-        state = self._get_best_state()
+        state = self._get_best_state(symbol, 'price')
         return state['pricesBySymbol'][symbol] if \
             (symbol in state['pricesBySymbol']) else None
 
@@ -169,26 +268,32 @@ class TerminalState(SynchronizationListener):
         """
         self._get_state(instance_index)['connectedToBroker'] = connected
 
-    async def on_synchronization_started(self, instance_index: str):
+    async def on_synchronization_started(self, instance_index: str, specifications_updated: bool = True,
+                                         positions_updated: bool = True, orders_updated: bool = True):
         """Invoked when MetaTrader terminal state synchronization is started.
 
         Args:
             instance_index: Index of an account instance connected.
+            specifications_updated: Whether specifications are going to be updated during synchronization.
+            positions_updated: Whether positions are going to be updated during synchronization.
+            orders_updated: Whether orders are going to be updated during synchronization.
 
         Returns:
             A coroutine which resolves when the asynchronous event is processed.
         """
         state = self._get_state(instance_index)
         state['accountInformation'] = None
-        state['positions'] = []
-        state['orders'] = []
-        state['specifications'] = []
-        state['specificationsBySymbol'] = {}
         state['pricesBySymbol'] = {}
-        state['completedOrders'] = {}
-        state['removedPositions'] = {}
-        state['ordersInitialized'] = False
-        state['positionsInitialized'] = False
+        if positions_updated:
+            state['positions'] = []
+            state['removedPositions'] = {}
+            state['positionsInitialized'] = False
+        if orders_updated:
+            state['orders'] = []
+            state['completedOrders'] = {}
+            state['ordersInitialized'] = False
+        if specifications_updated:
+            state['specificationsBySymbol'] = {}
 
     async def on_account_information_updated(self, instance_index: str,
                                              account_information: MetatraderAccountInformation):
@@ -201,7 +306,9 @@ class TerminalState(SynchronizationListener):
         Returns:
             A coroutine which resolves when the asynchronous event is processed.
         """
-        self._get_state(instance_index)['accountInformation'] = account_information
+        state = self._get_state(instance_index)
+        state['accountInformation'] = account_information
+        state['initializationCounter'] = 1
 
     async def on_positions_replaced(self, instance_index: str, positions: List[MetatraderPosition]):
         """Invoked when the positions are replaced as a result of initial terminal state synchronization.
@@ -215,8 +322,19 @@ class TerminalState(SynchronizationListener):
         """
         state = self._get_state(instance_index)
         state['positions'] = positions
+
+    async def on_positions_synchronized(self, instance_index: str, synchronization_id: str):
+        """Invoked when position synchronization finished to indicate progress of an initial terminal state
+        synchronization.
+
+        Args:
+            instance_index: Index of an account instance connected.
+            synchronization_id: Synchronization request id.
+        """
+        state = self._get_state(instance_index)
         state['removedPositions'] = {}
         state['positionsInitialized'] = True
+        state['initializationCounter'] = 2
 
     async def on_position_updated(self, instance_index: str, position: MetatraderPosition):
         """Invoked when MetaTrader position is updated.
@@ -251,7 +369,7 @@ class TerminalState(SynchronizationListener):
         state = self._get_state(instance_index)
         position = next((p for p in state['positions'] if p['id'] == position_id), None)
         if position is None:
-            for key in state['removedPositions']:
+            for key in list(state['removedPositions'].keys()):
                 e = state['removedPositions'][key]
                 if e + 5 * 60 < datetime.now().timestamp():
                     del state['removedPositions'][key]
@@ -259,27 +377,42 @@ class TerminalState(SynchronizationListener):
         else:
             state['positions'] = list(filter(lambda p: p['id'] != position_id, state['positions']))
 
-    async def on_orders_replaced(self, instance_index: str, orders: List[MetatraderOrder]):
-        """Invoked when the orders are replaced as a result of initial terminal state synchronization.
+    async def on_pending_orders_replaced(self, instance_index: str, orders: List[MetatraderOrder]):
+        """Invoked when the pending orders are replaced as a result of initial terminal state synchronization.
+        This method will be invoked only if server thinks the data was updated, otherwise invocation can be skipped.
 
         Args:
             instance_index: Index of an account instance connected.
-            orders: Updated array of orders.
+            orders: Updated array of pending orders.
 
         Returns:
             A coroutine which resolves when the asynchronous event is processed.
         """
         state = self._get_state(instance_index)
         state['orders'] = orders
-        state['completedOrders'] = {}
-        state['ordersInitialized'] = True
 
-    async def on_order_updated(self, instance_index: str, order: MetatraderOrder):
-        """Invoked when MetaTrader order is updated.
+    async def on_pending_orders_synchronized(self, instance_index: str, synchronization_id: str):
+        """Invoked when pending order synchronization finished to indicate progress of an initial terminal state
+        synchronization.
 
         Args:
             instance_index: Index of an account instance connected.
-            order: Updated MetaTrader order.
+            synchronization_id: Synchronization request id.
+
+        Returns:
+            A coroutine which resolves when the asynchronous event is processed.
+        """
+        state = self._get_state(instance_index)
+        state['completedOrders'] = {}
+        state['ordersInitialized'] = True
+        state['initializationCounter'] = 3
+
+    async def on_pending_order_updated(self, instance_index: str, order: MetatraderOrder):
+        """Invoked when MetaTrader pending order is updated.
+
+        Args:
+            instance_index: Index of an account instance connected.
+            order: Updated MetaTrader pending order.
 
         Returns:
             A coroutine which resolves when the asynchronous event is processed.
@@ -294,8 +427,8 @@ class TerminalState(SynchronizationListener):
         if (not is_exists) and (order['id'] not in state['completedOrders']):
             state['orders'].append(order)
 
-    async def on_order_completed(self, instance_index: str, order_id: str):
-        """Invoked when MetaTrader order is completed (executed or canceled).
+    async def on_pending_order_completed(self, instance_index: str, order_id: str):
+        """Invoked when MetaTrader pending order is completed (executed or canceled).
 
         Args:
             instance_index: Index of an account instance connected.
@@ -330,17 +463,11 @@ class TerminalState(SynchronizationListener):
         """
         state = self._get_state(instance_index)
         for specification in specifications:
-            for i in range(len(state['specifications'])):
-                if state['specifications'][i]['symbol'] == specification['symbol']:
-                    state['specifications'][i] = specification
-                    break
-            else:
-                state['specifications'].append(specification)
             state['specificationsBySymbol'][specification['symbol']] = specification
-        state['specifications'] = list(filter(lambda s: s['symbol'] not in removed_symbols, state['specifications']))
         for symbol in removed_symbols:
             if symbol in state['specificationsBySymbol']:
                 del state['specificationsBySymbol'][symbol]
+        state['specificationCount'] = len(state['specificationsBySymbol'].keys())
 
     async def on_symbol_prices_updated(self, instance_index: str, prices: List[MetatraderSymbolPrice],
                                        equity: float = None, margin: float = None, free_margin: float = None,
@@ -465,31 +592,52 @@ class TerminalState(SynchronizationListener):
 
     def _get_state(self, instance_index: str) -> TerminalStateDict:
         if str(instance_index) not in self._stateByInstanceIndex:
-            self._stateByInstanceIndex[str(instance_index)] = self._construct_terminal_state()
+            self._stateByInstanceIndex[str(instance_index)] = self._construct_terminal_state(instance_index)
         return self._stateByInstanceIndex[str(instance_index)]
 
-    def _construct_terminal_state(self) -> TerminalStateDict:
+    def _construct_terminal_state(self, instance_index: str = None) -> TerminalStateDict:
         return {
+            'instanceIndex': instance_index,
             'connected': False,
             'connectedToBroker': False,
             'accountInformation': None,
             'positions': [],
             'orders': [],
-            'specifications': [],
             'specificationsBySymbol': {},
             'pricesBySymbol': {},
             'completedOrders': {},
             'removedPositions': {},
             'ordersInitialized': False,
             'positionsInitialized': False,
-            'lastUpdateTime': 0
+            'lastUpdateTime': 0,
+            'initializationCounter': 0,
+            'specificationCount': 0
         }
 
-    def _get_best_state(self) -> TerminalStateDict:
+    def _get_best_state(self, symbol: str = None, mode: str = 'default') -> TerminalStateDict:
         result = None
-        max_update_time = None
+        max_update_time = -1
+        max_initialization_counter = -1
+        max_specification_count = -1
         for state in self._stateByInstanceIndex.values():
-            if max_update_time is None or max_update_time < state['lastUpdateTime']:
-                max_update_time = state['lastUpdateTime']
-                result = state
+            if max_initialization_counter < state['initializationCounter'] or max_initialization_counter == \
+                    state['initializationCounter'] and max_initialization_counter == 3 and \
+                    max_update_time < state['lastUpdateTime'] or max_initialization_counter == \
+                    state['initializationCounter'] and max_initialization_counter == 0 and \
+                    max_specification_count < state['specificationCount']:
+                if not symbol or (mode == 'specification' and symbol in state['specificationsBySymbol']) or \
+                        (mode == 'price' and symbol in state['pricesBySymbol']):
+                    max_update_time = state['lastUpdateTime']
+                    max_initialization_counter = state['initializationCounter']
+                    max_specification_count = state['specificationCount']
+                    result = state
         return result or self._construct_terminal_state()
+
+    def _get_hash(self, obj, account_type: str):
+        json_item = ''
+        if account_type == 'cloud-g1':
+            json_item = json.dumps(obj, cls=G1Encoder, ensure_ascii=False)
+        elif account_type == 'cloud-g2':
+            json_item = json.dumps(obj, cls=G2Encoder, ensure_ascii=False)
+        json_item = json_item.encode('utf8')
+        return md5(json_item).hexdigest()

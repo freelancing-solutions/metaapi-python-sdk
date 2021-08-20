@@ -1,3 +1,32 @@
+14.3.0
+  - added copyFactoryResourceSlots field to make it possible specify resource slots for CopyFactory 2 application
+  - improved performance of terminal state
+
+14.2.0
+  - upgrade to 2.2.0 CopyFactory SDK
+  - added support for Logging logger to use instead of print functions
+
+14.0.0
+  - breaking change: refactored SynchronizationListener class, namely:
+    - added on_positions_synchronized method
+    - on_positions_replaced is now invoked during synchronization only if server thinks terminal data have changed
+    - added on_pending_orders_synchronized method
+    - on_pending_orders_replaced is now invoked during synchronization only if server thinks terminal data have changed
+    - on_orders_replaced was renamed to on_pending_orders_replaced
+    - on_order_updated was renamed to on_pending_order_updated
+    - on_order_completed was renamed to on_pending_order_completed
+    - on_order_synchronization_finished was renamed to on_history_orders_synchronized
+    - on_deal_synchronization_finished was renamed to on_deals_synchronized
+  - breaking change: enabled sequential packet processing by default
+  - added incremental synchronization
+  - fixed sequential packet processing
+  - fixed selecting best terminal state for price and specification access
+  - immediately process packets without sequence number
+  - fixed waiting for prices in terminal state
+  - fixed terminal state access during initial synchronization
+  - fixed out of order synchronization packets came from the previous synchronizations
+  - fixed synchronization scheduling
+
 13.2.2
   - add enableSocketioDebugger option to make it possible to enable socketio debugger
 

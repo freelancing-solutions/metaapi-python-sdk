@@ -7,6 +7,7 @@ import string
 import pytz
 import re
 import traceback
+import json
 
 
 def date(date_time: str or float or int) -> datetime:
@@ -50,13 +51,14 @@ def convert_iso_time_to_date(packet):
                             price['timestamps'][field] = date(price['timestamps'][field])
 
 
-def format_error(err: Exception):
+def format_error(err: Exception or any):
     """Formats and outputs metaApi errors with additional information.
 
     Args:
         err: Exception to process.
     """
-    error = {'name': err.__class__.__name__, 'message': err if isinstance(err, str) else err.args[0]}
+    error = {'name': err.__class__.__name__, 'message': err if isinstance(err, str) or err is None else (
+        err.args[0] if len(err.args) else None)}
     if hasattr(err, 'status_code'):
         error['status_code'] = err.status_code
     if err.__class__.__name__ == 'ValidationException':
@@ -67,6 +69,99 @@ def format_error(err: Exception):
         error['metadata'] = err.metadata
     error['trace'] = traceback.format_exc()
     return error
+
+
+def string_format_error(err: Exception or any):
+    """Outputs error information in string format.
+
+    Args:
+        err: Exception to process.
+
+    Return:
+        Error information in string format.
+    """
+    return json.dumps(format_error(err))
+
+
+class G1Encoder(json.JSONEncoder):
+    """A JSON encoder used to encode cloud-g1 account terminal data."""
+    def iterencode(self, obj, _one_shot=False):
+        if isinstance(obj, datetime):
+            yield '"' + format_date(obj) + '"'
+        elif isinstance(obj, bool):
+            if obj:
+                yield 'true'
+            else:
+                yield 'false'
+        elif isinstance(obj, float):
+            yield format(obj, '.8f')
+        elif isinstance(obj, dict):
+            last_index = len(obj) - 1
+            yield '{'
+            i = 0
+            for key, value in obj.items():
+                yield '"' + key + '":'
+                for chunk in G1Encoder.iterencode(self, value):
+                    yield chunk
+                if i != last_index:
+                    yield ","
+                i += 1
+            yield '}'
+        elif isinstance(obj, list):
+            last_index = len(obj) - 1
+            yield "["
+            for i, o in enumerate(obj):
+                for chunk in G1Encoder.iterencode(self, o):
+                    yield chunk
+                if i != last_index:
+                    yield ","
+            yield "]"
+        elif isinstance(obj, str):
+            yield '"' + obj.replace('\\', '\\\\').replace('/', '\\/') + '"'
+        else:
+            for chunk in json.JSONEncoder.iterencode(self, obj):
+                yield chunk
+
+
+class G2Encoder(json.JSONEncoder):
+    """A JSON encoder used to encode cloud-g2 account terminal data."""
+    def iterencode(self, obj, _one_shot=False):
+        if isinstance(obj, datetime):
+            yield '"' + format_date(obj) + '"'
+        elif isinstance(obj, bool):
+            if obj:
+                yield 'true'
+            else:
+                yield 'false'
+        elif isinstance(obj, float):
+            result = format(obj, '.8f')
+            while result[-1] in ['0', '.']:
+                result = result[:-1]
+            yield result
+        elif isinstance(obj, dict):
+            last_index = len(obj) - 1
+            yield '{'
+            i = 0
+            for key, value in obj.items():
+                yield '"' + key + '":'
+                for chunk in G2Encoder.iterencode(self, value):
+                    yield chunk
+                if i != last_index:
+                    yield ","
+                i += 1
+            yield '}'
+        elif isinstance(obj, list):
+            last_index = len(obj) - 1
+            yield "["
+            for i, o in enumerate(obj):
+                for chunk in G2Encoder.iterencode(self, o):
+                    yield chunk
+                if i != last_index:
+                    yield ","
+            yield "]"
+        else:
+            for chunk in json.JSONEncoder.iterencode(self, obj):
+                yield chunk
 
 
 class MetatraderAccountInformation(TypedDict):

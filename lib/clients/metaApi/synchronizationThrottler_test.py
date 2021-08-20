@@ -287,7 +287,11 @@ class TestSynchronizationThrottler:
                                                            'host': 'ps-mpa-2'}))
         asyncio.create_task(throttler.schedule_synchronize('accountId4', {'requestId': 'test6'}))
         await sleep(0.05)
+        asyncio.create_task(throttler.schedule_synchronize('accountId2', {'requestId': 'test7', 'instanceIndex': 0,
+                                                           'host': 'ps-mpa-3'}))
+        await sleep(0.05)
         throttler.remove_id_by_parameters('accountId2', 0, 'ps-mpa-0')
+        throttler.remove_id_by_parameters('accountId2', 0, 'ps-mpa-3')
         throttler.remove_id_by_parameters('accountId2', 1, 'ps-mpa-1')
         throttler.remove_synchronization_id('test1')
         await sleep(0.1)

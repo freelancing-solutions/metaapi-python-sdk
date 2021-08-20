@@ -82,11 +82,15 @@ class SynchronizationListener(ABC):
         """
         pass
 
-    async def on_synchronization_started(self, instance_index: str):
+    async def on_synchronization_started(self, instance_index: str, specifications_updated: bool = True,
+                                         positions_updated: bool = True, orders_updated: bool = True):
         """Invoked when MetaTrader terminal state synchronization is started.
 
         Args:
             instance_index: Index of an account instance connected.
+            specifications_updated: Whether specifications are going to be updated during synchronization.
+            positions_updated: Whether positions are going to be updated during synchronization.
+            orders_updated: Whether orders are going to be updated during synchronization.
 
         Returns:
             A coroutine which resolves when the asynchronous event is processed.
@@ -107,7 +111,8 @@ class SynchronizationListener(ABC):
         pass
 
     async def on_positions_replaced(self, instance_index: str, positions: List[MetatraderPosition]):
-        """Invoked when the positions are replaced as a result of initial terminal state synchronization.
+        """Invoked when the positions are replaced as a result of initial terminal state synchronization. This method
+        will be invoked only if server thinks the data was updated, otherwise invocation can be skipped.
 
         Args:
             instance_index: Index of an account instance connected.
@@ -115,6 +120,16 @@ class SynchronizationListener(ABC):
 
         Returns:
             A coroutine which resolves when the asynchronous event is processed.
+        """
+        pass
+
+    async def on_positions_synchronized(self, instance_index: str, synchronization_id: str):
+        """Invoked when position synchronization finished to indicate progress of an initial terminal state
+        synchronization.
+
+        Args:
+            instance_index: Index of an account instance connected.
+            synchronization_id: Synchronization request id.
         """
         pass
 
@@ -142,36 +157,50 @@ class SynchronizationListener(ABC):
         """
         pass
 
-    async def on_orders_replaced(self, instance_index: str, orders: List[MetatraderOrder]):
-        """Invoked when the orders are replaced as a result of initial terminal state synchronization.
+    async def on_pending_orders_replaced(self, instance_index: str, orders: List[MetatraderOrder]):
+        """Invoked when the pending orders are replaced as a result of initial terminal state synchronization.
+        This method will be invoked only if server thinks the data was updated, otherwise invocation can be skipped.
 
         Args:
             instance_index: Index of an account instance connected.
-            orders: Updated array of orders.
+            orders: Updated array of pending orders.
 
         Returns:
             A coroutine which resolves when the asynchronous event is processed.
         """
         pass
 
-    async def on_order_updated(self, instance_index: str, order: MetatraderOrder):
-        """Invoked when MetaTrader order is updated.
+    async def on_pending_order_updated(self, instance_index: str, order: MetatraderOrder):
+        """Invoked when MetaTrader pending order is updated.
 
         Args:
             instance_index: Index of an account instance connected.
-            order: Updated MetaTrader order.
+            order: Updated MetaTrader pending order.
 
         Returns:
             A coroutine which resolves when the asynchronous event is processed.
         """
         pass
 
-    async def on_order_completed(self, instance_index: str, order_id: str):
-        """Invoked when MetaTrader order is completed (executed or canceled).
+    async def on_pending_order_completed(self, instance_index: str, order_id: str):
+        """Invoked when MetaTrader pending order is completed (executed or canceled).
 
         Args:
             instance_index: Index of an account instance connected.
             order_id: Completed MetaTrader order id.
+
+        Returns:
+            A coroutine which resolves when the asynchronous event is processed.
+        """
+        pass
+
+    async def on_pending_orders_synchronized(self, instance_index: str, synchronization_id: str):
+        """Invoked when pending order synchronization finished to indicate progress of an initial terminal state
+        synchronization.
+
+        Args:
+            instance_index: Index of an account instance connected.
+            synchronization_id: Synchronization request id.
 
         Returns:
             A coroutine which resolves when the asynchronous event is processed.
@@ -190,6 +219,19 @@ class SynchronizationListener(ABC):
         """
         pass
 
+    async def on_history_orders_synchronized(self, instance_index: str, synchronization_id: str):
+        """Invoked when a synchronization of history orders on a MetaTrader account have finished to indicate progress
+        of an initial terminal state synchronization.
+
+        Args:
+            instance_index: Index of an account instance connected.
+            synchronization_id: Synchronization request id.
+
+        Returns:
+            A coroutine which resolves when the asynchronous event is processed.
+        """
+        pass
+
     async def on_deal_added(self, instance_index: str, deal: MetatraderDeal):
         """Invoked when a new MetaTrader history deal is added.
 
@@ -202,8 +244,9 @@ class SynchronizationListener(ABC):
         """
         pass
 
-    async def on_deal_synchronization_finished(self, instance_index: str, synchronization_id: str):
-        """Invoked when a synchronization of history deals on a MetaTrader account have finished.
+    async def on_deals_synchronized(self, instance_index: str, synchronization_id: str):
+        """Invoked when a synchronization of history deals on a MetaTrader account have finished to indicate progress
+        of an initial terminal state synchronization.
 
         Args:
             instance_index: Index of an account instance connected.
@@ -211,18 +254,6 @@ class SynchronizationListener(ABC):
 
         Returns:
             A coroutine which resolves when the asynchronous event is processed.
-        """
-        pass
-
-    async def on_order_synchronization_finished(self, instance_index: str, synchronization_id: str):
-        """Invoked when a synchronization of history orders on a MetaTrader account have finished.
-
-        Args:
-            instance_index: Index of an account instance connected.
-            synchronization_id: Synchronization request id.
-
-        Returns:
-             A coroutine which resolves when the asynchronous event is processed
         """
         pass
 

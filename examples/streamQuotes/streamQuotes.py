@@ -1,5 +1,6 @@
 import os
 import asyncio
+from datetime import datetime
 from metaapi_cloud_sdk import MetaApi
 from metaapi_cloud_sdk.clients.metaApi.synchronizationListener import SynchronizationListener
 from metaapi_cloud_sdk.metaApi.models import MetatraderSymbolPrice, MetatraderCandle, MetatraderTick, MetatraderBook, \
@@ -80,6 +81,7 @@ async def stream_quotes():
             {'type': 'ticks'},
             {'type': 'marketDepth', 'intervalInMilliseconds': 5000}
         ])
+        print('Price after subscribe:', connection.terminal_state.price(symbol))
 
         print(f'[{datetime.now().isoformat()}] Synchronized successfully, streaming ' + symbol + ' market data now...')
 

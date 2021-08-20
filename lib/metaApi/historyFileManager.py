@@ -2,10 +2,11 @@ from .memoryHistoryStorageModel import MemoryHistoryStorageModel
 import json
 import os
 import asyncio
-from .models import format_date, convert_iso_time_to_date, format_error
+from .models import format_date, convert_iso_time_to_date, string_format_error
 from typing import List
 from datetime import datetime
 from copy import deepcopy
+from ..logger import LoggerManager
 
 
 def stringify(obj: dict or List) -> str:
@@ -31,6 +32,7 @@ class HistoryFileManager:
         self._startNewOrderIndex = -1
         self.update_disk_storage_job = None
         self._isUpdating = False
+        self._logger = LoggerManager.get_logger('HistoryFileManager')
 
     def start_update_job(self):
         """Starts a job to periodically save history on disk"""
@@ -94,8 +96,7 @@ class HistoryFileManager:
                 history['lastDealTimeByInstanceIndex'] = config['lastDealTimeByInstanceIndex']
                 history['lastHistoryOrderTimeByInstanceIndex'] = config['lastHistoryOrderTimeByInstanceIndex']
         except Exception as err:
-            print(f'[{datetime.now().isoformat()}] Failed to read history storage config of '
-                  f'account {self._accountId}', format_error(err))
+            self._logger.error(f'{self._accountId}: Failed to read history storage config ' + string_format_error(err))
             os.remove(f'.metaapi/{self._accountId}-{self._application}-config.bin')
 
         try:
@@ -106,8 +107,7 @@ class HistoryFileManager:
                     convert_iso_time_to_date(deal)
                 history['deals'] = deals
         except Exception as err:
-            print(f'[{datetime.now().isoformat()}] Failed to read deals history storage of '
-                  f'account {self._accountId}', format_error(err))
+            self._logger.error(f'{self._accountId}: Failed to read deals history storage ' + string_format_error(err))
             os.remove(f'.metaapi/{self._accountId}-{self._application}-deals.bin')
 
         try:
@@ -119,8 +119,8 @@ class HistoryFileManager:
                     convert_iso_time_to_date(history_order)
                 history['historyOrders'] = history_orders
         except Exception as err:
-            print(f'[{datetime.now().isoformat()}] Failed to read historyOrders history storage of '
-                  f'account {self._accountId}', format_error(err))
+            self._logger.error(f'{self._accountId}: Failed to read historyOrders history storage ' +
+                               string_format_error(err))
             os.remove(f'.metaapi/{self._accountId}-{self._application}-historyOrders.bin')
         return history
 
@@ -166,8 +166,8 @@ class HistoryFileManager:
                             f.write(stringify(self._prepare_save_data(self._historyStorage.deals)))
                             f.close()
                         except Exception as err:
-                            print(f'[{datetime.now().isoformat()}] Error saving deals on disk for account '
-                                  f'{self._accountId}', format_error(err))
+                            self._logger.error(f'{self._accountId}: Error saving deals on disk ' +
+                                               string_format_error(err))
                         self._dealsSize = list(map(self.get_item_size,
                                                    self._prepare_save_data(self._historyStorage.deals)))
                     else:
@@ -183,8 +183,8 @@ class HistoryFileManager:
                             f.write(stringify(self._prepare_save_data(self._historyStorage.history_orders)))
                             f.close()
                         except Exception as err:
-                            print(f'[{datetime.now().isoformat()}] Error saving historyOrders on disk for '
-                                  f'account {account_id}', format_error(err))
+                            self._logger.error(f'{account_id}: Error saving historyOrders on disk ' +
+                                               string_format_error(err))
                         self._historyOrdersSize = list(map(
                             self.get_item_size, self._prepare_save_data(self._historyStorage.history_orders)))
                     else:
@@ -193,8 +193,7 @@ class HistoryFileManager:
                                                                         replace_orders, self._historyOrdersSize)
                     self._startNewOrderIndex = -1
             except Exception as err:
-                print(f'[{datetime.now().isoformat()}] Error updating disk storage for '
-                      f'account {account_id}', format_error(err))
+                self._logger.error(f'{account_id}: Error updating disk storage ' + string_format_error(err))
             self._isUpdating = False
 
     async def _update_config(self):
@@ -211,8 +210,7 @@ class HistoryFileManager:
             f.write(stringify(config))
             f.close()
         except Exception as err:
-            print(f'[{datetime.now().isoformat()}] Error updating disk storage config for '
-                  f'account {account_id}', format_error(err))
+            self._logger.error(f'{account_id}: Error updating disk storage config ' + string_format_error(err))
 
     async def delete_storage_from_disk(self):
         """Deletes storage files from disk.
