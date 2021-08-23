@@ -309,12 +309,20 @@ class MetatraderAccountModel(ABC):
         """
 
     @abstractmethod
-    async def connect(self, history_storage: HistoryStorage, history_start_time: datetime = None):
-        """Connects to MetaApi.
+    async def get_streaming_connection(self, history_storage: HistoryStorage, history_start_time: datetime = None):
+        """Connects to MetaApi via streaming connection.
 
         Args:
             history_storage: Optional history storage.
             history_start_time: History start time. Used for tests.
+
+        Returns:
+            MetaApi connection.
+        """
+
+    @abstractmethod
+    async def get_rpc_connection(self):
+        """Connects to MetaApi via RPC connection.
 
         Returns:
             MetaApi connection.

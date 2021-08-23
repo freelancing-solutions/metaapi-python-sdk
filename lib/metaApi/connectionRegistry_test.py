@@ -4,7 +4,7 @@ from ..clients.metaApi.metaApiWebsocket_client import MetaApiWebsocketClient
 from ..clients.metaApi.reconnectListener import ReconnectListener
 from ..metaApi.models import MetatraderOrder
 from ..metaApi.metatraderAccount import MetatraderAccount
-from .metaApiConnection import MetaApiConnection
+from .streamingMetaApiConnection import StreamingMetaApiConnection
 from .models import MetatraderDeal
 from mock import MagicMock, AsyncMock, patch
 from datetime import datetime
@@ -103,7 +103,7 @@ class TestConnectionRegistry:
     @pytest.mark.asyncio
     async def test_connect_and_add(self):
         """Should connect and add connection to registry."""
-        with patch('lib.metaApi.connectionRegistry.MetaApiConnection') as mock_connection:
+        with patch('lib.metaApi.connectionRegistry.StreamingMetaApiConnection') as mock_connection:
             connection_instance = create_connection_mock()
             mock_connection.return_value = connection_instance
             account = MockAccount('id')
@@ -117,7 +117,7 @@ class TestConnectionRegistry:
     @pytest.mark.asyncio
     async def test_connect_and_return_previous(self):
         """Should return the same connection on second connect if same account id."""
-        with patch('lib.metaApi.connectionRegistry.MetaApiConnection') as mock_connection:
+        with patch('lib.metaApi.connectionRegistry.StreamingMetaApiConnection') as mock_connection:
             connection_mock1 = create_connection_mock()
             connection_mock2 = create_connection_mock()
             connection_mock3 = create_connection_mock()
@@ -138,7 +138,7 @@ class TestConnectionRegistry:
     @pytest.mark.asyncio
     async def test_remove(self):
         """Should remove the account from registry."""
-        with patch('lib.metaApi.connectionRegistry.MetaApiConnection') as mock_connection:
+        with patch('lib.metaApi.connectionRegistry.StreamingMetaApiConnection') as mock_connection:
             connection_instance = create_connection_mock()
             mock_connection.return_value = connection_instance
             accounts = [MockAccount('id0'), MockAccount('id1')]

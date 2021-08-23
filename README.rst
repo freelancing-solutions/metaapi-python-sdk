@@ -239,7 +239,7 @@ Query account information, positions, orders and history via RPC API
 --------------------------------------------------------------------
 .. code-block:: python
 
-    connection = await account.connect()
+    connection = await account.get_rpc_connection()
 
     await connection.wait_synchronized()
 
@@ -270,7 +270,7 @@ Query contract specifications and quotes via RPC API
 ----------------------------------------------------
 .. code-block:: python
 
-    connection = await account.connect()
+    connection = await account.get_rpc_connection()
 
     await connection.wait_synchronized()
 
@@ -316,7 +316,7 @@ Synchronizing and reading terminal state
 .. code-block:: python
 
     account = await api.metatrader_account_api.get_account(account_id='accountId')
-
+    connection = await account.get_streaming_connection()
 
     # access local copy of terminal state
     terminalState = connection.terminal_state
@@ -390,7 +390,7 @@ Retrieve contract specifications and quotes via streaming API
 -------------------------------------------------------------
 .. code-block:: python
 
-    connection = await account.connect()
+    connection = await account.get_streaming_connection()
 
     await connection.wait_synchronized()
 
@@ -410,7 +410,9 @@ Execute trades (both RPC and streaming APIs)
 --------------------------------------------
 .. code-block:: python
 
-    connection = await account.connect()
+    connection = await account.get_rpc_connection()
+    # or
+    connection = await account.get_streaming_connection()
 
     await connection.wait_synchronized()
 

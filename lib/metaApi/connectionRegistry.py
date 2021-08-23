@@ -1,4 +1,4 @@
-from .metaApiConnection import MetaApiConnection
+from .streamingMetaApiConnection import StreamingMetaApiConnection
 from ..clients.metaApi.metaApiWebsocket_client import MetaApiWebsocketClient
 from .metatraderAccountModel import MetatraderAccountModel
 from .historyStorage import HistoryStorage
@@ -27,7 +27,7 @@ class ConnectionRegistry(ConnectionRegistryModel):
         self._connectionLocks = {}
 
     async def connect(self, account: MetatraderAccountModel, history_storage: HistoryStorage,
-                      history_start_time: datetime = None) -> MetaApiConnection:
+                      history_start_time: datetime = None) -> StreamingMetaApiConnection:
         """Creates and returns a new account connection if doesnt exist, otherwise returns old.
 
         Args:
@@ -47,8 +47,8 @@ class ConnectionRegistry(ConnectionRegistryModel):
                 return self._connections[account.id]
             connection_lock = asyncio.Future()
             self._connectionLocks[account.id] = {'promise': connection_lock}
-            connection = MetaApiConnection(self._meta_api_websocket_client, account, history_storage, self,
-                                           history_start_time, self._refresh_subscriptions_opts)
+            connection = StreamingMetaApiConnection(self._meta_api_websocket_client, account, history_storage, self,
+                                                    history_start_time, self._refresh_subscriptions_opts)
             try:
                 await connection.initialize()
                 await connection.subscribe()
