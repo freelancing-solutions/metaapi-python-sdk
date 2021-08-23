@@ -1,3 +1,8 @@
+15.0.0
+  - breaking change: divided MetaApiConnection class into:
+    - RpcMetaApiConnection for RPC requests
+    - StreamingMetaApiConnection for terminal synchronization
+
 14.3.0
   - added copyFactoryResourceSlots field to make it possible specify resource slots for CopyFactory 2 application
   - improved performance of terminal state

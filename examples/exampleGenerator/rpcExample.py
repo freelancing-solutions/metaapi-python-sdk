@@ -26,7 +26,7 @@ async def test_meta_api_synchronization():
         await account.wait_connected()
 
         # connect to MetaApi API
-        connection = await account.connect()
+        connection = await account.get_rpc_connection()
 
         # wait until terminal state synchronized to the local state
         print('Waiting for SDK to synchronize to terminal state (may take some time depending on your history size)')

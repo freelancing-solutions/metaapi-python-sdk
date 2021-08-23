@@ -3,7 +3,7 @@ from .metatraderAccount import MetatraderAccount
 from ..clients.errorHandler import NotFoundException
 from ..clients.metaApi.metaApiWebsocket_client import MetaApiWebsocketClient
 from ..clients.metaApi.metatraderAccount_client import MetatraderAccountClient, NewMetatraderAccountDto
-from .metaApiConnection import MetaApiConnection
+from .streamingMetaApiConnection import StreamingMetaApiConnection
 from ..clients.metaApi.reconnectListener import ReconnectListener
 from ..clients.metaApi.historicalMarketData_client import HistoricalMarketDataClient
 from .connectionRegistry import ConnectionRegistry
@@ -653,14 +653,14 @@ class TestMetatraderAccountApi:
     @pytest.mark.asyncio
     async def test_connect_to_mt_terminal(self):
         """Should connect to an MT terminal."""
-        websocket_client.add_synchronization_listener = MagicMock()
-        websocket_client.subscribe = AsyncMock()
-        MetaApiConnection.initialize = AsyncMock()
-        client.get_account = AsyncMock(return_value={'_id': 'id'})
-        account = await api.get_account('id')
-        storage = MockStorage('accountId')
-        await account.connect(storage)
-        registry.connect.assert_called_with(account, storage, None)
+        with patch('lib.metaApi.streamingMetaApiConnection.StreamingMetaApiConnection.initialize', AsyncMock()):
+            websocket_client.add_synchronization_listener = MagicMock()
+            websocket_client.subscribe = AsyncMock()
+            client.get_account = AsyncMock(return_value={'_id': 'id'})
+            account = await api.get_account('id')
+            storage = MockStorage('accountId')
+            await account.get_streaming_connection(storage)
+            registry.connect.assert_called_with(account, storage, None)
 
     @pytest.mark.asyncio
     async def test_update_mt_account(self):

@@ -1,6 +1,6 @@
 from .connectionHealthMonitor import ConnectionHealthMonitor
 from mock import MagicMock, patch
-from .metaApiConnection import MetaApiConnection
+from .streamingMetaApiConnection import StreamingMetaApiConnection
 from .metatraderAccount import MetatraderAccount
 from .terminalState import TerminalState
 from freezegun import freeze_time
@@ -39,7 +39,7 @@ class MockTerminalState(TerminalState):
         return self._connected_to_broker
 
 
-class MockConnection(MetaApiConnection):
+class MockConnection(StreamingMetaApiConnection):
 
     def __init__(self):
         self._terminalState = MockTerminalState()
@@ -66,7 +66,7 @@ class MockConnection(MetaApiConnection):
 
 start_time = '2020-10-05 10:00:00.000'
 broker_times = ['2020-10-05 09:00:00.000', '2020-10-10 10:00:00.000']
-connection: MetaApiConnection = None
+connection: StreamingMetaApiConnection = None
 health_monitor: ConnectionHealthMonitor = None
 prices = []
 

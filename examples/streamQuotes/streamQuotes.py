@@ -61,7 +61,7 @@ async def stream_quotes():
             await account.wait_connected()
 
         # connect to MetaApi API
-        connection = await account.connect()
+        connection = await account.get_streaming_connection()
 
         quote_listener = QuoteListener()
         connection.add_synchronization_listener(quote_listener)

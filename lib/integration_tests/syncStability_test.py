@@ -222,9 +222,9 @@ class TestSyncStability:
     async def test_sync(self):
         """Should synchronize account"""
         account = await api.metatrader_account_api.get_account('accountId')
-        connection = await account.connect()
+        connection = await account.get_streaming_connection()
         await connection.wait_synchronized({'timeoutInSeconds': 10})
-        response = await connection.get_account_information()
+        response = connection.terminal_state.account_information
         assert response == account_information
         assert connection.synchronized and connection.terminal_state.connected and \
                connection.terminal_state.connected_to_broker
@@ -234,11 +234,11 @@ class TestSyncStability:
         """Should reconnect on server socket crash."""
         with patch('lib.clients.metaApi.metaApiWebsocket_client.asyncio.sleep', new=lambda x: sleep(x / 50)):
             account = await api.metatrader_account_api.get_account('accountId')
-            connection = await account.connect()
+            connection = await account.get_streaming_connection()
             await connection.wait_synchronized({'timeoutInSeconds': 10})
             await sio.disconnect(client_sid)
             await sleep(0.5)
-            response = await connection.get_account_information()
+            response = connection.terminal_state.account_information
             assert response == account_information
             assert connection.synchronized and connection.terminal_state.connected and \
                    connection.terminal_state.connected_to_broker
@@ -248,7 +248,7 @@ class TestSyncStability:
         """Should set state to disconnected on timeout."""
         with patch('lib.clients.metaApi.metaApiWebsocket_client.asyncio.sleep', new=lambda x: sleep(x / 50)):
             account = await api.metatrader_account_api.get_account('accountId')
-            connection = await account.connect()
+            connection = await account.get_streaming_connection()
             await connection.wait_synchronized({'timeoutInSeconds': 10})
             fake_server.delete_status_task('accountId')
 
@@ -267,11 +267,11 @@ class TestSyncStability:
         """Should resubscribe on timeout."""
         with patch('lib.clients.metaApi.metaApiWebsocket_client.asyncio.sleep', new=lambda x: sleep(x / 50)):
             account = await api.metatrader_account_api.get_account('accountId')
-            connection = await account.connect()
+            connection = await account.get_streaming_connection()
             await connection.wait_synchronized({'timeoutInSeconds': 10})
             fake_server.status_tasks['accountId'].cancel()
             await sleep(1.5)
-            response = await connection.get_account_information()
+            response = connection.terminal_state.account_information
             assert response == account_information
             assert connection.synchronized and connection.terminal_state.connected and \
                    connection.terminal_state.connected_to_broker
@@ -298,9 +298,9 @@ class TestSyncStability:
                 await fake_server.respond_account_information(data)
 
         account = await api.metatrader_account_api.get_account('accountId')
-        connection = await account.connect()
+        connection = await account.get_streaming_connection()
         await connection.wait_synchronized({'timeoutInSeconds': 10})
-        response = await connection.get_account_information()
+        response = connection.terminal_state.account_information
         assert response == account_information
         assert connection.synchronized and connection.terminal_state.connected and \
                connection.terminal_state.connected_to_broker
@@ -310,7 +310,7 @@ class TestSyncStability:
         """Should wait until account is redeployed after disconnect."""
         with patch('lib.clients.metaApi.metaApiWebsocket_client.asyncio.sleep', new=lambda x: sleep(x / 50)):
             account = await api.metatrader_account_api.get_account('accountId')
-            connection = await account.connect()
+            connection = await account.get_streaming_connection()
             await connection.wait_synchronized({'timeoutInSeconds': 10})
             fake_server.delete_status_task('accountId')
             fake_server.disable_sync()
@@ -336,7 +336,7 @@ class TestSyncStability:
         """Should resubscribe immediately after disconnect on status packet."""
         with patch('lib.clients.metaApi.metaApiWebsocket_client.asyncio.sleep', new=lambda x: sleep(x / 50)):
             account = await api.metatrader_account_api.get_account('accountId')
-            connection = await account.connect()
+            connection = await account.get_streaming_connection()
             await connection.wait_synchronized({'timeoutInSeconds': 10})
             fake_server.delete_status_task('accountId')
             await sio.emit('synchronization', {'type': 'disconnected', 'accountId': 'accountId',
@@ -358,13 +358,13 @@ class TestSyncStability:
         """Should resubscribe other accounts after one of connections is closed"""
         with patch('lib.clients.metaApi.metaApiWebsocket_client.asyncio.sleep', new=lambda x: sleep(x / 50)):
             account = await api.metatrader_account_api.get_account('accountId')
-            connection = await account.connect()
+            connection = await account.get_streaming_connection()
             await connection.wait_synchronized({'timeoutInSeconds': 10})
             account2 = await api.metatrader_account_api.get_account('accountId2')
-            connection2 = await account2.connect()
+            connection2 = await account2.get_streaming_connection()
             await connection2.wait_synchronized({'timeoutInSeconds': 10})
             account3 = await api.metatrader_account_api.get_account('accountId3')
-            connection3 = await account3.connect()
+            connection3 = await account3.get_streaming_connection()
             await connection3.wait_synchronized({'timeoutInSeconds': 10})
             await connection.close()
             fake_server.delete_status_task('accountId2')
@@ -412,13 +412,13 @@ class TestSyncStability:
 
         with patch('lib.clients.metaApi.metaApiWebsocket_client.asyncio.sleep', new=lambda x: sleep(x / 50)):
             account = await api.metatrader_account_api.get_account('accountId')
-            connection = await account.connect()
+            connection = await account.get_streaming_connection()
             await connection.wait_synchronized({'timeoutInSeconds': 3})
             account2 = await api.metatrader_account_api.get_account('accountId2')
-            connection2 = await account2.connect()
+            connection2 = await account2.get_streaming_connection()
             await connection2.wait_synchronized({'timeoutInSeconds': 3})
             account3 = await api.metatrader_account_api.get_account('accountId3')
-            connection3 = await account3.connect()
+            connection3 = await account3.get_streaming_connection()
             try:
                 await connection3.wait_synchronized({'timeoutInSeconds': 3})
                 raise Exception('TimeoutException expected')
@@ -463,13 +463,13 @@ class TestSyncStability:
 
         with patch('lib.clients.metaApi.metaApiWebsocket_client.asyncio.sleep', new=lambda x: sleep(x / 50)):
             account = await api.metatrader_account_api.get_account('accountId')
-            connection = await account.connect()
+            connection = await account.get_streaming_connection()
             await connection.wait_synchronized({'timeoutInSeconds': 3})
             account2 = await api.metatrader_account_api.get_account('accountId2')
-            connection2 = await account2.connect()
+            connection2 = await account2.get_streaming_connection()
             await connection2.wait_synchronized({'timeoutInSeconds': 3})
             account3 = await api.metatrader_account_api.get_account('accountId3')
-            connection3 = await account3.connect()
+            connection3 = await account3.get_streaming_connection()
             try:
                 await connection3.wait_synchronized({'timeoutInSeconds': 3})
                 raise Exception('TimeoutException expected')
@@ -511,18 +511,18 @@ class TestSyncStability:
 
         with patch('lib.clients.metaApi.metaApiWebsocket_client.asyncio.sleep', new=lambda x: sleep(x / 50)):
             account = await api.metatrader_account_api.get_account('accountId')
-            connection = await account.connect()
+            connection = await account.get_streaming_connection()
             await connection.wait_synchronized({'timeoutInSeconds': 3})
             account2 = await api.metatrader_account_api.get_account('accountId2')
-            connection2 = await account2.connect()
+            connection2 = await account2.get_streaming_connection()
             await connection2.wait_synchronized({'timeoutInSeconds': 3})
             account3 = await api.metatrader_account_api.get_account('accountId3')
-            connection3 = await account3.connect()
+            connection3 = await account3.get_streaming_connection()
             await connection3.wait_synchronized({'timeoutInSeconds': 3})
             assert sid_by_accounts['accountId'] == sid_by_accounts['accountId2'] != sid_by_accounts['accountId3']
             await sleep(2)
             account4 = await api.metatrader_account_api.get_account('accountId4')
-            connection4 = await account4.connect()
+            connection4 = await account4.get_streaming_connection()
             await connection4.wait_synchronized({'timeoutInSeconds': 3})
             assert sid_by_accounts['accountId'] == sid_by_accounts['accountId4']
 
@@ -556,7 +556,7 @@ class TestSyncStability:
 
         with patch('lib.clients.metaApi.metaApiWebsocket_client.asyncio.sleep', new=lambda x: sleep(x / 50)):
             account = await api.metatrader_account_api.get_account('accountId')
-            connection = await account.connect()
+            connection = await account.get_streaming_connection()
             await connection.wait_synchronized({'timeoutInSeconds': 3})
             assert sids[0] != sids[1]
 
@@ -590,18 +590,18 @@ class TestSyncStability:
 
         with patch('lib.clients.metaApi.metaApiWebsocket_client.asyncio.sleep', new=lambda x: sleep(x / 50)):
             account = await api.metatrader_account_api.get_account('accountId')
-            connection = await account.connect()
+            connection = await account.get_streaming_connection()
             await connection.wait_synchronized({'timeoutInSeconds': 3})
             account2 = await api.metatrader_account_api.get_account('accountId2')
-            connection2 = await account2.connect()
+            connection2 = await account2.get_streaming_connection()
             await connection2.wait_synchronized({'timeoutInSeconds': 3})
             account3 = await api.metatrader_account_api.get_account('accountId3')
-            connection3 = await account3.connect()
+            connection3 = await account3.get_streaming_connection()
             await connection3.wait_synchronized({'timeoutInSeconds': 3})
             assert sid_by_accounts['accountId'] == sid_by_accounts['accountId2'] != sid_by_accounts['accountId3']
             await connection2.close()
             account4 = await api.metatrader_account_api.get_account('accountId4')
-            connection4 = await account4.connect()
+            connection4 = await account4.get_streaming_connection()
             await connection4.wait_synchronized({'timeoutInSeconds': 3})
             assert sid_by_accounts['accountId'] == sid_by_accounts['accountId4']
 
@@ -639,23 +639,23 @@ class TestSyncStability:
 
         with patch('lib.clients.metaApi.metaApiWebsocket_client.asyncio.sleep', new=lambda x: sleep(x / 50)):
             account = await api.metatrader_account_api.get_account('accountId')
-            connection = await account.connect()
+            connection = await account.get_streaming_connection()
             await connection.wait_synchronized({'timeoutInSeconds': 3})
             account2 = await api.metatrader_account_api.get_account('accountId2')
-            connection2 = await account2.connect()
+            connection2 = await account2.get_streaming_connection()
             await connection2.wait_synchronized({'timeoutInSeconds': 3})
             account3 = await api.metatrader_account_api.get_account('accountId3')
-            connection3 = await account3.connect()
+            connection3 = await account3.get_streaming_connection()
             await connection3.wait_synchronized({'timeoutInSeconds': 3})
             assert sid_by_accounts['accountId'] == sid_by_accounts['accountId2'] != sid_by_accounts['accountId3']
             await sleep(2)
             account4 = await api.metatrader_account_api.get_account('accountId4')
-            connection4 = await account4.connect()
+            connection4 = await account4.get_streaming_connection()
             await connection4.wait_synchronized({'timeoutInSeconds': 3})
             assert sid_by_accounts['accountId'] != sid_by_accounts['accountId4']
             await connection2.close()
             account5 = await api.metatrader_account_api.get_account('accountId5')
-            connection5 = await account5.connect()
+            connection5 = await account5.get_streaming_connection()
             await connection5.wait_synchronized({'timeoutInSeconds': 3})
             assert sid_by_accounts['accountId'] == sid_by_accounts['accountId5']
 
@@ -664,7 +664,7 @@ class TestSyncStability:
         """Should attempt to resubscribe on disconnected packet."""
         with patch('lib.clients.metaApi.metaApiWebsocket_client.asyncio.sleep', new=lambda x: sleep(x / 50)):
             account = await api.metatrader_account_api.get_account('accountId')
-            connection = await account.connect()
+            connection = await account.get_streaming_connection()
             await connection.wait_synchronized({'timeoutInSeconds': 10})
             assert connection.synchronized
             assert connection.terminal_state.connected
@@ -686,7 +686,7 @@ class TestSyncStability:
         """Should handle multiple streams in one instance number."""
         with patch('lib.clients.metaApi.metaApiWebsocket_client.asyncio.sleep', new=lambda x: sleep(x / 50)):
             account = await api.metatrader_account_api.get_account('accountId')
-            connection = await account.connect()
+            connection = await account.get_streaming_connection()
             await connection.wait_synchronized({'timeoutInSeconds': 10})
             subscribe_called = False
 
@@ -726,7 +726,7 @@ class TestSyncStability:
         """Should not resubscribe if multiple streams and one timed out."""
         with patch('lib.clients.metaApi.metaApiWebsocket_client.asyncio.sleep', new=lambda x: sleep(x / 50)):
             account = await api.metatrader_account_api.get_account('accountId')
-            connection = await account.connect()
+            connection = await account.get_streaming_connection()
             await connection.wait_synchronized({'timeoutInSeconds': 10})
             subscribe_called = False
 
@@ -785,11 +785,11 @@ class TestSyncStability:
                 await fake_server.respond(data)
 
         account = await api.metatrader_account_api.get_account('accountId')
-        connection = await account.connect()
+        connection = await account.get_streaming_connection()
         await connection.wait_synchronized({'timeoutInSeconds': 3})
         assert synchronize_counter == 1
         account2 = await api.metatrader_account_api.get_account('accountId2')
-        connection2 = await account2.connect()
+        connection2 = await account2.get_streaming_connection()
         await sleep(0.1)
         await connection2.close()
         try:
@@ -828,7 +828,7 @@ class TestSyncStability:
                     await fake_server.respond(data)
 
             account = await api.metatrader_account_api.get_account('accountId')
-            connection = await account.connect()
+            connection = await account.get_streaming_connection()
             await connection.wait_synchronized({'timeoutInSeconds': 10})
             assert connection.synchronized and connection.terminal_state.connected and \
                    connection.terminal_state.connected_to_broker
@@ -854,7 +854,7 @@ class TestSyncStability:
         """Should not resubscribe on timeout if connection is closed."""
         with patch('lib.clients.metaApi.metaApiWebsocket_client.asyncio.sleep', new=lambda x: sleep(x / 50)):
             account = await api.metatrader_account_api.get_account('accountId')
-            connection = await account.connect()
+            connection = await account.get_streaming_connection()
             await connection.wait_synchronized({'timeoutInSeconds': 10})
             fake_server.status_tasks['accountId'].cancel()
             assert connection.synchronized
@@ -868,7 +868,7 @@ class TestSyncStability:
         with patch('lib.clients.metaApi.metaApiWebsocket_client.asyncio.sleep', new=lambda x: sleep(x / 50)):
             subscribe_calls = 0
             account = await api.metatrader_account_api.get_account('accountId')
-            connection = await account.connect()
+            connection = await account.get_streaming_connection()
             await connection.wait_synchronized({'timeoutInSeconds': 10})
             fake_server.disable_sync()
             fake_server.status_tasks['accountId'].cancel()

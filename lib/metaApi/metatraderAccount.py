@@ -2,7 +2,7 @@ from ..clients.metaApi.metatraderAccount_client import MetatraderAccountClient, 
     MetatraderAccountUpdateDto, Extension
 from ..clients.metaApi.metaApiWebsocket_client import MetaApiWebsocketClient
 from ..clients.timeoutException import TimeoutException
-from .metaApiConnection import MetaApiConnection
+from .streamingMetaApiConnection import StreamingMetaApiConnection
 from .metatraderAccountModel import MetatraderAccountModel
 from ..metaApi.historyFileManager import HistoryFileManager
 from .historyStorage import HistoryStorage
@@ -13,6 +13,7 @@ from ..clients.errorHandler import ValidationException
 from .models import MetatraderCandle, MetatraderTick
 from datetime import datetime, timedelta
 from typing import List, Dict
+from .rpcMetaApiConnection import RpcMetaApiConnection
 import asyncio
 
 
@@ -396,9 +397,9 @@ class MetatraderAccount(MetatraderAccountModel):
         if self.connection_status != 'CONNECTED':
             raise TimeoutException('Timed out waiting for account ' + self.id + ' to connect to the broker')
 
-    async def connect(self, history_storage: HistoryStorage = None, history_start_time: datetime = None) -> \
-            MetaApiConnection:
-        """Connects to MetaApi.
+    async def get_streaming_connection(self, history_storage: HistoryStorage = None,
+                                       history_start_time: datetime = None) -> StreamingMetaApiConnection:
+        """Connects to MetaApi via streaming connection.
 
         Args:
             history_storage: Optional history storage.
@@ -408,6 +409,14 @@ class MetatraderAccount(MetatraderAccountModel):
             MetaApi connection.
         """
         return await self._connectionRegistry.connect(self, history_storage, history_start_time)
+
+    async def get_rpc_connection(self) -> RpcMetaApiConnection:
+        """Connects to MetaApi via RPC connection.
+
+        Returns:
+            MetaApi connection.
+        """
+        return RpcMetaApiConnection(self._metaApiWebsocketClient, self)
 
     async def update(self, account: MetatraderAccountUpdateDto):
         """Updates MetaTrader account data.
