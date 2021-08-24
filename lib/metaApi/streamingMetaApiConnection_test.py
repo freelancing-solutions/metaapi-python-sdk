@@ -145,6 +145,7 @@ async def run_around_tests():
     storage.last_deal_time = AsyncMock(return_value=datetime.now())
     global api
     api = StreamingMetaApiConnection(client, account, storage, MagicMock())
+    api.terminal_state.specification = MagicMock(return_value={'symbol': 'EURUSD'})
     yield
     api.health_monitor.stop()
 
@@ -481,6 +482,23 @@ class TestStreamingMetaApiConnection:
                                                {'type': 'candles', 'timeframe': '5m'}]
 
     @pytest.mark.asyncio
+    async def test_not_subscribe_if_no_specification(self):
+        """Should not subscribe to symbol that has no specification"""
+        client.subscribe_to_market_data = AsyncMock()
+        await api.terminal_state.on_symbol_prices_updated('1:ps-mpa-1', [{'time': datetime.fromtimestamp(1000000),
+                                                          'symbol': 'EURUSD', 'bid': 1, 'ask': 1.1}])
+        await api.terminal_state.on_symbol_prices_updated('1:ps-mpa-1', [{'time': datetime.fromtimestamp(1000000),
+                                                          'symbol': 'AAAAA', 'bid': 1, 'ask': 1.1}])
+        await api.subscribe_to_market_data('EURUSD', None, 1)
+        client.subscribe_to_market_data.assert_called_with('accountId', 1, 'EURUSD', [{'type': 'quotes'}])
+        api.terminal_state.specification = MagicMock(return_value=None)
+        try:
+            await api.subscribe_to_market_data('AAAAA', None, 1)
+            raise Exception('ValidationException expected')
+        except Exception as err:
+            assert err.__class__.__name__ == 'ValidationException'
+
+    @pytest.mark.asyncio
     async def test_unsubscribe_from_market_data(self):
         """Should unsubscribe from market data."""
         client.subscribe_to_market_data = AsyncMock()
@@ -600,28 +618,6 @@ class TestStreamingMetaApiConnection:
             await api.close()
             await api.on_connected('1:ps-mpa-1', 1)
             client.synchronize.assert_not_called()
-
-    @pytest.mark.asyncio
-    async def test_restore_market_data_subs_on_sync(self):
-        """Should restore market data subscriptions on synchronization."""
-        call_count = 0
-
-        def get_price(symbol):
-            nonlocal call_count
-            call_count += 1
-            if call_count == 6:
-                return None
-            return {'symbol': symbol}
-
-        client.subscribe_to_market_data = AsyncMock()
-        api.terminal_state.price = get_price
-        await api.subscribe_to_market_data('EURUSD')
-        await api.subscribe_to_market_data('AUDNZD')
-        client.subscribe_to_market_data = AsyncMock()
-        await api.on_account_information_updated('1:ps-mpa-1', {})
-        await asyncio.sleep(0.05)
-        assert client.subscribe_to_market_data.call_count == 1
-        client.subscribe_to_market_data.assert_called_with('accountId', 1, 'AUDNZD', [{'type': 'quotes'}])
 
     @pytest.mark.asyncio
     async def test_unsubscribe_from_events_on_close(self):

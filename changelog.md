@@ -2,6 +2,7 @@
   - breaking change: divided MetaApiConnection class into:
     - RpcMetaApiConnection for RPC requests
     - StreamingMetaApiConnection for terminal synchronization
+  - added symbol validation for subscribe_to_market_data
 
 14.3.0
   - added copyFactoryResourceSlots field to make it possible specify resource slots for CopyFactory 2 application
