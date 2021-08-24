@@ -7,9 +7,8 @@ from .metatraderAccountModel import MetatraderAccountModel
 from .connectionRegistryModel import ConnectionRegistryModel
 from .historyStorage import HistoryStorage
 from ..clients.timeoutException import TimeoutException
-from .models import random_id, string_format_error, MetatraderSymbolSpecification, MetatraderAccountInformation, \
-    MetatraderTradeResponse, MetatraderSymbolPrice, MarketTradeOptions, PendingTradeOptions, MarketDataSubscription, \
-    MarketDataUnsubscription, MetatraderCandle, MetatraderTick, MetatraderBook, StopOptions
+from .models import random_id, string_format_error, MarketDataSubscription, MarketDataUnsubscription
+from ..clients.errorHandler import ValidationException
 from ..clients.optionsValidator import OptionsValidator
 from datetime import datetime, timedelta
 from typing import Coroutine, List, Optional, Dict
@@ -169,29 +168,34 @@ class StreamingMetaApiConnection(MetaApiConnection):
         Returns:
             Promise which resolves when subscription request was processed.
         """
-        subscriptions = subscriptions or [{'type': 'quotes'}]
-        if symbol in self._subscriptions:
-            prev_subscriptions = self._subscriptions[symbol]['subscriptions'] or []
-            for subscription in subscriptions:
-                index = -1
-                for i in range(len(prev_subscriptions)):
-                    item = prev_subscriptions[i]
-                    if subscription['type'] == 'candles':
-                        if item['type'] == subscription['type'] and \
-                                item['timeframe'] == subscription['timeframe']:
+        if self._terminalState.specification(symbol) is None:
+            raise ValidationException(f'Cannot subscribe to market data for symbol {symbol} because symbol '
+                                      f'does not exist')
+        else:
+            subscriptions = subscriptions or [{'type': 'quotes'}]
+            if symbol in self._subscriptions:
+                prev_subscriptions = self._subscriptions[symbol]['subscriptions'] or []
+                for subscription in subscriptions:
+                    index = -1
+                    for i in range(len(prev_subscriptions)):
+                        item = prev_subscriptions[i]
+                        if subscription['type'] == 'candles':
+                            if item['type'] == subscription['type'] and \
+                                    item['timeframe'] == subscription['timeframe']:
+                                index = i
+                                break
+                        elif item['type'] == subscription['type']:
                             index = i
                             break
-                    elif item['type'] == subscription['type']:
-                        index = i
-                        break
-                if index == -1:
-                    prev_subscriptions.append(subscription)
-                else:
-                    prev_subscriptions[index] = subscription
-        else:
-            self._subscriptions[symbol] = {'subscriptions': subscriptions}
-        await self._websocketClient.subscribe_to_market_data(self._account.id, instance_index, symbol, subscriptions)
-        return await self.terminal_state.wait_for_price(symbol, timeout_in_seconds)
+                    if index == -1:
+                        prev_subscriptions.append(subscription)
+                    else:
+                        prev_subscriptions[index] = subscription
+            else:
+                self._subscriptions[symbol] = {'subscriptions': subscriptions}
+            await self._websocketClient.subscribe_to_market_data(self._account.id, instance_index, symbol,
+                                                                 subscriptions)
+            return await self.terminal_state.wait_for_price(symbol, timeout_in_seconds)
 
     def unsubscribe_from_market_data(self, symbol: str, subscriptions: List[MarketDataUnsubscription] = None,
                                      instance_index: int = None) -> Coroutine:
@@ -387,30 +391,6 @@ class StreamingMetaApiConnection(MetaApiConnection):
         """
         state = self._get_state(instance_index)
         state['ordersSynchronized'][synchronization_id] = True
-
-    async def on_account_information_updated(self, instance_index: str,
-                                             account_information: MetatraderAccountInformation):
-        """Invoked when MetaTrader position is updated.
-
-        Args:
-            instance_index: Index of an account instance connected.
-            account_information: Updated MetaTrader position.
-
-        Returns:
-            A coroutine which resolves when the asynchronous event is processed.
-        """
-        async def subscribe_task(symbol):
-            try:
-                instance = self.get_instance_number(instance_index)
-                await self.subscribe_to_market_data(symbol, self._subscriptions[symbol]['subscriptions'],
-                                                    instance)
-            except Exception as err:
-                self._logger.error(f'MetaApi websocket client for account {self.account.id}:{str(instance_index)} '
-                                   f'failed to resubscribe to symbol {symbol} ' + string_format_error(err))
-
-        for symbol in self.subscribed_symbols:
-            if not self._terminalState.price(symbol):
-                asyncio.create_task(subscribe_task(symbol))
 
     async def on_reconnected(self):
         """Invoked when connection to MetaApi websocket API restored after a disconnect.
