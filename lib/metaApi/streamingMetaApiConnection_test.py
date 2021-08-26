@@ -467,8 +467,8 @@ class TestStreamingMetaApiConnection:
         """Should subscribe to market data."""
         client.subscribe_to_market_data = AsyncMock()
         promise = asyncio.create_task(api.subscribe_to_market_data('EURUSD', None, 1))
-        await api.terminal_state.on_symbol_prices_updated('1:ps-mpa-1', [{'time': datetime.fromtimestamp(1000000),
-                                                          'symbol': 'EURUSD', 'bid': 1, 'ask': 1.1}])
+        api.terminal_state.wait_for_price = AsyncMock(return_value={'time': datetime.fromtimestamp(1000000),
+                                                                    'symbol': 'EURUSD', 'bid': 1, 'ask': 1.1})
         await promise
         assert 'EURUSD' in api.subscribed_symbols
         client.subscribe_to_market_data.assert_called_with('accountId', 1, 'EURUSD', [{'type': 'quotes'}])
@@ -485,10 +485,8 @@ class TestStreamingMetaApiConnection:
     async def test_not_subscribe_if_no_specification(self):
         """Should not subscribe to symbol that has no specification"""
         client.subscribe_to_market_data = AsyncMock()
-        await api.terminal_state.on_symbol_prices_updated('1:ps-mpa-1', [{'time': datetime.fromtimestamp(1000000),
-                                                          'symbol': 'EURUSD', 'bid': 1, 'ask': 1.1}])
-        await api.terminal_state.on_symbol_prices_updated('1:ps-mpa-1', [{'time': datetime.fromtimestamp(1000000),
-                                                          'symbol': 'AAAAA', 'bid': 1, 'ask': 1.1}])
+        api.terminal_state.wait_for_price = AsyncMock(return_value={'time': datetime.fromtimestamp(1000000),
+                                                                    'symbol': 'EURUSD', 'bid': 1, 'ask': 1.1})
         await api.subscribe_to_market_data('EURUSD', None, 1)
         client.subscribe_to_market_data.assert_called_with('accountId', 1, 'EURUSD', [{'type': 'quotes'}])
         api.terminal_state.specification = MagicMock(return_value=None)
@@ -503,8 +501,8 @@ class TestStreamingMetaApiConnection:
         """Should unsubscribe from market data."""
         client.subscribe_to_market_data = AsyncMock()
         client.unsubscribe_from_market_data = AsyncMock()
-        await api.terminal_state.on_symbol_prices_updated('1:ps-mpa-1', [{'time': datetime.fromtimestamp(1000000),
-                                                                          'symbol': 'EURUSD', 'bid': 1, 'ask': 1.1}])
+        api.terminal_state.wait_for_price = AsyncMock(return_value={'time': datetime.fromtimestamp(1000000),
+                                                                    'symbol': 'EURUSD', 'bid': 1, 'ask': 1.1})
         await api.subscribe_to_market_data('EURUSD', [{'type': 'quotes'}], 1)
         assert 'EURUSD' in api.subscribed_symbols
         await api.unsubscribe_from_market_data('EURUSD', [{'type': 'quotes'}], 1)
