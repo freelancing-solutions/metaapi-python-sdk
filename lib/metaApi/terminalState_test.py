@@ -51,6 +51,7 @@ class TestTerminalState:
         await state.on_position_updated('1:ps-mpa-1', {'id': '1', 'profit': 10})
         await state.on_position_updated('1:ps-mpa-1', {'id': '2'})
         await state.on_position_updated('1:ps-mpa-1', {'id': '1', 'profit': 11})
+        await state.on_pending_orders_synchronized('1:ps-mpa-1', 'synchronizationId')
         assert len(state.positions) == 2
         await state.on_position_removed('1:ps-mpa-1', '2')
         await state.on_position_removed('1:ps-mpa-1', '3')
@@ -65,6 +66,7 @@ class TestTerminalState:
         await state.on_pending_order_updated('1:ps-mpa-1', {'id': '1', 'openPrice': 10})
         await state.on_pending_order_updated('1:ps-mpa-1', {'id': '2'})
         await state.on_pending_order_updated('1:ps-mpa-1', {'id': '1', 'openPrice': 11})
+        await state.on_pending_orders_synchronized('1:ps-mpa-1', 'synchronizationId')
         assert len(state.orders) == 2
         await state.on_pending_order_completed('1:ps-mpa-1', '2')
         assert len(state.orders) == 1
@@ -88,6 +90,7 @@ class TestTerminalState:
         assert not state.price('EURUSD')
         await state.on_symbol_prices_updated('1:ps-mpa-1', [{'time': datetime.fromtimestamp(1000000),
                                              'symbol': 'EURUSD', 'bid': 1, 'ask': 1.1}])
+        await state.on_pending_orders_synchronized('1:ps-mpa-1', 'synchronizationId')
         await state.on_symbol_prices_updated('1:ps-mpa-1', [{'time': datetime.fromtimestamp(1000000),
                                                              'symbol': 'GBPUSD'}])
         await state.on_symbol_prices_updated('1:ps-mpa-1', [{'time': datetime.fromtimestamp(1000000),
@@ -102,6 +105,7 @@ class TestTerminalState:
         promise = asyncio.create_task(state.wait_for_price('EURUSD'))
         await state.on_symbol_prices_updated('1:ps-mpa-1', [{'time': datetime.fromtimestamp(1000000),
                                              'symbol': 'EURUSD', 'bid': 1, 'ask': 1.1}])
+        await state.on_pending_orders_synchronized('1:ps-mpa-1', 'synchronizationId')
         assert (await promise) == {'time': datetime.fromtimestamp(1000000),
                                    'symbol': 'EURUSD', 'bid': 1, 'ask': 1.1}
 
@@ -119,6 +123,7 @@ class TestTerminalState:
             'profit': 100,
             'volume': 2
         }])
+        await state.on_pending_orders_synchronized('1:ps-mpa-1', 'synchronizationId')
         await state.on_position_updated('1:ps-mpa-1', {
             'id': '2',
             'symbol': 'AUDUSD',
@@ -160,6 +165,7 @@ class TestTerminalState:
     async def test_update_margin_fields(self):
         """Should update margin fields on price update."""
         await state.on_account_information_updated('1:ps-mpa-1', {'equity': 1000, 'balance': 800})
+        await state.on_pending_orders_synchronized('1:ps-mpa-1', 'synchronizationId')
         await state.on_symbol_prices_updated('1:ps-mpa-1', [], 100, 200, 400, 40000)
         assert state.account_information['equity'] == 100
         assert state.account_information['margin'] == 200
@@ -176,6 +182,7 @@ class TestTerminalState:
           'type': 'ORDER_TYPE_BUY_LIMIT',
           'currentPrice': 9
         })
+        await state.on_pending_orders_synchronized('1:ps-mpa-1', 'synchronizationId')
         await state.on_pending_order_updated('1:ps-mpa-1', {
             'id': '2',
             'symbol': 'AUDUSD',
@@ -199,10 +206,10 @@ class TestTerminalState:
         assert not state.price('EURUSD')
         await state.on_symbol_prices_updated('1:ps-mpa-1', [{'time': datetime.fromtimestamp(1000000),
                                                              'symbol': 'EURUSD', 'bid': 1, 'ask': 1.1}])
+        await state.on_pending_orders_synchronized('1:ps-mpa-1', 'synchronizationId')
         assert state.price('EURUSD') == {'time': datetime.fromtimestamp(1000000),
                                          'symbol': 'EURUSD', 'bid': 1, 'ask': 1.1}
         await state.on_stream_closed('1:ps-mpa-1')
-        assert not state.price('EURUSD')
 
     @pytest.mark.asyncio
     async def test_on_synchronization_started(self):
@@ -228,25 +235,30 @@ class TestTerminalState:
         await state.on_symbol_specifications_updated('1:ps-mpa-1', [specification], [])
         await state.on_positions_replaced('1:ps-mpa-1', positions)
         await state.on_pending_orders_replaced('1:ps-mpa-1', orders)
+        await state.on_pending_orders_synchronized('1:ps-mpa-1', 'synchronizationId')
         assert state.account_information == {'balance': 1000}
         assert state.specification('EURUSD') == specification
         await state.on_synchronization_started('1:ps-mpa-1', specifications_updated=False, positions_updated=False,
                                                orders_updated=False)
+        await state.on_pending_orders_synchronized('1:ps-mpa-1', 'synchronizationId')
         assert not state.account_information
         assert state.specification('EURUSD') == specification
         assert state.orders == orders
         assert state.positions == positions
         await state.on_synchronization_started('1:ps-mpa-1', specifications_updated=True, positions_updated=False,
                                                orders_updated=False)
+        await state.on_pending_orders_synchronized('1:ps-mpa-1', 'synchronizationId')
         assert not state.specification('EURUSD')
         assert state.orders == orders
         assert state.positions == positions
         await state.on_synchronization_started('1:ps-mpa-1', specifications_updated=True, positions_updated=False,
                                                orders_updated=True)
+        await state.on_pending_orders_synchronized('1:ps-mpa-1', 'synchronizationId')
         assert state.orders == []
         assert state.positions == positions
         await state.on_synchronization_started('1:ps-mpa-1', specifications_updated=True, positions_updated=True,
                                                orders_updated=True)
+        await state.on_pending_orders_synchronized('1:ps-mpa-1', 'synchronizationId')
         assert state.positions == []
 
     @pytest.mark.asyncio
@@ -314,6 +326,7 @@ class TestTerminalState:
             'originalComment': 'test2',
             'clientId': 'TE_GBPUSD_7hyINWqAlE',
         }])
+        await state.on_pending_orders_synchronized('1:ps-mpa-1', 'synchronizationId')
         hashes = state.get_hashes('cloud-g1')
         assert hashes['specificationsMd5'] == specifications_hash
         assert hashes['positionsMd5'] == positions_hash
@@ -383,6 +396,7 @@ class TestTerminalState:
             'originalComment': 'test2',
             'clientId': 'TE_GBPUSD_7hyINWqAlE',
         }])
+        await state.on_pending_orders_synchronized('1:ps-mpa-1', 'synchronizationId')
         hashes = state.get_hashes('cloud-g2')
         assert hashes['specificationsMd5'] == specifications_hash
         assert hashes['positionsMd5'] == positions_hash

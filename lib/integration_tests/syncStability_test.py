@@ -104,9 +104,16 @@ class FakeServer:
         await sleep(0.1)
         await self.sio.emit('synchronization', {'type': 'accountInformation', 'accountId': data['accountId'],
                                                 'accountInformation': account_information, 'instanceIndex': 0,
-                                                'host': host})
+                                                'synchronizationId': data['requestId'], 'host': host})
         await self.sio.emit('synchronization', {'type': 'specifications', 'accountId': data['accountId'],
-                                                'specifications': [], 'instanceIndex': 0, 'host': host})
+                                                'specifications': [], 'instanceIndex': 0, 'host': host,
+                                                'synchronizationId': data['requestId']})
+        await self.sio.emit('synchronization', {'type': 'positions', 'accountId': data['accountId'],
+                                                'positions': [], 'instanceIndex': 0, 'host': host,
+                                                'synchronizationId': data['requestId']})
+        await self.sio.emit('synchronization', {'type': 'orders', 'accountId': data['accountId'],
+                                                'orders': [], 'instanceIndex': 0, 'host': host,
+                                                'synchronizationId': data['requestId']})
         await self.sio.emit('synchronization', {'type': 'orderSynchronizationFinished',
                                                 'accountId': data['accountId'], 'instanceIndex': 0,
                                                 'synchronizationId': data['requestId'], 'host': host})

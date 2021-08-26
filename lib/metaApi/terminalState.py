@@ -25,8 +25,6 @@ class TerminalStateDict(TypedDict):
     ordersInitialized: bool
     positionsInitialized: bool
     lastUpdateTime: float
-    initializationCounter: int
-    specificationCount: int
 
 
 class TerminalStateHashes(TypedDict):
@@ -43,6 +41,18 @@ class TerminalState(SynchronizationListener):
         super().__init__()
         self._stateByInstanceIndex = {}
         self._waitForPriceResolves = {}
+        self._combinedState = {
+            'accountInformation': None,
+            'positions': [],
+            'orders': [],
+            'specificationsBySymbol': {},
+            'pricesBySymbol': {},
+            'completedOrders': {},
+            'removedPositions': {},
+            'ordersInitialized': False,
+            'positionsInitialized': False,
+            'lastUpdateTime': 0,
+        }
 
     @property
     def connected(self) -> bool:
@@ -69,7 +79,7 @@ class TerminalState(SynchronizationListener):
         Returns:
             Local copy of account information.
         """
-        return self._get_best_state()['accountInformation']
+        return self._combinedState['accountInformation']
 
     @property
     def positions(self) -> List[MetatraderPosition]:
@@ -78,7 +88,7 @@ class TerminalState(SynchronizationListener):
         Returns:
             A local copy of MetaTrader positions opened.
         """
-        return self._get_best_state()['positions']
+        return self._combinedState['positions']
 
     @property
     def orders(self) -> List[MetatraderOrder]:
@@ -87,7 +97,7 @@ class TerminalState(SynchronizationListener):
         Returns:
             A local copy of MetaTrader orders opened.
         """
-        return self._get_best_state()['orders']
+        return self._combinedState['orders']
 
     @property
     def specifications(self) -> List[MetatraderSymbolSpecification]:
@@ -96,7 +106,7 @@ class TerminalState(SynchronizationListener):
         Returns:
              A local copy of symbol specifications available in MetaTrader trading terminal.
         """
-        return list(self._get_best_state()['specificationsBySymbol'].values())
+        return list(self._combinedState['specificationsBySymbol'].values())
 
     def get_hashes(self, account_type: str) -> TerminalStateHashes:
         """Returns hashes of terminal state data for incremental synchronization.
@@ -195,9 +205,8 @@ class TerminalState(SynchronizationListener):
         Returns:
             MetatraderSymbolSpecification found or undefined if specification for a symbol is not found.
         """
-        state = self._get_best_state(symbol, 'specification')
-        return state['specificationsBySymbol'][symbol] if \
-            (symbol in state['specificationsBySymbol']) else None
+        return self._combinedState['specificationsBySymbol'][symbol] if \
+            (symbol in self._combinedState['specificationsBySymbol']) else None
 
     def price(self, symbol: str) -> MetatraderSymbolPrice:
         """Returns MetaTrader symbol price by symbol.
@@ -208,9 +217,8 @@ class TerminalState(SynchronizationListener):
         Returns:
             MetatraderSymbolPrice found or undefined if price for a symbol is not found.
         """
-        state = self._get_best_state(symbol, 'price')
-        return state['pricesBySymbol'][symbol] if \
-            (symbol in state['pricesBySymbol']) else None
+        return self._combinedState['pricesBySymbol'][symbol] if \
+            (symbol in self._combinedState['pricesBySymbol']) else None
 
     async def wait_for_price(self, symbol: str, timeout_in_seconds: float = 30):
         """Waits for price to be received.
@@ -308,7 +316,7 @@ class TerminalState(SynchronizationListener):
         """
         state = self._get_state(instance_index)
         state['accountInformation'] = account_information
-        state['initializationCounter'] = 1
+        self._combinedState['accountInformation'] = account_information
 
     async def on_positions_replaced(self, instance_index: str, positions: List[MetatraderPosition]):
         """Invoked when the positions are replaced as a result of initial terminal state synchronization.
@@ -334,7 +342,6 @@ class TerminalState(SynchronizationListener):
         state = self._get_state(instance_index)
         state['removedPositions'] = {}
         state['positionsInitialized'] = True
-        state['initializationCounter'] = 2
 
     async def on_position_updated(self, instance_index: str, position: MetatraderPosition):
         """Invoked when MetaTrader position is updated.
@@ -346,15 +353,19 @@ class TerminalState(SynchronizationListener):
         Returns:
             A coroutine which resolves when the asynchronous event is processed.
         """
-        state = self._get_state(instance_index)
-        is_exists = False
-        for i in range(len(state['positions'])):
-            if state['positions'][i]['id'] == position['id']:
-                state['positions'][i] = position
-                is_exists = True
-                break
-        if (not is_exists) and (position['id'] not in state['removedPositions']):
-            state['positions'].append(position)
+        instance_state = self._get_state(instance_index)
+
+        def update_position(state):
+            is_exists = False
+            for i in range(len(state['positions'])):
+                if state['positions'][i]['id'] == position['id']:
+                    state['positions'][i] = position
+                    is_exists = True
+                    break
+            if (not is_exists) and (position['id'] not in state['removedPositions']):
+                state['positions'].append(position)
+        update_position(instance_state)
+        update_position(self._combinedState)
 
     async def on_position_removed(self, instance_index: str, position_id: str):
         """Invoked when MetaTrader position is removed.
@@ -366,16 +377,20 @@ class TerminalState(SynchronizationListener):
         Returns:
             A coroutine which resolves when the asynchronous event is processed.
         """
-        state = self._get_state(instance_index)
-        position = next((p for p in state['positions'] if p['id'] == position_id), None)
-        if position is None:
-            for key in list(state['removedPositions'].keys()):
-                e = state['removedPositions'][key]
-                if e + 5 * 60 < datetime.now().timestamp():
-                    del state['removedPositions'][key]
-            state['removedPositions'][position_id] = datetime.now().timestamp()
-        else:
-            state['positions'] = list(filter(lambda p: p['id'] != position_id, state['positions']))
+        instance_state = self._get_state(instance_index)
+
+        def remove_position(state):
+            position = next((p for p in state['positions'] if p['id'] == position_id), None)
+            if position is None:
+                for key in list(state['removedPositions'].keys()):
+                    e = state['removedPositions'][key]
+                    if e + 5 * 60 < datetime.now().timestamp():
+                        del state['removedPositions'][key]
+                state['removedPositions'][position_id] = datetime.now().timestamp()
+            else:
+                state['positions'] = list(filter(lambda p: p['id'] != position_id, state['positions']))
+        remove_position(instance_state)
+        remove_position(self._combinedState)
 
     async def on_pending_orders_replaced(self, instance_index: str, orders: List[MetatraderOrder]):
         """Invoked when the pending orders are replaced as a result of initial terminal state synchronization.
@@ -405,7 +420,15 @@ class TerminalState(SynchronizationListener):
         state = self._get_state(instance_index)
         state['completedOrders'] = {}
         state['ordersInitialized'] = True
-        state['initializationCounter'] = 3
+        self._combinedState['accountInformation'] = state['accountInformation']
+        self._combinedState['positions'] = state['positions']
+        self._combinedState['orders'] = state['orders']
+        self._combinedState['specificationsBySymbol'] = state['specificationsBySymbol']
+        self._combinedState['pricesBySymbol'] = state['pricesBySymbol']
+        self._combinedState['positionsInitialized'] = True
+        self._combinedState['ordersInitialized'] = True
+        self._combinedState['completedOrders'] = {}
+        self._combinedState['removedPositions'] = {}
 
     async def on_pending_order_updated(self, instance_index: str, order: MetatraderOrder):
         """Invoked when MetaTrader pending order is updated.
@@ -417,15 +440,20 @@ class TerminalState(SynchronizationListener):
         Returns:
             A coroutine which resolves when the asynchronous event is processed.
         """
-        state = self._get_state(instance_index)
-        is_exists = False
-        for i in range(len(state['orders'])):
-            if state['orders'][i]['id'] == order['id']:
-                state['orders'][i] = order
-                is_exists = True
-                break
-        if (not is_exists) and (order['id'] not in state['completedOrders']):
-            state['orders'].append(order)
+        instance_state = self._get_state(instance_index)
+
+        def update_pending_order(state):
+            is_exists = False
+            for i in range(len(state['orders'])):
+                if state['orders'][i]['id'] == order['id']:
+                    state['orders'][i] = order
+                    is_exists = True
+                    break
+            if (not is_exists) and (order['id'] not in state['completedOrders']):
+                state['orders'].append(order)
+
+        update_pending_order(instance_state)
+        update_pending_order(self._combinedState)
 
     async def on_pending_order_completed(self, instance_index: str, order_id: str):
         """Invoked when MetaTrader pending order is completed (executed or canceled).
@@ -437,16 +465,20 @@ class TerminalState(SynchronizationListener):
         Returns:
             A coroutine which resolves when the asynchronous event is processed.
         """
-        state = self._get_state(instance_index)
-        order = next((p for p in state['orders'] if p['id'] == order_id), None)
-        if order is None:
-            for key in list(state['completedOrders'].keys()):
-                e = state['completedOrders'][key]
-                if e + 5 * 60 < datetime.now().timestamp():
-                    del state['completedOrders'][key]
-            state['completedOrders'][order_id] = datetime.now().timestamp()
-        else:
-            state['orders'] = list(filter(lambda o: o['id'] != order_id, state['orders']))
+        instance_state = self._get_state(instance_index)
+
+        def complete_order(state):
+            order = next((p for p in state['orders'] if p['id'] == order_id), None)
+            if order is None:
+                for key in list(state['completedOrders'].keys()):
+                    e = state['completedOrders'][key]
+                    if e + 5 * 60 < datetime.now().timestamp():
+                        del state['completedOrders'][key]
+                state['completedOrders'][order_id] = datetime.now().timestamp()
+            else:
+                state['orders'] = list(filter(lambda o: o['id'] != order_id, state['orders']))
+        complete_order(instance_state)
+        complete_order(self._combinedState)
 
     async def on_symbol_specifications_updated(self, instance_index: str,
                                                specifications: List[MetatraderSymbolSpecification],
@@ -461,13 +493,17 @@ class TerminalState(SynchronizationListener):
         Returns:
             A coroutine which resolves when the asynchronous event is processed.
         """
-        state = self._get_state(instance_index)
-        for specification in specifications:
-            state['specificationsBySymbol'][specification['symbol']] = specification
-        for symbol in removed_symbols:
-            if symbol in state['specificationsBySymbol']:
-                del state['specificationsBySymbol'][symbol]
-        state['specificationCount'] = len(state['specificationsBySymbol'].keys())
+        instance_state = self._get_state(instance_index)
+
+        def update_specifications(state):
+            for specification in specifications:
+                state['specificationsBySymbol'][specification['symbol']] = specification
+            for symbol in removed_symbols:
+                if symbol in state['specificationsBySymbol']:
+                    del state['specificationsBySymbol'][symbol]
+
+        update_specifications(instance_state)
+        update_specifications(self._combinedState)
 
     async def on_symbol_prices_updated(self, instance_index: str, prices: List[MetatraderSymbolPrice],
                                        equity: float = None, margin: float = None, free_margin: float = None,
@@ -486,70 +522,75 @@ class TerminalState(SynchronizationListener):
         Returns:
             A coroutine which resolves when the asynchronous event is processed.
         """
-        state = self._get_state(instance_index)
-        state['lastUpdateTime'] = max(map(lambda p: p['time'].timestamp(), prices)) if len(prices) else 0
-        prices_initialized = False
-        if prices:
-            for price in prices:
-                state['pricesBySymbol'][price['symbol']] = price
-                positions = list(filter(lambda p: p['symbol'] == price['symbol'], state['positions']))
-                other_positions = list(filter(lambda p: p['symbol'] != price['symbol'], state['positions']))
-                orders = list(filter(lambda o: o['symbol'] == price['symbol'], state['orders']))
-                prices_initialized = True
-                for position in other_positions:
-                    if position['symbol'] in state['pricesBySymbol']:
-                        p = state['pricesBySymbol'][position['symbol']]
-                        if 'unrealizedProfit' not in position:
-                            self._update_position_profits(position, p)
+        instance_state = self._get_state(instance_index)
+
+        def update_symbol_prices(state):
+            state['lastUpdateTime'] = max(map(lambda p: p['time'].timestamp(), prices)) if len(prices) else 0
+            prices_initialized = False
+            if prices:
+                for price in prices:
+                    state['pricesBySymbol'][price['symbol']] = price
+                    positions = list(filter(lambda p: p['symbol'] == price['symbol'], state['positions']))
+                    other_positions = list(filter(lambda p: p['symbol'] != price['symbol'], state['positions']))
+                    orders = list(filter(lambda o: o['symbol'] == price['symbol'], state['orders']))
+                    prices_initialized = True
+                    for position in other_positions:
+                        if position['symbol'] in state['pricesBySymbol']:
+                            p = state['pricesBySymbol'][position['symbol']]
+                            if 'unrealizedProfit' not in position:
+                                self._update_position_profits(position, p)
+                        else:
+                            prices_initialized = False
+                    for position in positions:
+                        self._update_position_profits(position, price)
+                    for order in orders:
+                        order['currentPrice'] = price['ask'] if (order['type'] == 'ORDER_TYPE_BUY' or
+                                                                 order['type'] == 'ORDER_TYPE_BUY_LIMIT' or
+                                                                 order['type'] == 'ORDER_TYPE_BUY_STOP' or
+                                                                 order['type'] == 'ORDER_TYPE_BUY_STOP_LIMIT') else \
+                            price['bid']
+                    price_resolves = self._waitForPriceResolves[price['symbol']] if price['symbol'] in \
+                        self._waitForPriceResolves else []
+                    if len(price_resolves):
+                        resolve: asyncio.Future
+                        for resolve in price_resolves:
+                            if not resolve.done():
+                                resolve.set_result(True)
+                        del self._waitForPriceResolves[price['symbol']]
+            if state['accountInformation']:
+                if state['positionsInitialized'] and prices_initialized:
+                    if state['accountInformation']['platform'] == 'mt5':
+                        state['accountInformation']['equity'] = equity if equity is not None else \
+                            state['accountInformation']['balance'] + \
+                            functools.reduce(lambda a, b: a + round((b['unrealizedProfit'] if
+                                                                     'unrealizedProfit' in b and
+                                                                     b['unrealizedProfit'] is not None
+                                                                     else 0) * 100) / 100 +
+                                             round((b['swap'] if 'swap' in b and b['swap'] is not None
+                                                    else 0) * 100) / 100, state['positions'], 0)
                     else:
-                        prices_initialized = False
-                for position in positions:
-                    self._update_position_profits(position, price)
-                for order in orders:
-                    order['currentPrice'] = price['ask'] if (order['type'] == 'ORDER_TYPE_BUY' or
-                                                             order['type'] == 'ORDER_TYPE_BUY_LIMIT' or
-                                                             order['type'] == 'ORDER_TYPE_BUY_STOP' or
-                                                             order['type'] == 'ORDER_TYPE_BUY_STOP_LIMIT') else \
-                        price['bid']
-                price_resolves = self._waitForPriceResolves[price['symbol']] if price['symbol'] in \
-                    self._waitForPriceResolves else []
-                if len(price_resolves):
-                    resolve: asyncio.Future
-                    for resolve in price_resolves:
-                        if not resolve.done():
-                            resolve.set_result(True)
-                    del self._waitForPriceResolves[price['symbol']]
-        if state['accountInformation']:
-            if state['positionsInitialized'] and prices_initialized:
-                if state['accountInformation']['platform'] == 'mt5':
-                    state['accountInformation']['equity'] = equity if equity is not None else \
-                        state['accountInformation']['balance'] + \
-                        functools.reduce(lambda a, b: a + round((b['unrealizedProfit'] if 'unrealizedProfit' in b and
-                                                                 b['unrealizedProfit'] is not None
-                                                                 else 0) * 100) / 100 +
-                                         round((b['swap'] if 'swap' in b and b['swap'] is not None
-                                                else 0) * 100) / 100, state['positions'], 0)
+                        state['accountInformation']['equity'] = equity if equity is not None else \
+                            state['accountInformation']['balance'] + \
+                            functools.reduce(
+                            lambda a, b: a + round((b['swap'] if 'swap' in b and b['swap'] is not None
+                                                    else 0) * 100) / 100 +
+                            round((b['commission'] if 'commission' in b and b['commission'] is not None
+                                   else 0) * 100) / 100 +
+                            round((b['unrealizedProfit'] if 'unrealizedProfit' in b and b['unrealizedProfit'] is
+                                                            not None else 0) * 100) / 100, state['positions'], 0)
+                    state['accountInformation']['equity'] = round(state['accountInformation']['equity'] * 100) / 100
                 else:
-                    state['accountInformation']['equity'] = equity if equity is not None else \
-                        state['accountInformation']['balance'] + \
-                        functools.reduce(
-                        lambda a, b: a + round((b['swap'] if 'swap' in b and b['swap'] is not None
-                                                else 0) * 100) / 100 +
-                        round((b['commission'] if 'commission' in b and b['commission'] is not None
-                               else 0) * 100) / 100 +
-                        round((b['unrealizedProfit'] if 'unrealizedProfit' in b and b['unrealizedProfit'] is not None
-                               else 0) * 100) / 100,
-                            state['positions'], 0)
-                state['accountInformation']['equity'] = round(state['accountInformation']['equity'] * 100) / 100
-            else:
-                state['accountInformation']['equity'] = equity if equity else (
-                    state['accountInformation']['equity'] if 'equity' in state['accountInformation'] else None)
-            state['accountInformation']['margin'] = margin if margin else (
-                state['accountInformation']['margin'] if 'margin' in state['accountInformation'] else None)
-            state['accountInformation']['freeMargin'] = free_margin if free_margin else (
-                state['accountInformation']['freeMargin'] if 'freeMargin' in state['accountInformation'] else None)
-            state['accountInformation']['marginLevel'] = margin_level if free_margin else (
-                state['accountInformation']['marginLevel'] if 'marginLevel' in state['accountInformation'] else None)
+                    state['accountInformation']['equity'] = equity if equity else (
+                        state['accountInformation']['equity'] if 'equity' in state['accountInformation'] else None)
+                state['accountInformation']['margin'] = margin if margin else (
+                    state['accountInformation']['margin'] if 'margin' in state['accountInformation'] else None)
+                state['accountInformation']['freeMargin'] = free_margin if free_margin else (
+                    state['accountInformation']['freeMargin'] if 'freeMargin' in state['accountInformation'] else None)
+                state['accountInformation']['marginLevel'] = margin_level if free_margin else (
+                    state['accountInformation']['marginLevel'] if 'marginLevel' in state['accountInformation'] else
+                    None)
+        update_symbol_prices(instance_state)
+        update_symbol_prices(self._combinedState)
 
     async def on_stream_closed(self, instance_index: str):
         """Invoked when a stream for an instance index is closed.
@@ -610,28 +651,7 @@ class TerminalState(SynchronizationListener):
             'ordersInitialized': False,
             'positionsInitialized': False,
             'lastUpdateTime': 0,
-            'initializationCounter': 0,
-            'specificationCount': 0
         }
-
-    def _get_best_state(self, symbol: str = None, mode: str = 'default') -> TerminalStateDict:
-        result = None
-        max_update_time = -1
-        max_initialization_counter = -1
-        max_specification_count = -1
-        for state in self._stateByInstanceIndex.values():
-            if max_initialization_counter < state['initializationCounter'] or max_initialization_counter == \
-                    state['initializationCounter'] and max_initialization_counter == 3 and \
-                    max_update_time < state['lastUpdateTime'] or max_initialization_counter == \
-                    state['initializationCounter'] and max_initialization_counter == 0 and \
-                    max_specification_count < state['specificationCount']:
-                if not symbol or (mode == 'specification' and symbol in state['specificationsBySymbol']) or \
-                        (mode == 'price' and symbol in state['pricesBySymbol']):
-                    max_update_time = state['lastUpdateTime']
-                    max_initialization_counter = state['initializationCounter']
-                    max_specification_count = state['specificationCount']
-                    result = state
-        return result or self._construct_terminal_state()
 
     def _get_hash(self, obj, account_type: str):
         json_item = ''
