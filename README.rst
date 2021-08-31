@@ -358,7 +358,7 @@ By default history is stored in memory only. You can override history storage to
 
     # Note: if you will not specify history storage, then in-memory storage
     # will be used (instance of MemoryHistoryStorage)
-    connection = await account.connect(history_storage=historyStorage)
+    connection = await account.get_streaming_connection(history_storage=historyStorage)
 
     # access history storage
     historyStorage = connection.history_storage;

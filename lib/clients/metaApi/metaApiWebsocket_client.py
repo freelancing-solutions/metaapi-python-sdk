@@ -24,6 +24,7 @@ from datetime import datetime, timedelta
 from typing import Coroutine, List, Dict
 from collections import deque
 import json
+import math
 from ...logger import LoggerManager
 
 
@@ -1159,6 +1160,25 @@ class MetaApiWebsocketClient:
                 (data['host'] if 'host' in data else '0')
             instance_index = str(instance_number) + ':' + (data['host'] if 'host' in data else '0')
 
+            async def _process_event(event, event_name):
+                start_time = datetime.now().timestamp()
+                is_long_event = False
+                is_event_done = False
+
+                async def check_long_event():
+                    await asyncio.sleep(1)
+                    if not is_event_done:
+                        nonlocal is_long_event
+                        is_long_event = True
+                        self._logger.warn(f'{instance_id}: event {event_name} is taking more than 1 second to process')
+
+                asyncio.create_task(check_long_event())
+                await event
+                is_event_done = True
+                if is_long_event:
+                    self._logger.warn(f'{instance_id}: event {event_name} finished in '
+                                      f'{math.floor(datetime.now().timestamp() - start_time)} seconds')
+
             def is_only_active_instance():
                 active_instance_ids = list(
                     filter(lambda instance: instance.startswith(
@@ -1189,7 +1209,8 @@ class MetaApiWebsocketClient:
 
                         async def run_on_disconnected(listener: SynchronizationListener):
                             try:
-                                await listener.on_disconnected(instance_index)
+                                await _process_event(asyncio.create_task(listener.on_disconnected(instance_index)),
+                                                     'on_disconnected')
                             except Exception as err:
                                 self._logger.error(f'{data["accountId"]}:{instance_index}: Failed to notify listener '
                                                    f'about disconnected event ' + string_format_error(err))
@@ -1208,7 +1229,8 @@ class MetaApiWebsocketClient:
 
                         async def run_on_stream_closed(listener: SynchronizationListener):
                             try:
-                                await listener.on_stream_closed(instance_index)
+                                await _process_event(asyncio.create_task(listener.on_stream_closed(instance_index)),
+                                                     'on_stream_closed')
                             except Exception as err:
                                 self._logger.error(f'{data["accountId"]}:{instance_index}: Failed to notify listener '
                                                    f'about stream closed event ' + string_format_error(err))
@@ -1231,7 +1253,8 @@ class MetaApiWebsocketClient:
 
                     async def run_on_connected(listener: SynchronizationListener):
                         try:
-                            await listener.on_connected(instance_index, data['replicas'])
+                            await _process_event(asyncio.create_task(
+                                listener.on_connected(instance_index, data['replicas'])), 'on_connected')
                         except Exception as err:
                             self._logger.error(f'{data["accountId"]}:{instance_index}: Failed to notify listener '
                                                f'about connected event ' + string_format_error(err))
@@ -1255,11 +1278,11 @@ class MetaApiWebsocketClient:
 
                 async def run_on_sync_started(listener: SynchronizationListener):
                     try:
-                        await listener.on_synchronization_started(
+                        await _process_event(asyncio.create_task(listener.on_synchronization_started(
                             instance_index, specifications_updated=data['specificationsUpdated'] if
                             'specificationsUpdated' in data else True, positions_updated=data['positionsUpdated']
                             if 'positionsUpdated' in data else True, orders_updated=data['ordersUpdated'] if
-                            'ordersUpdated' in data else True)
+                            'ordersUpdated' in data else True)), 'on_synchronization_started')
                     except Exception as err:
                         self._logger.error(f'{data["accountId"]}:{instance_index}: Failed to notify listener about '
                                            'synchronization started event ' + string_format_error(err))
@@ -1275,14 +1298,20 @@ class MetaApiWebsocketClient:
 
                     async def run_on_account_info(listener: SynchronizationListener):
                         try:
-                            await listener.on_account_information_updated(instance_index,
-                                                                          data['accountInformation'])
+                            await _process_event(asyncio.create_task(
+                                listener.on_account_information_updated(instance_index,
+                                                                        data['accountInformation'])),
+                                                 'on_account_information_updated')
                             if data['synchronizationId'] in self._synchronizationFlags:
                                 if not self._synchronizationFlags[data['synchronizationId']]['positionsUpdated']:
-                                    await listener.on_positions_synchronized(instance_index, data['synchronizationId'])
+                                    await _process_event(asyncio.create_task(
+                                        listener.on_positions_synchronized(instance_index, data['synchronizationId'])),
+                                        'on_positions_synchronized')
                                 if not self._synchronizationFlags[data['synchronizationId']]['ordersUpdated']:
-                                    await listener.on_pending_orders_synchronized(instance_index,
-                                                                                  data['synchronizationId'])
+                                    await _process_event(asyncio.create_task(
+                                        listener.on_pending_orders_synchronized(
+                                            instance_index, data['synchronizationId'])),
+                                            'on_pending_orders_synchronized')
                         except Exception as err:
                             self._logger.error(f'{data["accountId"]}:{instance_index}: Failed to notify listener '
                                                f'about accountInformation event ' + string_format_error(err))
@@ -1301,7 +1330,8 @@ class MetaApiWebsocketClient:
 
                         async def run_on_deal_added(listener: SynchronizationListener):
                             try:
-                                await listener.on_deal_added(instance_index, deal)
+                                await _process_event(asyncio.create_task(
+                                    listener.on_deal_added(instance_index, deal)), 'on_deal_added')
                             except Exception as err:
                                 self._logger.error(f'{data["accountId"]}:{instance_index}: Failed to notify listener '
                                                    f'about deals event ' + string_format_error(err))
@@ -1317,8 +1347,12 @@ class MetaApiWebsocketClient:
                 async def run_on_pending_orders_replaced(listener: SynchronizationListener):
                     try:
                         if 'orders' in data:
-                            await listener.on_pending_orders_replaced(instance_index, data['orders'])
-                        await listener.on_pending_orders_synchronized(instance_index, data['synchronizationId'])
+                            await _process_event(asyncio.create_task(
+                                listener.on_pending_orders_replaced(instance_index, data['orders'])),
+                                'on_pending_orders_replaced')
+                        await _process_event(asyncio.create_task(
+                            listener.on_pending_orders_synchronized(instance_index, data['synchronizationId'])),
+                            'on_pending_orders_synchronized')
                     except Exception as err:
                         self._logger.error(f'{data["accountId"]}:{instance_index}: Failed to notify listener about '
                                            f'orders event ' + string_format_error(err))
@@ -1335,7 +1369,9 @@ class MetaApiWebsocketClient:
 
                         async def run_on_order_added(listener: SynchronizationListener):
                             try:
-                                await listener.on_history_order_added(instance_index, historyOrder)
+                                await _process_event(asyncio.create_task(
+                                    listener.on_history_order_added(instance_index, historyOrder)),
+                                    'on_history_order_added')
                             except Exception as err:
                                 self._logger.error(f'{data["accountId"]}:{instance_index}: Failed to notify listener '
                                                    f'about historyOrders event ' + string_format_error(err))
@@ -1347,31 +1383,35 @@ class MetaApiWebsocketClient:
                         if len(on_history_order_added_tasks) > 0:
                             await asyncio.gather(*on_history_order_added_tasks)
             elif data['type'] == 'positions':
-                on_position_updated_tasks: List[asyncio.Task] = []
+                on_positions_replaced_tasks: List[asyncio.Task] = []
 
                 async def run_on_positions_replaced(listener: SynchronizationListener):
                     try:
                         if 'positions' in data:
-                            await listener.on_positions_replaced(instance_index, data['positions'])
-                        await listener.on_positions_synchronized(instance_index, data['synchronizationId'])
+                            await _process_event(asyncio.create_task(
+                                listener.on_positions_replaced(instance_index, data['positions'])),
+                                'on_positions_replaced')
+                        await _process_event(asyncio.create_task(
+                            listener.on_positions_synchronized(instance_index, data['synchronizationId'])),
+                            'on_positions_synchronized')
                     except Exception as err:
                         self._logger.error(f'{data["accountId"]}:{instance_index}: Failed to notify listener about '
                                            f'positions event ' + string_format_error(err))
 
                 if data['accountId'] in self._synchronizationListeners:
                     for listener in self._synchronizationListeners[data['accountId']]:
-                        on_position_updated_tasks.append(asyncio
-                                                         .create_task(run_on_positions_replaced(listener)))
-                if len(on_position_updated_tasks) > 0:
-                    await asyncio.gather(*on_position_updated_tasks)
+                        on_positions_replaced_tasks.append(asyncio.create_task(run_on_positions_replaced(listener)))
+                if len(on_positions_replaced_tasks) > 0:
+                    await asyncio.gather(*on_positions_replaced_tasks)
             elif data['type'] == 'update':
                 if 'accountInformation' in data and (data['accountId'] in self._synchronizationListeners):
                     on_account_information_updated_tasks: List[asyncio.Task] = []
 
                     async def run_on_account_information_updated(listener: SynchronizationListener):
                         try:
-                            await listener.on_account_information_updated(instance_index,
-                                                                          data['accountInformation'])
+                            await _process_event(asyncio.create_task(
+                                listener.on_account_information_updated(instance_index, data['accountInformation'])),
+                                'on_account_information_updated')
                         except Exception as err:
                             self._logger.error(f'{data["accountId"]}:{instance_index}: Failed to notify listener about '
                                                f'update event ' + string_format_error(err))
@@ -1387,7 +1427,8 @@ class MetaApiWebsocketClient:
 
                         async def run_on_position_updated(listener: SynchronizationListener):
                             try:
-                                await listener.on_position_updated(instance_index, position)
+                                await _process_event(asyncio.create_task(
+                                    listener.on_position_updated(instance_index, position)), 'on_position_updated')
                             except Exception as err:
                                 self._logger.error(f'{data["accountId"]}:{instance_index}: Failed to notify listener '
                                                    f'about update event ' + string_format_error(err))
@@ -1404,7 +1445,8 @@ class MetaApiWebsocketClient:
 
                         async def run_on_position_removed(listener: SynchronizationListener):
                             try:
-                                await listener.on_position_removed(instance_index, positionId)
+                                await _process_event(asyncio.create_task(
+                                    listener.on_position_removed(instance_index, positionId)), 'on_position_removed')
                             except Exception as err:
                                 self._logger.error(f'{data["accountId"]}:{instance_index}: Failed to notify listener '
                                                    f'about update event ' + string_format_error(err))
@@ -1421,7 +1463,9 @@ class MetaApiWebsocketClient:
 
                         async def run_on_pending_order_updated(listener: SynchronizationListener):
                             try:
-                                await listener.on_pending_order_updated(instance_index, order)
+                                await _process_event(asyncio.create_task(
+                                    listener.on_pending_order_updated(instance_index, order)),
+                                    'on_pending_order_updated')
                             except Exception as err:
                                 self._logger.error(f'{data["accountId"]}:{instance_index}: Failed to notify listener '
                                                    f'about update event ' + string_format_error(err))
@@ -1438,7 +1482,9 @@ class MetaApiWebsocketClient:
 
                         async def run_on_pending_order_completed(listener: SynchronizationListener):
                             try:
-                                await listener.on_pending_order_completed(instance_index, orderId)
+                                await _process_event(asyncio.create_task(
+                                    listener.on_pending_order_completed(instance_index, orderId)),
+                                    'on_pending_order_completed')
                             except Exception as err:
                                 self._logger.error(f'{data["accountId"]}:{instance_index}: Failed to notify listener '
                                                    f'about update event ' + string_format_error(err))
@@ -1455,7 +1501,9 @@ class MetaApiWebsocketClient:
 
                         async def run_on_history_order_added(listener: SynchronizationListener):
                             try:
-                                await listener.on_history_order_added(instance_index, historyOrder)
+                                await _process_event(asyncio.create_task(
+                                    listener.on_history_order_added(instance_index, historyOrder)),
+                                    'on_history_order_added')
                             except Exception as err:
                                 self._logger.error(f'{data["accountId"]}:{instance_index}: Failed to notify listener '
                                                    f'about update event ' + string_format_error(err))
@@ -1472,7 +1520,8 @@ class MetaApiWebsocketClient:
 
                         async def run_on_deal_added(listener: SynchronizationListener):
                             try:
-                                await listener.on_deal_added(instance_index, deal)
+                                await _process_event(asyncio.create_task(
+                                    listener.on_deal_added(instance_index, deal)), 'on_deal_added')
                             except Exception as err:
                                 self._logger.error(f'{data["accountId"]}:{instance_index}: Failed to notify listener '
                                                    f'about deals event ' + string_format_error(err))
@@ -1489,7 +1538,8 @@ class MetaApiWebsocketClient:
 
                     async def run_on_update(listener: LatencyListener):
                         try:
-                            await listener.on_update(data['accountId'], data['timestamps'])
+                            await _process_event(asyncio.create_task(
+                                listener.on_update(data['accountId'], data['timestamps'])), 'on_update')
                         except Exception as err:
                             self._logger.error(f'{data["accountId"]}:{instance_index}: Failed to notify latency '
                                                f'listener about update event ' + string_format_error(err))
@@ -1508,7 +1558,9 @@ class MetaApiWebsocketClient:
                             socket_instance['synchronizationThrottler']\
                                 .remove_synchronization_id(data['synchronizationId'])
                         try:
-                            await listener.on_deals_synchronized(instance_index, data['synchronizationId'])
+                            await _process_event(asyncio.create_task(
+                                listener.on_deals_synchronized(instance_index, data['synchronizationId'])),
+                                'on_deals_synchronized')
                         except Exception as err:
                             self._logger.error(f'{data["accountId"]}:{instance_index}: Failed to notify listener '
                                                f'about dealSynchronizationFinished event ' + string_format_error(err))
@@ -1524,7 +1576,9 @@ class MetaApiWebsocketClient:
 
                     async def run_on_history_orders_synchronized(listener: SynchronizationListener):
                         try:
-                            await listener.on_history_orders_synchronized(instance_index, data['synchronizationId'])
+                            await _process_event(asyncio.create_task(
+                                listener.on_history_orders_synchronized(instance_index, data['synchronizationId'])),
+                                'on_history_orders_synchronized')
                         except Exception as err:
                             self._logger.error(f'{data["accountId"]}:{instance_index}: Failed to notify listener '
                                                f'about orderSynchronizationFinished event ' + string_format_error(err))
@@ -1551,8 +1605,9 @@ class MetaApiWebsocketClient:
 
                     async def run_on_broker_connection_status_changed(listener: SynchronizationListener):
                         try:
-                            await listener.on_broker_connection_status_changed(instance_index,
-                                                                               bool(data['connected']))
+                            await _process_event(asyncio.create_task(
+                                listener.on_broker_connection_status_changed(instance_index, bool(data['connected']))),
+                                'on_broker_connection_status_changed')
                         except Exception as err:
                             self._logger.error(f'{data["accountId"]}:{instance_index}: Failed to notify listener '
                                                f'about brokerConnectionStatusChanged event ' + string_format_error(err))
@@ -1567,7 +1622,9 @@ class MetaApiWebsocketClient:
 
                         async def run_on_health_status(listener: SynchronizationListener):
                             try:
-                                await listener.on_health_status(instance_index, data['healthStatus'])
+                                await _process_event(asyncio.create_task(
+                                    listener.on_health_status(instance_index, data['healthStatus'])),
+                                    'on_health_status')
                             except Exception as err:
                                 self._logger.error(f'{data["accountId"]}:{instance_index}: Failed to notify listener '
                                                    f'about server-side healthStatus event ' + string_format_error(err))
@@ -1590,10 +1647,12 @@ class MetaApiWebsocketClient:
 
                 async def run_on_subscription_downgraded(listener: SynchronizationListener):
                     try:
-                        await listener.on_subscription_downgraded(instance_index, data['symbol'],
-                                                                  data['updates'] if 'updates' in data else None,
-                                                                  data['unsubscriptions'] if 'unsubscriptions' in
-                                                                                             data else None)
+                        await _process_event(asyncio.create_task(
+                            listener.on_subscription_downgraded(instance_index, data['symbol'],
+                                                                data['updates'] if 'updates' in data else None,
+                                                                data['unsubscriptions'] if 'unsubscriptions' in
+                                                                data else None)),
+                                             'on_subscription_downgraded')
                     except Exception as err:
                         self._logger.error(f'{data["accountId"]}:{instance_index}: Failed to notify listener about ' +
                                            'subscription downgrade event ' + string_format_error(err))
@@ -1609,9 +1668,11 @@ class MetaApiWebsocketClient:
 
                 async def run_on_symbol_specifications_updated(listener: SynchronizationListener):
                     try:
-                        await listener.on_symbol_specifications_updated(
-                            instance_index, data['specifications'] if 'specifications' in data else [],
-                            data['removedSymbols'] if 'removedSymbols' in data else [])
+                        await _process_event(asyncio.create_task(
+                            listener.on_symbol_specifications_updated(
+                                             instance_index, data['specifications'] if 'specifications' in data else [],
+                                             data['removedSymbols'] if 'removedSymbols' in data else [])),
+                                             'on_symbol_specifications_updated')
                     except Exception as err:
                         self._logger.error(f'{data["accountId"]}:{instance_index}: Failed to notify listener about '
                                            'specifications updated event ' + string_format_error(err))
@@ -1629,7 +1690,9 @@ class MetaApiWebsocketClient:
 
                         async def run_on_symbol_specification_updated(listener: SynchronizationListener):
                             try:
-                                await listener.on_symbol_specification_updated(instance_index, specification)
+                                await _process_event(asyncio.create_task(
+                                    listener.on_symbol_specification_updated(instance_index, specification)),
+                                    'on_symbol_specification_updated')
                             except Exception as err:
                                 self._logger.error(f'{data["accountId"]}:{instance_index}: Failed to notify listener '
                                                    f'about specification updated event ' + string_format_error(err))
@@ -1647,7 +1710,9 @@ class MetaApiWebsocketClient:
 
                         async def run_on_symbol_specification_removed(listener: SynchronizationListener):
                             try:
-                                await listener.on_symbol_specification_removed(instance_index, removed_symbol)
+                                await _process_event(asyncio.create_task(
+                                    listener.on_symbol_specification_removed(instance_index, removed_symbol)),
+                                    'on_symbol_specification_removed')
                             except Exception as err:
                                 self._logger.error(f'{data["accountId"]}:{instance_index}: Failed to notify listener '
                                                    f'about specifications removed event ' + string_format_error(err))
@@ -1676,9 +1741,11 @@ class MetaApiWebsocketClient:
                         if len(prices):
                             async def run_on_symbol_prices_updated(listener: SynchronizationListener):
                                 try:
-                                    await listener.on_symbol_prices_updated(instance_index, prices, equity, margin,
-                                                                            free_margin, margin_level,
-                                                                            account_currency_exchange_rate)
+                                    await _process_event(asyncio.create_task(
+                                        listener.on_symbol_prices_updated(instance_index, prices, equity, margin,
+                                                                          free_margin, margin_level,
+                                                                          account_currency_exchange_rate)),
+                                                         'on_symbol_prices_updated')
                                 except Exception as err:
                                     self._logger.error(f'{data["accountId"]}:{instance_index}: Failed to notify '
                                                        f'listener about prices event ' + string_format_error(err))
@@ -1689,9 +1756,11 @@ class MetaApiWebsocketClient:
                         if len(candles):
                             async def run_on_candles_updated(listener: SynchronizationListener):
                                 try:
-                                    await listener.on_candles_updated(instance_index, candles, equity, margin,
-                                                                      free_margin, margin_level,
-                                                                      account_currency_exchange_rate)
+                                    await _process_event(asyncio.create_task(
+                                        listener.on_candles_updated(instance_index, candles, equity, margin,
+                                                                    free_margin, margin_level,
+                                                                    account_currency_exchange_rate)),
+                                                         'on_candles_updated')
                                 except Exception as err:
                                     self._logger.error(f'{data["accountId"]}:{instance_index}: Failed to notify '
                                                        f'listener about candles event ' + string_format_error(err))
@@ -1702,9 +1771,10 @@ class MetaApiWebsocketClient:
                         if len(ticks):
                             async def run_on_ticks_updated(listener: SynchronizationListener):
                                 try:
-                                    await listener.on_ticks_updated(instance_index, ticks, equity, margin,
-                                                                    free_margin, margin_level,
-                                                                    account_currency_exchange_rate)
+                                    await _process_event(asyncio.create_task(
+                                        listener.on_ticks_updated(instance_index, ticks, equity, margin,
+                                                                  free_margin, margin_level,
+                                                                  account_currency_exchange_rate)), 'on_ticks_updated')
                                 except Exception as err:
                                     self._logger.error(f'{data["accountId"]}:{instance_index}: Failed to notify '
                                                        f'listener about ticks event ' + string_format_error(err))
@@ -1715,9 +1785,11 @@ class MetaApiWebsocketClient:
                         if len(books):
                             async def run_on_books_updated(listener: SynchronizationListener):
                                 try:
-                                    await listener.on_books_updated(instance_index, books, equity, margin,
-                                                                    free_margin, margin_level,
-                                                                    account_currency_exchange_rate)
+                                    await _process_event(asyncio.create_task(
+                                        listener.on_books_updated(instance_index, books, equity, margin,
+                                                                  free_margin, margin_level,
+                                                                  account_currency_exchange_rate)),
+                                                         'on_books_updated')
                                 except Exception as err:
                                     self._logger.error(f'{data["accountId"]}:{instance_index}: Failed to notify '
                                                        f'listener about books event ' + string_format_error(err))
@@ -1733,7 +1805,8 @@ class MetaApiWebsocketClient:
 
                     async def run_on_symbol_price_updated(listener: SynchronizationListener):
                         try:
-                            await listener.on_symbol_price_updated(instance_index, price)
+                            await _process_event(asyncio.create_task(
+                                listener.on_symbol_price_updated(instance_index, price)), 'on_symbol_price_updated')
                         except Exception as err:
                             self._logger.error(f'{data["accountId"]}:{instance_index}: Failed to notify listener '
                                                f'about price event ' + string_format_error(err))
@@ -1751,8 +1824,9 @@ class MetaApiWebsocketClient:
 
                         async def run_on_symbol_price(listener: LatencyListener):
                             try:
-                                await listener.on_symbol_price(data['accountId'], price['symbol'],
-                                                               price['timestamps'])
+                                await _process_event(asyncio.create_task(
+                                    listener.on_symbol_price(data['accountId'], price['symbol'],
+                                                             price['timestamps'])), 'on_symbol_price')
                             except Exception as err:
                                 self._logger.error(f'{data["accountId"]}:{instance_index}: Failed to notify latency '
                                                    f'listener about update event ' + string_format_error(err))
