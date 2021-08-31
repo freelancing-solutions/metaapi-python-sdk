@@ -162,6 +162,15 @@ class TestStreamingMetaApiConnection:
         client.remove_history.assert_called_with('accountId', 'app')
 
     @pytest.mark.asyncio
+    async def test_remove_application(self):
+        """Should remove application."""
+        client.remove_application = AsyncMock()
+        api.history_storage.clear = AsyncMock()
+        await api.remove_application()
+        api.history_storage.clear.assert_called()
+        client.remove_application.assert_called_with('accountId')
+
+    @pytest.mark.asyncio
     async def test_create_market_buy_order(self):
         """Should create market buy order."""
         trade_result = {

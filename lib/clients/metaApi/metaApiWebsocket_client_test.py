@@ -69,7 +69,6 @@ class FakeServer:
 async def run_around_tests():
     global http_client
     http_client = HttpClient()
-    FinalMock.__await__ = lambda x: async_magic_close().__await__()
     global fake_server
     fake_server = FakeServer()
     await fake_server.start()
@@ -98,17 +97,12 @@ async def run_around_tests():
     list(map(lambda task: task.cancel(), tasks))
 
 
-# This method closes the client once the required socket event has been called
-async def async_magic_close():
-    await close_client()
+def FinalMock():
+    # This method closes the client once the required socket event has been called
+    async def async_magic_close(*args):
+        await close_client()
 
-
-class FinalMock(MagicMock):
-    def __init__(self, *args, **kwargs):
-        super(MagicMock, self).__init__(*args, **kwargs)
-
-
-FinalMock.__await__ = lambda x: async_magic_close().__await__()
+    return AsyncMock(side_effect=async_magic_close)
 
 
 class TestMetaApiWebsocketClient:

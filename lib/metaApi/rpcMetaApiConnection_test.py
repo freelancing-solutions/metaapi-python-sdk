@@ -358,6 +358,13 @@ class TestRpcMetaApiConnection:
         client.get_history_orders_by_time_range.assert_called_with('accountId', start_time, end_time, 1, 100)
 
     @pytest.mark.asyncio
+    async def test_remove_history(self):
+        """Should remove history."""
+        client.remove_history = AsyncMock()
+        await api.remove_history('app')
+        client.remove_history.assert_called_with('accountId', 'app')
+
+    @pytest.mark.asyncio
     async def test_retrieve_history_deals_by_ticket(self):
         """Should retrieve history deals by ticket."""
         deals = {

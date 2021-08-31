@@ -47,12 +47,12 @@ class SynchronizationOptions(TypedDict):
 
 
 class StreamingMetaApiConnection(MetaApiConnection):
-    """Exposes MetaApi MetaTrader API connection to consumers."""
+    """Exposes MetaApi MetaTrader streaming API connection to consumers."""
 
     def __init__(self, websocket_client: MetaApiWebsocketClient, account: MetatraderAccountModel,
                  history_storage: HistoryStorage or None, connection_registry: ConnectionRegistryModel,
                  history_start_time: datetime = None, refresh_subscriptions_opts: dict = None):
-        """Inits MetaApi MetaTrader Api connection.
+        """Inits MetaApi MetaTrader streaming Api connection.
 
         Args:
             websocket_client: MetaApi websocket client.

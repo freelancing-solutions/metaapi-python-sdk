@@ -10,10 +10,10 @@ from .metaApiConnection import MetaApiConnection
 
 
 class RpcMetaApiConnection(MetaApiConnection):
-    """Exposes MetaApi MetaTrader API connection to consumers."""
+    """Exposes MetaApi MetaTrader RPC API connection to consumers."""
 
     def __init__(self, websocket_client: MetaApiWebsocketClient, account: MetatraderAccountModel):
-        """Inits MetaApi MetaTrader Api connection.
+        """Inits MetaApi MetaTrader RPC Api connection.
 
         Args:
             websocket_client: MetaApi websocket client.
@@ -166,15 +166,6 @@ class RpcMetaApiConnection(MetaApiConnection):
         """
         return self._websocketClient.remove_history(self._account.id, application)
 
-    def remove_application(self):
-        """Clears the order and transaction history of a specified application and removes application (see
-        https://metaapi.cloud/docs/client/websocket/api/removeApplication/).
-
-        Returns:
-            A coroutine resolving when the history is cleared and application is removed.
-        """
-        return self._websocketClient.remove_application(self._account.id)
-
     def get_symbols(self) -> 'Coroutine[asyncio.Future[List[str]]]':
         """Retrieves available symbols for an account (see
         https://metaapi.cloud/docs/client/websocket/api/retrieveMarketData/readSymbols/).
@@ -248,13 +239,13 @@ class RpcMetaApiConnection(MetaApiConnection):
         return self._websocketClient.get_book(self._account.id, symbol)
 
     async def wait_synchronized(self, timeout_in_seconds: float = 300):
-        """Waits until synchronization to MetaTrader terminal is completed.
+        """Waits until synchronization to RPC application is completed.
 
         Args:
             timeout_in_seconds: Timeout for synchronization.
 
         Returns:
-            A coroutine which resolves when synchronization to MetaTrader terminal is completed.
+            A coroutine which resolves when synchronization to RPC application is completed.
 
         Raises:
             TimeoutException: If application failed to synchronize with the terminal within timeout allowed.
