@@ -2,6 +2,7 @@ from ..metaApi_client import MetaApiClient
 from typing import List
 from datetime import datetime
 from ...metaApi.models import format_date, date, MetatraderCandle, MetatraderTick
+from urllib import parse
 
 
 class HistoricalMarketDataClient(MetaApiClient):
@@ -36,6 +37,7 @@ class HistoricalMarketDataClient(MetaApiClient):
             A coroutine resolving with historical candles downloaded.
         """
 
+        symbol = parse.quote(symbol)
         qs = {}
         if start_time is not None:
             qs['startTime'] = format_date(start_time)
@@ -74,6 +76,7 @@ class HistoricalMarketDataClient(MetaApiClient):
             A coroutine resolving with historical ticks downloaded.
         """
 
+        symbol = parse.quote(symbol)
         qs = {}
         if start_time is not None:
             qs['startTime'] = format_date(start_time)
