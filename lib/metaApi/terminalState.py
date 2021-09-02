@@ -152,8 +152,8 @@ class TerminalState(SynchronizationListener):
                 del position['accountCurrencyExchangeRate']
             if 'comment' in position:
                 del position['comment']
-            if 'originalComment' in position:
-                del position['originalComment']
+            if 'brokerComment' in position:
+                del position['brokerComment']
             if 'clientId' in position:
                 del position['clientId']
             if account_type == 'cloud-g1':
@@ -178,8 +178,8 @@ class TerminalState(SynchronizationListener):
                 del order['accountCurrencyExchangeRate']
             if 'comment' in order:
                 del order['comment']
-            if 'originalComment' in order:
-                del order['originalComment']
+            if 'brokerComment' in order:
+                del order['brokerComment']
             if 'clientId' in order:
                 del order['clientId']
             if account_type == 'cloud-g1':
