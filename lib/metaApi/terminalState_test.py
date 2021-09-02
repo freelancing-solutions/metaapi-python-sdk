@@ -299,7 +299,7 @@ class TestTerminalState:
             'updateSequenceNumber': 13246,
             'accountCurrencyExchangeRate': 1,
             'comment': 'test',
-            'originalComment': 'test2',
+            'brokerComment': 'test2',
         }])
         await state.on_pending_orders_replaced('1:ps-mpa-1', [{
             'id': '46871284',
@@ -316,7 +316,7 @@ class TestTerminalState:
             'comment': 'COMMENT2',
             'updateSequenceNumber': 13246,
             'accountCurrencyExchangeRate': 1,
-            'originalComment': 'test2',
+            'brokerComment': 'test2',
             'clientId': 'TE_GBPUSD_7hyINWqAlE',
         }])
         await state.on_pending_orders_synchronized('1:ps-mpa-1', 'synchronizationId')
@@ -369,7 +369,7 @@ class TestTerminalState:
             'updateSequenceNumber': 13246,
             'accountCurrencyExchangeRate': 1,
             'comment': 'test',
-            'originalComment': 'test2',
+            'brokerComment': 'test2',
         }])
         await state.on_pending_orders_replaced('1:ps-mpa-1', [{
             'id': '46871284',
@@ -386,7 +386,7 @@ class TestTerminalState:
             'comment': 'COMMENT2',
             'updateSequenceNumber': 13246,
             'accountCurrencyExchangeRate': 1,
-            'originalComment': 'test2',
+            'brokerComment': 'test2',
             'clientId': 'TE_GBPUSD_7hyINWqAlE',
         }])
         await state.on_pending_orders_synchronized('1:ps-mpa-1', 'synchronizationId')

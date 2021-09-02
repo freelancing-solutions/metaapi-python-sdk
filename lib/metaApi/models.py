@@ -256,11 +256,8 @@ class MetatraderPosition(TypedDict):
     https://www.mql5.com/en/docs/constants/tradingconstants/positionproperties#enum_position_reason"""
     accountCurrencyExchangeRate: Optional[float]
     """Current exchange rate of account currency into account base currency (USD if you did not override it)."""
-    originalComment: Optional[str]
-    """Position original comment (present if possible to restore from history)."""
-    updatePending: Optional[bool]
-    """Flag indicating that position original comment and clientId was not identified yet and will be
-    updated in a future packet"""
+    brokerComment: Optional[str]
+    """Current comment value on broker side (possibly overriden by the broker)."""
 
 
 class MetatraderOrder(TypedDict):
@@ -307,8 +304,8 @@ class MetatraderOrder(TypedDict):
     comment: Optional[str]
     """Optional order comment. The sum of the line lengths of the comment and the clientId
     must be less than or equal to 26. For more information see https://metaapi.cloud/docs/client/clientIdUsage/"""
-    originalComment: Optional[str]
-    """Optional order original comment (present if possible to restore original comment from history)"""
+    brokerComment: Optional[str]
+    """Current comment value on broker side (possibly overriden by the broker)."""
     clientId: Optional[str]
     """Optional client-assigned id. The id value can be assigned when submitting a trade and
     will be present on position, history orders and history deals related to the trade. You can use this field to bind
@@ -317,9 +314,6 @@ class MetatraderOrder(TypedDict):
     https://metaapi.cloud/docs/client/clientIdUsage/"""
     platform: str
     """Platform id (mt4 or mt5)."""
-    updatePending: Optional[bool]
-    """Optional flag indicating that order client id and original comment was not
-    identified yet and will be updated in a future synchronization packet."""
     reason: str
     """Order opening reason. One of ORDER_REASON_CLIENT, ORDER_REASON_MOBILE, ORDER_REASON_WEB,
     ORDER_REASON_EXPERT, ORDER_REASON_SL, ORDER_REASON_TP, ORDER_REASON_SO, ORDER_REASON_UNKNOWN. See
@@ -389,8 +383,8 @@ class MetatraderDeal(TypedDict):
     comment: Optional[str]
     """Optional deal comment. The sum of the line lengths of the comment and the clientId
     must be less than or equal to 26. For more information see https://metaapi.cloud/docs/client/clientIdUsage/"""
-    originalComment: Optional[str]
-    """Optional deal original comment (present if possible to restore original comment from history)."""
+    brokerComment: Optional[str]
+    """Current comment value on broker side (possibly overriden by the broker)."""
     clientId: Optional[str]
     """Optional client-assigned id. The id value can be assigned when submitting a trade and will be present on
     position, history orders and history deals related to the trade. You can use this field to bind your trades
@@ -399,9 +393,6 @@ class MetatraderDeal(TypedDict):
     https://metaapi.cloud/docs/client/clientIdUsage/"""
     platform: str
     """Platform id (mt4 or mt5)."""
-    updatePending: Optional[bool]
-    """Optional flag indicating that deal client id and original comment was not
-    identified yet and will be updated in a future synchronization packet"""
     reason: Optional[str]
     """Optional deal execution reason. One of DEAL_REASON_CLIENT, DEAL_REASON_MOBILE, DEAL_REASON_WEB,
     DEAL_REASON_EXPERT, DEAL_REASON_SL, DEAL_REASON_TP, DEAL_REASON_SO, DEAL_REASON_ROLLOVER, DEAL_REASON_VMARGIN,

@@ -550,4 +550,4 @@ MetaStats is a powerful trade statistics API which makes it possible to add fore
 applications.
 
 You can find MetaStats Python SDK documentation here:
-`https://github.com/agiliumtrade-ai/metaapi-metastats-python-sdk <https://github.com/agiliumtrade-ai/metaapi-metastats-python-sdk>`_
+`https://github.com/agiliumtrade-ai/metastats-python-sdk <https://github.com/agiliumtrade-ai/metastats-python-sdk>`_
