@@ -257,7 +257,6 @@ class TestTerminalState:
     @pytest.mark.asyncio
     async def test_return_hashes_g1(self):
         """Should return hashes for terminal state data for cloud-g1 accounts."""
-        empty_hash = 'd751713988987e9331980363e24189ce'
         specifications_hash = md5(
             ('[{"symbol":"AUDNZD","tickSize":0.01000000},{"symbol":"EURUSD",'
              '"tickSize":0.00000100,"contractSize":1.00000000,"maxVolume":30000.00000000,'
@@ -271,9 +270,9 @@ class TestTerminalState:
                            '"symbol":"AUDNZD","magic":123456,"platform":"mt5","openPrice":1.03000000,'
                            '"volume":0.01000000,"currentVolume":0.01000000}]').encode()).hexdigest()
         hashes = state.get_hashes('cloud-g1')
-        assert hashes['specificationsMd5'] == empty_hash
-        assert hashes['positionsMd5'] == empty_hash
-        assert hashes['ordersMd5'] == empty_hash
+        assert hashes['specificationsMd5'] is None
+        assert hashes['positionsMd5'] is None
+        assert hashes['ordersMd5'] is None
         await state.on_symbol_specifications_updated('1:ps-mpa-1', [
             {'symbol': 'AUDNZD', 'tickSize': 0.01, "description": "Test1"},
             {'symbol': 'EURUSD', 'tickSize': 0.000001, "contractSize": 1, "maxVolume": 30000,
@@ -328,7 +327,6 @@ class TestTerminalState:
     @pytest.mark.asyncio
     async def test_return_hashes_g2(self):
         """Should return hashes for terminal state data for cloud-g2 accounts."""
-        empty_hash = 'd751713988987e9331980363e24189ce'
         specifications_hash = md5(
             ('[{"symbol":"AUDNZD","tickSize":0.01,"description":"Test1"},{"symbol":"EURUSD","tickSize":0.000001,'
              '"contractSize":1,"maxVolume":30000,"hedgedMarginUsesLargerLeg":false,"description":"Test2"}]'
@@ -341,9 +339,9 @@ class TestTerminalState:
                            '"symbol":"AUDNZD","magic":123456,"platform":"mt5","time":"2020-04-20T08:38:58.270Z",'
                            '"openPrice":1.03,"volume":0.01,"currentVolume":0.01}]').encode()).hexdigest()
         hashes = state.get_hashes('cloud-g2')
-        assert hashes['specificationsMd5'] == empty_hash
-        assert hashes['positionsMd5'] == empty_hash
-        assert hashes['ordersMd5'] == empty_hash
+        assert hashes['specificationsMd5'] is None
+        assert hashes['positionsMd5'] is None
+        assert hashes['ordersMd5'] is None
         await state.on_symbol_specifications_updated('1:ps-mpa-1', [
             {'symbol': 'AUDNZD', 'tickSize': 0.01, "description": "Test1"},
             {'symbol': 'EURUSD', 'tickSize': 0.000001, "contractSize": 1, "maxVolume": 30000,

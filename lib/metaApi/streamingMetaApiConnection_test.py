@@ -4,7 +4,7 @@ from .models import MetatraderHistoryOrders, MetatraderDeals
 from ..clients.metaApi.reconnectListener import ReconnectListener
 from ..clients.metaApi.synchronizationListener import SynchronizationListener
 from .metatraderAccount import MetatraderAccount
-from datetime import datetime, timedelta
+from datetime import datetime
 from mock import MagicMock, AsyncMock, patch
 from .models import date
 from typing import Coroutine
@@ -129,7 +129,6 @@ account: MockAccount = None
 auto_account: AutoMockAccount = None
 client: MockClient = None
 api: StreamingMetaApiConnection = None
-empty_hash = 'd41d8cd98f00b204e9800998ecf8427e'
 
 
 @pytest.fixture(autouse=True)
@@ -455,7 +454,7 @@ class TestStreamingMetaApiConnection:
             await api.synchronize('1:ps-mpa-1')
             client.synchronize.assert_called_with('accountId', 1, 'ps-mpa-1', 'synchronizationId',
                                                   date('2020-01-01T00:00:00.000Z'), date('2020-01-02T00:00:00.000Z'),
-                                                  empty_hash, empty_hash, empty_hash)
+                                                  None, None, None)
 
     @pytest.mark.asyncio
     async def test_synchronize_state_with_terminal_from_time(self):
@@ -469,7 +468,7 @@ class TestStreamingMetaApiConnection:
             await api.synchronize('1:ps-mpa-1')
             client.synchronize.assert_called_with('accountId', 1, 'ps-mpa-1', 'synchronizationId',
                                                   date('2020-10-07T00:00:00.000Z'), date('2020-10-07T00:00:00.000Z'),
-                                                  empty_hash, empty_hash, empty_hash)
+                                                  None, None, None)
 
     @pytest.mark.asyncio
     async def test_subscribe_to_market_data(self):
@@ -595,7 +594,7 @@ class TestStreamingMetaApiConnection:
             await asyncio.sleep(0.05)
             client.synchronize.assert_called_with('accountId', 1, 'ps-mpa-1', 'synchronizationId',
                                                   date('2020-01-01T00:00:00.000Z'), date('2020-01-02T00:00:00.000Z'),
-                                                  empty_hash, empty_hash, empty_hash)
+                                                  None, None, None)
 
     @pytest.mark.asyncio
     async def test_maintain_sync(self):
@@ -610,7 +609,7 @@ class TestStreamingMetaApiConnection:
             await asyncio.sleep(0.05)
             client.synchronize.assert_called_with('accountId', 1,  'ps-mpa-1', 'synchronizationId',
                                                   date('2020-01-01T00:00:00.000Z'), date('2020-01-02T00:00:00.000Z'),
-                                                  empty_hash, empty_hash, empty_hash)
+                                                  None, None, None)
 
     @pytest.mark.asyncio
     async def test_not_sync_if_connection_closed(self):

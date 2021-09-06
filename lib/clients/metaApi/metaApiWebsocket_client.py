@@ -64,10 +64,7 @@ class MetaApiWebsocketClient:
         self._subscribeCooldownInSeconds = validator.validate_non_zero(
             retry_opts['subscribeCooldownInSeconds'] if 'subscribeCooldownInSeconds' in retry_opts else None, 600,
             'subscribeCooldownInSeconds')
-        event_processing = opts['eventProcessing'] if 'eventProcessing' in opts else {}
-        self._sequentialEventProcessing = validator.validate_boolean(
-            event_processing['sequentialProcessing'] if 'sequentialProcessing' in event_processing else None, True,
-            'sequentialProcessing')
+        self._sequentialEventProcessing = True
         self._useSharedClientApi = validator.validate_boolean(
             opts['useSharedClientApi'] if 'useSharedClientApi' in opts else None, False, 'useSharedClientApi')
         self._enableSocketioDebugger = validator.validate_boolean(
@@ -1302,11 +1299,11 @@ class MetaApiWebsocketClient:
                                 listener.on_account_information_updated(instance_index,
                                                                         data['accountInformation'])),
                                                  'on_account_information_updated')
-                            if data['synchronizationId'] in self._synchronizationFlags:
-                                if not self._synchronizationFlags[data['synchronizationId']]['positionsUpdated']:
-                                    await _process_event(asyncio.create_task(
-                                        listener.on_positions_synchronized(instance_index, data['synchronizationId'])),
-                                        'on_positions_synchronized')
+                            if data['synchronizationId'] in self._synchronizationFlags and \
+                                    not self._synchronizationFlags[data['synchronizationId']]['positionsUpdated']:
+                                await _process_event(asyncio.create_task(
+                                    listener.on_positions_synchronized(instance_index, data['synchronizationId'])),
+                                    'on_positions_synchronized')
                                 if not self._synchronizationFlags[data['synchronizationId']]['ordersUpdated']:
                                     await _process_event(asyncio.create_task(
                                         listener.on_pending_orders_synchronized(
@@ -1321,7 +1318,9 @@ class MetaApiWebsocketClient:
                                                                     .create_task(run_on_account_info(listener)))
                     if len(on_account_information_updated_tasks) > 0:
                         await asyncio.gather(*on_account_information_updated_tasks)
-                    if data['synchronizationId'] in self._synchronizationFlags:
+                    if data['synchronizationId'] in self._synchronizationFlags and \
+                            not self._synchronizationFlags[data['synchronizationId']]['positionsUpdated'] and \
+                            not self._synchronizationFlags[data['synchronizationId']]['ordersUpdated']:
                         del self._synchronizationFlags[data['synchronizationId']]
             elif data['type'] == 'deals':
                 if 'deals' in data:
@@ -1362,6 +1361,8 @@ class MetaApiWebsocketClient:
                         on_order_updated_tasks.append(asyncio.create_task(run_on_pending_orders_replaced(listener)))
                 if len(on_order_updated_tasks) > 0:
                     await asyncio.gather(*on_order_updated_tasks)
+                if data['synchronizationId'] in self._synchronizationFlags:
+                    del self._synchronizationFlags[data['synchronizationId']]
             elif data['type'] == 'historyOrders':
                 if 'historyOrders' in data:
                     for historyOrder in data['historyOrders']:
@@ -1394,6 +1395,12 @@ class MetaApiWebsocketClient:
                         await _process_event(asyncio.create_task(
                             listener.on_positions_synchronized(instance_index, data['synchronizationId'])),
                             'on_positions_synchronized')
+                        if data['synchronizationId'] in self._synchronizationFlags and \
+                                not self._synchronizationFlags[data['synchronizationId']]['ordersUpdated']:
+                            await _process_event(asyncio.create_task(
+                                listener.on_pending_orders_synchronized(
+                                    instance_index, data['synchronizationId'])),
+                                'on_pending_orders_synchronized')
                     except Exception as err:
                         self._logger.error(f'{data["accountId"]}:{instance_index}: Failed to notify listener about '
                                            f'positions event ' + string_format_error(err))
@@ -1403,6 +1410,9 @@ class MetaApiWebsocketClient:
                         on_positions_replaced_tasks.append(asyncio.create_task(run_on_positions_replaced(listener)))
                 if len(on_positions_replaced_tasks) > 0:
                     await asyncio.gather(*on_positions_replaced_tasks)
+                if data['synchronizationId'] in self._synchronizationFlags and \
+                        not self._synchronizationFlags[data['synchronizationId']]['ordersUpdated']:
+                    del self._synchronizationFlags[data['synchronizationId']]
             elif data['type'] == 'update':
                 if 'accountInformation' in data and (data['accountId'] in self._synchronizationListeners):
                     on_account_information_updated_tasks: List[asyncio.Task] = []
