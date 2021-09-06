@@ -34,12 +34,6 @@ class RetryOpts(TypedDict):
     """Time to disable new subscriptions for """
 
 
-class EventProcessingOpts(TypedDict):
-    """Options for processing websocket client events."""
-    sequentialProcessing: Optional[bool]
-    """An option to process synchronization events after finishing previous ones. Default value is true."""
-
-
 class RefreshSubscriptionsOpts(TypedDict):
     """Subscriptions refresh options."""
     minDelayInSeconds: Optional[float]
@@ -74,8 +68,6 @@ class MetaApiOpts(TypedDict):
     """Options for synchronization throttler."""
     retryOpts: Optional[RetryOpts]
     """Options for request retries."""
-    eventProcessing: Optional[EventProcessingOpts]
-    """Options for processing events."""
     useSharedClientApi: Optional[bool]
     """Option to use a shared server."""
     enableSocketioDebugger: Optional[bool]
@@ -113,7 +105,6 @@ class MetaApi:
         demo_account_request_timeout = validator.validate_non_zero(
             opts['demoAccountRequestTimeout'] if 'demoAccountRequestTimeout' in opts else None, 240,
             'demoAccountRequestTimeout')
-        event_processing = opts['eventProcessing'] if 'eventProcessing' in opts else {}
         use_shared_client_api = opts['useSharedClientApi'] if 'useSharedClientApi' in opts else False
         enable_socketio_debugger = opts['enableSocketioDebugger'] if 'enableSocketioDebugger' in opts else False
         refresh_subscriptions_opts = opts['refreshSubscriptionsOpts'] if 'refreshSubscriptionsOpts' in opts else {}
@@ -128,7 +119,7 @@ class MetaApi:
                                  'connectTimeout': connect_timeout, 'packetLogger': packet_logger,
                                  'packetOrderingTimeout': packet_ordering_timeout,
                                  'synchronizationThrottler': synchronization_throttler,
-                                 'eventProcessing': event_processing, 'retryOpts': retry_opts,
+                                 'retryOpts': retry_opts,
                                  'useSharedClientApi': use_shared_client_api,
                                  'enableSocketioDebugger': enable_socketio_debugger})
         self._provisioningProfileApi = ProvisioningProfileApi(ProvisioningProfileClient(http_client, token, domain))

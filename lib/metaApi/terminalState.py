@@ -2,7 +2,7 @@ from ..clients.metaApi.synchronizationListener import SynchronizationListener
 from .models import MetatraderAccountInformation, MetatraderPosition, MetatraderOrder, \
     MetatraderSymbolSpecification, MetatraderSymbolPrice, G1Encoder, G2Encoder
 import functools
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Union
 from typing_extensions import TypedDict
 import asyncio
 from datetime import datetime
@@ -12,7 +12,7 @@ import json
 
 
 class TerminalStateDict(TypedDict):
-    instanceIndex: str or None
+    instanceIndex: Union[str, None]
     connected: bool
     connectedToBroker: bool
     accountInformation: Optional[dict]
@@ -28,9 +28,9 @@ class TerminalStateDict(TypedDict):
 
 
 class TerminalStateHashes(TypedDict):
-    specificationsMd5: str
-    positionsMd5: str
-    ordersMd5: str
+    specificationsMd5: Union[str, None]
+    positionsMd5: Union[str, None]
+    ordersMd5: Union[str, None]
 
 
 class TerminalState(SynchronizationListener):
@@ -129,7 +129,7 @@ class TerminalState(SynchronizationListener):
                     if isinstance(specification[key], int) and not isinstance(specification[key], bool) and \
                             key != 'digits':
                         specification[key] = float(specification[key])
-        specifications_hash = self._get_hash(specifications, account_type)
+        specifications_hash = self._get_hash(specifications, account_type) if len(specifications) else None
 
         positions = copy(self.positions)
         for i in range(len(positions)):
@@ -163,7 +163,7 @@ class TerminalState(SynchronizationListener):
                     if isinstance(position[key], int) and not isinstance(position[key], bool) and \
                             key != 'magic':
                         position[key] = float(position[key])
-        positions_hash = self._get_hash(positions, account_type)
+        positions_hash = self._get_hash(positions, account_type) if len(positions) else None
 
         orders = copy(self.orders)
         for i in range(len(orders)):
@@ -188,7 +188,7 @@ class TerminalState(SynchronizationListener):
                     if isinstance(order[key], int) and not isinstance(order[key], bool) and \
                             key != 'magic':
                         order[key] = float(order[key])
-        orders_hash = self._get_hash(orders, account_type)
+        orders_hash = self._get_hash(orders, account_type) if len(orders) else None
 
         return {
             'specificationsMd5': specifications_hash,

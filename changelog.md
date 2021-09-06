@@ -6,6 +6,7 @@
   - refactored terminal state storage
   - fixed historical market data HTTP requests for symbols with special characters
   - breaking change: removed updatePending, originalComment fields, added brokerComment field
+  - breaking change: disabled concurrent event processing
 
 14.3.0
   - added copyFactoryResourceSlots field to make it possible specify resource slots for CopyFactory 2 application

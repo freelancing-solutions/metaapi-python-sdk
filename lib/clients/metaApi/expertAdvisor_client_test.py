@@ -132,7 +132,7 @@ class TestExpertAdvisorClient:
         rsps = respx.put(f'{PROVISIONING_API_URL}/users/current/accounts/id/expert-advisors/my-ea/file') \
             .mock(return_value=Response(204))
         with mock.patch('__main__.open', new=mock.mock_open(read_data='test')) as file:
-            file.return_value = 'test', 'test2'
+            file.return_value = json.dumps('test').encode()
             await expert_advisor_client.upload_expert_advisor_file('id', 'my-ea', file())
             assert rsps.calls[0].request.url == \
                    f'{PROVISIONING_API_URL}/users/current/accounts/id/expert-advisors/my-ea/file'

@@ -107,7 +107,7 @@ class TestProvisioningProfileClient:
         rsps = respx.put(f'{PROVISIONING_API_URL}/users/current/provisioning-profiles/id/servers.dat') \
             .mock(return_value=Response(204))
         with mock.patch('__main__.open', new=mock.mock_open(read_data='test')) as file:
-            file.return_value = 'test', 'test2'
+            file.return_value = json.dumps('test').encode()
             await provisioning_client.upload_provisioning_profile_file('id', 'servers.dat', file())
             assert rsps.calls[0].request.url == \
                 f'{PROVISIONING_API_URL}/users/current/provisioning-profiles/id/servers.dat'

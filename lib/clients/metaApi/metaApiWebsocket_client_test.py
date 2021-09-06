@@ -1239,22 +1239,64 @@ class TestMetaApiWebsocketClient:
         await sio.emit('synchronization', {'type': 'synchronizationStarted', 'accountId': 'accountId',
                                            'synchronizationId': 'synchronizationId',
                                            'instanceIndex': 1, 'host': 'ps-mpa-1'})
-        await sio.emit('synchronization', {'type': 'accountInformation', 'accountId': 'accountId', 'host': 'ps-mpa-1',
+        await sio.emit('synchronization', {'type': 'accountInformation', 'synchronizationId': 'synchronizationId',
+                                           'accountId': 'accountId', 'host': 'ps-mpa-1',
                                            'accountInformation': account_information, 'instanceIndex': 1})
-        await asyncio.sleep(0.02)
+        await asyncio.sleep(0.05)
         listener.on_synchronization_started.assert_called_with(
             '1:ps-mpa-1', specifications_updated=True, positions_updated=True, orders_updated=True)
         listener.on_positions_synchronized.assert_not_called()
         listener.on_pending_orders_synchronized.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_process_sync_started_without_updating_positions(self):
-        """Should process synchronization started event without updating positions."""
+    async def test_process_sync_started_with_no_updates(self):
+        """Should process synchronization started event with no updates."""
         client._socketInstances[0]['synchronizationThrottler'] = MagicMock()
         client._socketInstances[0]['synchronizationThrottler'].active_synchronization_ids = ['synchronizationId']
         listener = MagicMock()
         listener.on_synchronization_started = AsyncMock()
         listener.on_positions_synchronized = AsyncMock()
+        listener.on_pending_orders_synchronized = AsyncMock()
+        listener.on_account_information_updated = AsyncMock()
+
+        client.add_synchronization_listener('accountId', listener)
+        await sio.emit('synchronization', {'type': 'synchronizationStarted', 'accountId': 'accountId',
+                                           'synchronizationId': 'synchronizationId',
+                                           'specificationsUpdated': False,
+                                           'positionsUpdated': False, 'ordersUpdated': False,
+                                           'instanceIndex': 1, 'host': 'ps-mpa-1'})
+        await sio.emit('synchronization', {'type': 'accountInformation', 'synchronizationId': 'synchronizationId',
+                                           'accountId': 'accountId', 'host': 'ps-mpa-1',
+                                           'accountInformation': account_information, 'instanceIndex': 1})
+        await asyncio.sleep(0.05)
+        listener.on_synchronization_started.assert_called_with(
+            '1:ps-mpa-1', specifications_updated=False, positions_updated=False, orders_updated=False)
+        listener.on_positions_synchronized.assert_called_with('1:ps-mpa-1', 'synchronizationId')
+        listener.on_pending_orders_synchronized.assert_called_with('1:ps-mpa-1', 'synchronizationId')
+
+    @pytest.mark.asyncio
+    async def test_process_sync_started_without_updating_positions(self):
+        """Should process synchronization started event without updating positions."""
+        orders = [{
+            'id': '46871284',
+            'type': 'ORDER_TYPE_BUY_LIMIT',
+            'state': 'ORDER_STATE_PLACED',
+            'symbol': 'AUDNZD',
+            'magic': 123456,
+            'platform': 'mt5',
+            'time': '2020-04-20T08:38:58.270Z',
+            'openPrice': 1.03,
+            'currentPrice': 1.05206,
+            'volume': 0.01,
+            'currentVolume': 0.01,
+            'comment': 'COMMENT2'
+        }]
+        client._socketInstances[0]['synchronizationThrottler'] = MagicMock()
+        client._socketInstances[0]['synchronizationThrottler'].active_synchronization_ids = ['synchronizationId']
+        listener = MagicMock()
+        listener.on_synchronization_started = AsyncMock()
+        listener.on_positions_synchronized = AsyncMock()
+        listener.on_pending_orders_replaced = AsyncMock()
         listener.on_pending_orders_synchronized = AsyncMock()
         listener.on_account_information_updated = AsyncMock()
 
@@ -1266,20 +1308,45 @@ class TestMetaApiWebsocketClient:
         await sio.emit('synchronization', {'type': 'accountInformation', 'accountId': 'accountId', 'host': 'ps-mpa-1',
                                            'accountInformation': account_information, 'instanceIndex': 1,
                                            'synchronizationId': 'synchronizationId'})
-        await asyncio.sleep(0.02)
+        await asyncio.sleep(0.05)
         listener.on_synchronization_started.assert_called_with(
             '1:ps-mpa-1', specifications_updated=True, positions_updated=False, orders_updated=True)
         listener.on_positions_synchronized.assert_called_with('1:ps-mpa-1', 'synchronizationId')
         listener.on_pending_orders_synchronized.assert_not_called()
+        await sio.emit('synchronization', {'type': 'orders', 'accountId': 'accountId', 'orders': orders,
+                                           'synchronizationId': 'synchronizationId',
+                                           'instanceIndex': 1, 'host': 'ps-mpa-1'})
+        await asyncio.sleep(0.05)
+        listener.on_pending_orders_synchronized.assert_called_with('1:ps-mpa-1', 'synchronizationId')
 
     @pytest.mark.asyncio
     async def test_process_sync_started_without_updating_orders(self):
         """Should process synchronization started event without updating orders."""
+        positions = [{
+            'id': '46214692',
+            'type': 'POSITION_TYPE_BUY',
+            'symbol': 'GBPUSD',
+            'magic': 1000,
+            'time': '2020-04-15T02:45:06.521Z',
+            'updateTime': '2020-04-15T02:45:06.521Z',
+            'openPrice': 1.26101,
+            'currentPrice': 1.24883,
+            'currentTickValue': 1,
+            'volume': 0.07,
+            'swap': 0,
+            'profit': -85.25999999999966,
+            'commission': -0.25,
+            'clientId': 'TE_GBPUSD_7hyINWqAlE',
+            'stopLoss': 1.17721,
+            'unrealizedProfit': -85.25999999999901,
+            'realizedProfit': -6.536993168992922e-13
+        }]
         client._socketInstances[0]['synchronizationThrottler'] = MagicMock()
         client._socketInstances[0]['synchronizationThrottler'].active_synchronization_ids = ['synchronizationId']
         listener = MagicMock()
         listener.on_synchronization_started = AsyncMock()
         listener.on_positions_synchronized = AsyncMock()
+        listener.on_positions_replaced = AsyncMock()
         listener.on_pending_orders_synchronized = AsyncMock()
         listener.on_account_information_updated = AsyncMock()
 
@@ -1291,10 +1358,16 @@ class TestMetaApiWebsocketClient:
         await sio.emit('synchronization', {'type': 'accountInformation', 'accountId': 'accountId', 'host': 'ps-mpa-1',
                                            'accountInformation': account_information, 'instanceIndex': 1,
                                            'synchronizationId': 'synchronizationId'})
-        await asyncio.sleep(0.02)
+        await asyncio.sleep(0.05)
         listener.on_synchronization_started.assert_called_with(
             '1:ps-mpa-1', specifications_updated=True, positions_updated=True, orders_updated=False)
         listener.on_positions_synchronized.assert_not_called()
+        listener.on_pending_orders_synchronized.assert_not_called()
+        await sio.emit('synchronization', {'type': 'positions', 'accountId': 'accountId', 'positions': positions,
+                                           'synchronizationId': 'synchronizationId',
+                                           'instanceIndex': 1, 'host': 'ps-mpa-1'})
+        await asyncio.sleep(0.05)
+        listener.on_positions_synchronized.assert_called_with('1:ps-mpa-1', 'synchronizationId')
         listener.on_pending_orders_synchronized.assert_called_with('1:ps-mpa-1', 'synchronizationId')
 
     @pytest.mark.asyncio
