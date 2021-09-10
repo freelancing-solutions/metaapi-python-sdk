@@ -8,6 +8,7 @@ from metaapi_cloud_sdk.clients.metaApi.tradeException import TradeException
 token = os.getenv('TOKEN') or '<put in your token here>'
 accountId = os.getenv('ACCOUNT_ID') or '<put in your account id here>'
 
+
 async def test_meta_api_synchronization():
     api = MetaApi(token)
     try:
@@ -24,7 +25,7 @@ async def test_meta_api_synchronization():
         await account.wait_connected()
 
         # connect to MetaApi API
-        connection = await account.connect()
+        connection = await account.get_streaming_connection()
 
         # wait until terminal state synchronized to the local state
         print('Waiting for SDK to synchronize to terminal state (may take some time depending on your history size)')
