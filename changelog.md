@@ -1,7 +1,7 @@
 15.0.0
   - breaking change: divided MetaApiConnection class into:
     - RpcMetaApiConnection for RPC requests
-    - StreamingMetaApiConnection for terminal synchronization
+    - StreamingMetaApiConnection for real-time streaming API
   - added symbol validation for subscribe_to_market_data
   - refactored terminal state storage
   - fixed historical market data HTTP requests for symbols with special characters
