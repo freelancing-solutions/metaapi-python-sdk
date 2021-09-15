@@ -571,8 +571,8 @@ class MetatraderSymbolPrice(TypedDict):
     """Tick value for a loosing position."""
     accountCurrencyExchangeRate: float
     """Current exchange rate of account currency into account base currency (USD if you did not override it)."""
-    time: str
-    """Quote time, in ISO format"""
+    time: datetime
+    """Quote time."""
     brokerTime: str
     """Quote time, in broker timezone, YYYY-MM-DD HH:mm:ss.SSS format."""
 

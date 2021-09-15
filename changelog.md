@@ -1,3 +1,6 @@
+15.0.1
+  - fix symbol price model
+
 15.0.0
   - breaking change: divided MetaApiConnection class into:
     - RpcMetaApiConnection for RPC requests
