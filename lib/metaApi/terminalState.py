@@ -163,7 +163,8 @@ class TerminalState(SynchronizationListener):
                     if isinstance(position[key], int) and not isinstance(position[key], bool) and \
                             key != 'magic':
                         position[key] = float(position[key])
-        positions_hash = self._get_hash(positions, account_type) if len(positions) else None
+        positions_hash = self._get_hash(positions, account_type) if self._combinedState['positionsInitialized'] \
+            else None
 
         orders = copy(self.orders)
         for i in range(len(orders)):
@@ -188,7 +189,7 @@ class TerminalState(SynchronizationListener):
                     if isinstance(order[key], int) and not isinstance(order[key], bool) and \
                             key != 'magic':
                         order[key] = float(order[key])
-        orders_hash = self._get_hash(orders, account_type) if len(orders) else None
+        orders_hash = self._get_hash(orders, account_type) if self._combinedState['ordersInitialized'] else None
 
         return {
             'specificationsMd5': specifications_hash,
