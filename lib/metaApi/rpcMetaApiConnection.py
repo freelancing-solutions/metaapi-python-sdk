@@ -19,7 +19,7 @@ class RpcMetaApiConnection(MetaApiConnection):
             websocket_client: MetaApi websocket client.
             account: MetaTrader account id to connect to.
         """
-        super().__init__(websocket_client, account)
+        super().__init__(websocket_client, account, 'RPC')
         self._logger = LoggerManager.get_logger('RpcMetaApiConnection')
 
     def get_account_information(self) -> 'Coroutine[asyncio.Future[MetatraderAccountInformation]]':
@@ -187,19 +187,24 @@ class RpcMetaApiConnection(MetaApiConnection):
         """
         return self._websocketClient.get_symbol_specification(self._account.id, symbol)
 
-    def get_symbol_price(self, symbol) -> 'Coroutine[asyncio.Future[MetatraderSymbolPrice]]':
+    def get_symbol_price(self, symbol: str, keep_subscription: bool = False) -> \
+            'Coroutine[asyncio.Future[MetatraderSymbolPrice]]':
         """Retrieves latest price for a symbol (see
         https://metaapi.cloud/docs/client/websocket/api/retrieveMarketData/readSymbolPrice/).
 
         Args:
             symbol: Symbol to retrieve price for.
+            keep_subscription: if set to true, the account will get a long-term subscription to symbol market data.
+            Long-term subscription means that on subsequent calls you will get updated value faster. If set to false or
+            not set, the subscription will be set to expire in 12 minutes.
 
         Returns:
             A coroutine which resolves when price MetatraderSymbolPrice is retrieved.
         """
-        return self._websocketClient.get_symbol_price(self._account.id, symbol)
+        return self._websocketClient.get_symbol_price(self._account.id, symbol, keep_subscription)
 
-    def get_candle(self, symbol: str, timeframe: str) -> 'Coroutine[asyncio.Future[MetatraderCandle]]':
+    def get_candle(self, symbol: str, timeframe: str, keep_subscription: bool = False) -> \
+            'Coroutine[asyncio.Future[MetatraderCandle]]':
         """Retrieves latest candle for a symbol and timeframe (see
         https://metaapi.cloud/docs/client/websocket/api/retrieveMarketData/readCandle/).
 
@@ -208,35 +213,44 @@ class RpcMetaApiConnection(MetaApiConnection):
             timeframe: Defines the timeframe according to which the candle must be generated. Allowed values for
             MT5 are 1m, 2m, 3m, 4m, 5m, 6m, 10m, 12m, 15m, 20m, 30m, 1h, 2h, 3h, 4h, 6h, 8h, 12h, 1d, 1w, 1mn.
             Allowed values for MT4 are 1m, 5m, 15m 30m, 1h, 4h, 1d, 1w, 1mn.
+            keep_subscription: if set to true, the account will get a long-term subscription to symbol market data.
+            Long-term subscription means that on subsequent calls you will get updated value faster. If set to false or
+            not set, the subscription will be set to expire in 12 minutes.
 
         Returns:
             A coroutine which resolves when candle is retrieved.
         """
-        return self._websocketClient.get_candle(self._account.id, symbol, timeframe)
+        return self._websocketClient.get_candle(self._account.id, symbol, timeframe, keep_subscription)
 
-    def get_tick(self, symbol: str) -> 'Coroutine[asyncio.Future[MetatraderTick]]':
-        """Retrieves latest tick for a symbol (see
+    def get_tick(self, symbol: str, keep_subscription: bool = False) -> 'Coroutine[asyncio.Future[MetatraderTick]]':
+        """Retrieves latest tick for a symbol. MT4 G1 accounts do not support this API (see
         https://metaapi.cloud/docs/client/websocket/api/retrieveMarketData/readTick/).
 
         Args:
             symbol: Symbol to retrieve tick for.
+            keep_subscription: if set to true, the account will get a long-term subscription to symbol market data.
+            Long-term subscription means that on subsequent calls you will get updated value faster. If set to false or
+            not set, the subscription will be set to expire in 12 minutes.
 
         Returns:
             A coroutine which resolves when tick is retrieved.
         """
-        return self._websocketClient.get_tick(self._account.id, symbol)
+        return self._websocketClient.get_tick(self._account.id, symbol, keep_subscription)
 
-    def get_book(self, symbol: str) -> 'Coroutine[asyncio.Future[MetatraderBook]]':
-        """Retrieves latest order book for a symbol (see
+    def get_book(self, symbol: str, keep_subscription: bool = False) -> 'Coroutine[asyncio.Future[MetatraderBook]]':
+        """Retrieves latest order book for a symbol. MT4 G1 accounts do not support this API (see
         https://metaapi.cloud/docs/client/websocket/api/retrieveMarketData/readBook/).
 
         Args:
             symbol: Symbol to retrieve order book for.
+            keep_subscription: if set to true, the account will get a long-term subscription to symbol market data.
+            Long-term subscription means that on subsequent calls you will get updated value faster. If set to false or
+            not set, the subscription will be set to expire in 12 minutes.
 
         Returns:
             A coroutine which resolves when order book is retrieved.
         """
-        return self._websocketClient.get_book(self._account.id, symbol)
+        return self._websocketClient.get_book(self._account.id, symbol, keep_subscription)
 
     async def wait_synchronized(self, timeout_in_seconds: float = 300):
         """Waits until synchronization to RPC application is completed.
@@ -253,7 +267,7 @@ class RpcMetaApiConnection(MetaApiConnection):
         start_time = datetime.now().timestamp()
         while True:
             try:
-                await self._websocketClient.wait_synchronized(self._account.id, 0, 'RPC', 5)
+                await self._websocketClient.wait_synchronized(self._account.id, 0, 'RPC', 5, 'RPC')
                 break
             except Exception as err:
                 if datetime.now().timestamp() > start_time + timeout_in_seconds:
