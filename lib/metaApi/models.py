@@ -289,8 +289,8 @@ class MetatraderOrder(TypedDict):
     """Order symbol."""
     openPrice: float
     """Order open price (market price for market orders, limit price for limit orders or stop price for stop orders)."""
-    currentPrice: float
-    """Current price."""
+    currentPrice: Optional[float]
+    """Current price, filled for pending orders only. Not filled for history orders."""
     stopLoss: Optional[float]
     """Optional order stop loss price."""
     takeProfit: Optional[float]

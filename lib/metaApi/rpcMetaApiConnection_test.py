@@ -79,7 +79,7 @@ class MockClient(MetaApiWebsocketClient):
         pass
 
     async def wait_synchronized(self, account_id: str, instance_index: str, application_pattern: str,
-                                timeout_in_seconds: float):
+                                timeout_in_seconds: float, application: str = None):
         pass
 
 
@@ -149,7 +149,7 @@ class TestRpcMetaApiConnection:
     async def test_timeout_synchronization(self):
         """Should time out waiting for synchronization."""
         async def wait_synchronized(account_id: str, instance_index: str, application_pattern: str,
-                                    timeout_in_seconds: float):
+                                    timeout_in_seconds: float, application: str = None):
             await asyncio.sleep(0.1)
             raise TimeoutException('timeout')
 
@@ -464,7 +464,7 @@ class TestRpcMetaApiConnection:
         assert actual == trade_result
         client.trade.assert_called_with('accountId', {'actionType': 'ORDER_TYPE_BUY', 'symbol': 'GBPUSD',
                                                       'volume': 0.07, 'stopLoss': 0.9, 'takeProfit': 2.0,
-                                                      'comment': 'comment', 'clientId': 'TE_GBPUSD_7hyINWqAlE'})
+                                                      'comment': 'comment', 'clientId': 'TE_GBPUSD_7hyINWqAlE'}, 'RPC')
 
     @pytest.mark.asyncio
     async def test_create_market_buy_order_with_relative_sl_tp(self):
@@ -483,7 +483,7 @@ class TestRpcMetaApiConnection:
                                                       'volume': 0.07, 'stopLoss': 0.1,
                                                       'stopLossUnits': 'RELATIVE_PRICE', 'takeProfit': 2000,
                                                       'takeProfitUnits': 'RELATIVE_POINTS', 'comment': 'comment',
-                                                      'clientId': 'TE_GBPUSD_7hyINWqAlE'})
+                                                      'clientId': 'TE_GBPUSD_7hyINWqAlE'}, 'RPC')
 
     @pytest.mark.asyncio
     async def test_create_market_sell_order(self):
@@ -499,7 +499,7 @@ class TestRpcMetaApiConnection:
         assert actual == trade_result
         client.trade.assert_called_with('accountId', {'actionType': 'ORDER_TYPE_SELL', 'symbol': 'GBPUSD',
                                                       'volume': 0.07, 'stopLoss': 0.9, 'takeProfit': 2.0,
-                                                      'comment': 'comment', 'clientId': 'TE_GBPUSD_7hyINWqAlE'})
+                                                      'comment': 'comment', 'clientId': 'TE_GBPUSD_7hyINWqAlE'}, 'RPC')
 
     @pytest.mark.asyncio
     async def test_create_limit_buy_order(self):
@@ -516,7 +516,7 @@ class TestRpcMetaApiConnection:
         client.trade.assert_called_with('accountId', {'actionType': 'ORDER_TYPE_BUY_LIMIT', 'symbol': 'GBPUSD',
                                                       'volume': 0.07, 'openPrice': 1.0, 'stopLoss': 0.9,
                                                       'takeProfit': 2.0, 'comment': 'comment',
-                                                      'clientId': 'TE_GBPUSD_7hyINWqAlE'})
+                                                      'clientId': 'TE_GBPUSD_7hyINWqAlE'}, 'RPC')
 
     @pytest.mark.asyncio
     async def test_create_limit_sell_order(self):
@@ -533,7 +533,7 @@ class TestRpcMetaApiConnection:
         client.trade.assert_called_with('accountId', {'actionType': 'ORDER_TYPE_SELL_LIMIT', 'symbol': 'GBPUSD',
                                                       'volume': 0.07, 'openPrice': 1.0, 'stopLoss': 0.9,
                                                       'takeProfit': 2.0, 'comment': 'comment',
-                                                      'clientId': 'TE_GBPUSD_7hyINWqAlE'})
+                                                      'clientId': 'TE_GBPUSD_7hyINWqAlE'}, 'RPC')
 
     @pytest.mark.asyncio
     async def test_create_stop_buy_order(self):
@@ -550,7 +550,7 @@ class TestRpcMetaApiConnection:
         client.trade.assert_called_with('accountId', {'actionType': 'ORDER_TYPE_BUY_STOP', 'symbol': 'GBPUSD',
                                                       'volume': 0.07, 'openPrice': 1.0, 'stopLoss': 0.9,
                                                       'takeProfit': 2.0, 'comment': 'comment',
-                                                      'clientId': 'TE_GBPUSD_7hyINWqAlE'})
+                                                      'clientId': 'TE_GBPUSD_7hyINWqAlE'}, 'RPC')
 
     @pytest.mark.asyncio
     async def test_create_stop_sell_order(self):
@@ -567,7 +567,7 @@ class TestRpcMetaApiConnection:
         client.trade.assert_called_with('accountId', {'actionType': 'ORDER_TYPE_SELL_STOP', 'symbol': 'GBPUSD',
                                                       'volume': 0.07, 'openPrice': 1.0, 'stopLoss': 0.9,
                                                       'takeProfit': 2.0, 'comment': 'comment',
-                                                      'clientId': 'TE_GBPUSD_7hyINWqAlE'})
+                                                      'clientId': 'TE_GBPUSD_7hyINWqAlE'}, 'RPC')
 
     @pytest.mark.asyncio
     async def test_create_stop_limit_buy_order(self):
@@ -584,7 +584,7 @@ class TestRpcMetaApiConnection:
         client.trade.assert_called_with('accountId', {'actionType': 'ORDER_TYPE_BUY_STOP_LIMIT', 'symbol': 'GBPUSD',
                                                       'volume': 0.07, 'openPrice': 1.5, 'stopLimitPrice': 1.4,
                                                       'stopLoss': 0.9, 'takeProfit': 2.0, 'comment': 'comment',
-                                                      'clientId': 'TE_GBPUSD_7hyINWqAlE'})
+                                                      'clientId': 'TE_GBPUSD_7hyINWqAlE'}, 'RPC')
 
     @pytest.mark.asyncio
     async def test_create_stop_limit_sell_order(self):
@@ -601,7 +601,7 @@ class TestRpcMetaApiConnection:
         client.trade.assert_called_with('accountId', {'actionType': 'ORDER_TYPE_SELL_STOP_LIMIT', 'symbol': 'GBPUSD',
                                                       'volume': 0.07, 'openPrice': 1.0, 'stopLimitPrice': 1.1,
                                                       'stopLoss': 2.0, 'takeProfit': 0.9, 'comment': 'comment',
-                                                      'clientId': 'TE_GBPUSD_7hyINWqAlE'})
+                                                      'clientId': 'TE_GBPUSD_7hyINWqAlE'}, 'RPC')
 
     @pytest.mark.asyncio
     async def test_modify_position(self):
@@ -615,7 +615,7 @@ class TestRpcMetaApiConnection:
         actual = await api.modify_position('46870472', 2.0, 0.9)
         assert actual == trade_result
         client.trade.assert_called_with('accountId', {'actionType': 'POSITION_MODIFY', 'positionId': '46870472',
-                                                      'stopLoss': 2.0, 'takeProfit': 0.9})
+                                                      'stopLoss': 2.0, 'takeProfit': 0.9}, 'RPC')
 
     @pytest.mark.asyncio
     async def test_close_position_partially(self):
@@ -629,7 +629,7 @@ class TestRpcMetaApiConnection:
         actual = await api.close_position_partially('46870472', 0.9)
         assert actual == trade_result
         client.trade.assert_called_with('accountId', {'actionType': 'POSITION_PARTIAL', 'positionId': '46870472',
-                                                      'volume': 0.9})
+                                                      'volume': 0.9}, 'RPC')
 
     @pytest.mark.asyncio
     async def test_close_position(self):
@@ -642,7 +642,8 @@ class TestRpcMetaApiConnection:
         client.trade = AsyncMock(return_value=trade_result)
         actual = await api.close_position('46870472')
         assert actual == trade_result
-        client.trade.assert_called_with('accountId', {'actionType': 'POSITION_CLOSE_ID', 'positionId': '46870472'})
+        client.trade.assert_called_with('accountId', {'actionType': 'POSITION_CLOSE_ID', 'positionId': '46870472'},
+                                        'RPC')
 
     @pytest.mark.asyncio
     async def test_close_position_by_opposite(self):
@@ -658,7 +659,7 @@ class TestRpcMetaApiConnection:
         assert actual == trade_result
         client.trade.assert_called_with('accountId', {'actionType': 'POSITION_CLOSE_BY', 'positionId': '46870472',
                                                       'closeByPositionId': '46870482', 'comment': 'comment',
-                                                      'clientId': 'TE_GBPUSD_7hyINWqAlE'})
+                                                      'clientId': 'TE_GBPUSD_7hyINWqAlE'}, 'RPC')
 
     @pytest.mark.asyncio
     async def test_close_positions_by_symbol(self):
@@ -671,7 +672,8 @@ class TestRpcMetaApiConnection:
         client.trade = AsyncMock(return_value=trade_result)
         actual = await api.close_positions_by_symbol('EURUSD')
         assert actual == trade_result
-        client.trade.assert_called_with('accountId', {'actionType': 'POSITIONS_CLOSE_SYMBOL', 'symbol': 'EURUSD'})
+        client.trade.assert_called_with('accountId', {'actionType': 'POSITIONS_CLOSE_SYMBOL', 'symbol': 'EURUSD'},
+                                        'RPC')
 
     @pytest.mark.asyncio
     async def test_modify_order(self):
@@ -685,7 +687,7 @@ class TestRpcMetaApiConnection:
         actual = await api.modify_order('46870472', 1.0, 2.0, 0.9)
         assert actual == trade_result
         client.trade.assert_called_with('accountId', {'actionType': 'ORDER_MODIFY', 'orderId': '46870472',
-                                                      'openPrice': 1.0, 'stopLoss': 2.0, 'takeProfit': 0.9})
+                                                      'openPrice': 1.0, 'stopLoss': 2.0, 'takeProfit': 0.9}, 'RPC')
 
     @pytest.mark.asyncio
     async def test_cancel_order(self):
@@ -698,7 +700,7 @@ class TestRpcMetaApiConnection:
         client.trade = AsyncMock(return_value=trade_result)
         actual = await api.cancel_order('46870472')
         assert actual == trade_result
-        client.trade.assert_called_with('accountId', {'actionType': 'ORDER_CANCEL', 'orderId': '46870472'})
+        client.trade.assert_called_with('accountId', {'actionType': 'ORDER_CANCEL', 'orderId': '46870472'}, 'RPC')
 
     @pytest.mark.asyncio
     async def test_reconnect_terminal(self):
@@ -742,10 +744,10 @@ class TestRpcMetaApiConnection:
             'lossTickValue': 0.59736
         }
         client.get_symbol_price = AsyncMock(return_value=price)
-        actual = await api.get_symbol_price('AUDNZD')
+        actual = await api.get_symbol_price('AUDNZD', True)
         assert actual == price
 
-        client.get_symbol_price.assert_called_with('accountId', 'AUDNZD')
+        client.get_symbol_price.assert_called_with('accountId', 'AUDNZD', True)
 
     @pytest.mark.asyncio
     async def test_retrieve_current_candle(self):
@@ -764,10 +766,10 @@ class TestRpcMetaApiConnection:
             'volume': 345
         }
         client.get_candle = AsyncMock(return_value=candle)
-        actual = await api.get_candle('AUDNZD', '15m')
+        actual = await api.get_candle('AUDNZD', '15m', True)
         candle['time'] = date(candle['time'])
         assert actual == candle
-        client.get_candle.assert_called_with('accountId', 'AUDNZD', '15m')
+        client.get_candle.assert_called_with('accountId', 'AUDNZD', '15m', True)
 
     @pytest.mark.asyncio
     async def test_retrieve_latest_tick(self):
@@ -783,10 +785,10 @@ class TestRpcMetaApiConnection:
             'side': 'buy'
         }
         client.get_tick = AsyncMock(return_value=tick)
-        actual = await api.get_tick('AUDNZD')
+        actual = await api.get_tick('AUDNZD', True)
         tick['time'] = date(tick['time'])
         assert actual == tick
-        client.get_tick.assert_called_with('accountId', 'AUDNZD')
+        client.get_tick.assert_called_with('accountId', 'AUDNZD', True)
 
     @pytest.mark.asyncio
     async def test_retrieve_latest_order_book(self):
@@ -809,7 +811,7 @@ class TestRpcMetaApiConnection:
             ]
         }
         client.get_book = AsyncMock(return_value=book)
-        actual = await api.get_book('AUDNZD')
+        actual = await api.get_book('AUDNZD', True)
         book['time'] = date(book['time'])
         assert actual == book
-        client.get_book.assert_called_with('accountId', 'AUDNZD')
+        client.get_book.assert_called_with('accountId', 'AUDNZD', True)

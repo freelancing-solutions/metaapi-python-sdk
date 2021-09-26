@@ -780,11 +780,11 @@ class TestMetaApiWebsocketClient:
         @sio.on('request')
         async def on_request(sid, data):
             if data['type'] == 'getSymbolPrice' and data['accountId'] == 'accountId' and \
-                    data['symbol'] == 'AUDNZD' and data['application'] == 'RPC':
+                    data['symbol'] == 'AUDNZD' and data['application'] == 'RPC' and data['keepSubscription']:
                 await sio.emit('response', {'type': 'response', 'accountId': data['accountId'],
                                             'requestId': data['requestId'], 'price': price})
 
-        actual = await client.get_symbol_price('accountId', 'AUDNZD')
+        actual = await client.get_symbol_price('accountId', 'AUDNZD', True)
         assert actual == price
 
     @pytest.mark.asyncio
@@ -808,11 +808,12 @@ class TestMetaApiWebsocketClient:
         @sio.on('request')
         async def on_request(sid, data):
             if data['type'] == 'getCandle' and data['accountId'] == 'accountId' and \
-                    data['symbol'] == 'AUDNZD' and data['application'] == 'RPC' and data['timeframe'] == '15m':
+                    data['symbol'] == 'AUDNZD' and data['application'] == 'RPC' and data['timeframe'] == '15m' and \
+                    data['keepSubscription']:
                 await sio.emit('response', {'type': 'response', 'accountId': data['accountId'],
                                             'requestId': data['requestId'], 'candle': candle})
 
-        actual = await client.get_candle('accountId', 'AUDNZD', '15m')
+        actual = await client.get_candle('accountId', 'AUDNZD', '15m', True)
         candle['time'] = date(candle['time'])
         assert actual == candle
 
@@ -833,11 +834,11 @@ class TestMetaApiWebsocketClient:
         @sio.on('request')
         async def on_request(sid, data):
             if data['type'] == 'getTick' and data['accountId'] == 'accountId' and \
-                    data['symbol'] == 'AUDNZD' and data['application'] == 'RPC':
+                    data['symbol'] == 'AUDNZD' and data['application'] == 'RPC' and data['keepSubscription']:
                 await sio.emit('response', {'type': 'response', 'accountId': data['accountId'],
                                             'requestId': data['requestId'], 'tick': tick})
 
-        actual = await client.get_tick('accountId', 'AUDNZD')
+        actual = await client.get_tick('accountId', 'AUDNZD', True)
         tick['time'] = date(tick['time'])
         assert actual == tick
 
@@ -865,11 +866,11 @@ class TestMetaApiWebsocketClient:
         @sio.on('request')
         async def on_request(sid, data):
             if data['type'] == 'getBook' and data['accountId'] == 'accountId' and \
-                    data['symbol'] == 'AUDNZD' and data['application'] == 'RPC':
+                    data['symbol'] == 'AUDNZD' and data['application'] == 'RPC' and data['keepSubscription']:
                 await sio.emit('response', {'type': 'response', 'accountId': data['accountId'],
                                             'requestId': data['requestId'], 'book': book})
 
-        actual = await client.get_book('accountId', 'AUDNZD')
+        actual = await client.get_book('accountId', 'AUDNZD', True)
         book['time'] = date(book['time'])
         assert actual == book
 

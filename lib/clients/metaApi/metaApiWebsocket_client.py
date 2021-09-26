@@ -558,13 +558,15 @@ class MetaApiWebsocketClient:
         """
         return self._rpc_request(account_id, {'type': 'removeApplication'})
 
-    async def trade(self, account_id: str, trade) -> 'asyncio.Future[MetatraderTradeResponse]':
+    async def trade(self, account_id: str, trade, application: str = None) -> \
+            'asyncio.Future[MetatraderTradeResponse]':
         """Execute a trade on a connected MetaTrader account
         (see https://metaapi.cloud/docs/client/websocket/api/trade/).
 
         Args:
             account_id: Id of the MetaTrader account to execute trade for.
             trade: Trade to execute (see docs for possible trade types).
+            application: Application to use.
 
         Returns:
             A coroutine resolving with trade result.
@@ -573,7 +575,8 @@ class MetaApiWebsocketClient:
             TradeException: On trade error, check error properties for error code details.
         """
         self._format_request(trade)
-        response = await self._rpc_request(account_id, {'type': 'trade', 'trade': trade})
+        response = await self._rpc_request(account_id, {'type': 'trade', 'trade': trade,
+                                                        'application': application or self._application})
         if 'response' not in response:
             response['response'] = {}
         if 'stringCode' not in response['response']:
@@ -659,7 +662,7 @@ class MetaApiWebsocketClient:
         })
 
     def wait_synchronized(self, account_id: str, instance_number: int, application_pattern: str,
-                          timeout_in_seconds: float):
+                          timeout_in_seconds: float, application: str = None):
         """Waits for server-side terminal state synchronization to complete.
         (see https://metaapi.cloud/docs/client/websocket/synchronizing/waitSynchronized/).
 
@@ -668,9 +671,11 @@ class MetaApiWebsocketClient:
             instance_number: Instance index number.
             application_pattern: MetaApi application regular expression pattern, default is .*
             timeout_in_seconds: Timeout in seconds, default is 300 seconds.
+            application: Application to synchronize with.
         """
         return self._rpc_request(account_id, {'type': 'waitSynchronized', 'applicationPattern': application_pattern,
-                                              'timeoutInSeconds': timeout_in_seconds, 'instanceIndex': instance_number},
+                                              'timeoutInSeconds': timeout_in_seconds, 'instanceIndex': instance_number,
+                                              'application': application or self._application},
                                  timeout_in_seconds + 1)
 
     def subscribe_to_market_data(self, account_id: str, instance_number: int, symbol: str,
@@ -759,22 +764,27 @@ class MetaApiWebsocketClient:
                                                         'symbol': symbol})
         return response['specification']
 
-    async def get_symbol_price(self, account_id: str, symbol: str) -> 'asyncio.Future[MetatraderSymbolPrice]':
+    async def get_symbol_price(self, account_id: str, symbol: str, keep_subscription: bool = False) -> \
+            'asyncio.Future[MetatraderSymbolPrice]':
         """Retrieves price for a symbol
         (see https://metaapi.cloud/docs/client/websocket/api/retrieveMarketData/readSymbolPrice/).
 
         Args:
             account_id: Id of the MetaTrader account to retrieve symbol price for.
             symbol: Symbol to retrieve price for.
+            keep_subscription: If set to true, the account will get a long-term subscription to symbol market data.
+            Long-term subscription means that on subsequent calls you will get updated value faster. If set to false or
+            not set, the subscription will be set to expire in 12 minutes.
 
         Returns:
             A coroutine which resolves when price is retrieved.
         """
         response = await self._rpc_request(account_id, {'application': 'RPC', 'type': 'getSymbolPrice',
-                                                        'symbol': symbol})
+                                                        'symbol': symbol, 'keepSubscription': keep_subscription})
         return response['price']
 
-    async def get_candle(self, account_id: str, symbol: str, timeframe: str) -> 'asyncio.Future[MetatraderCandle]':
+    async def get_candle(self, account_id: str, symbol: str, timeframe: str, keep_subscription: bool = False) -> \
+            'asyncio.Future[MetatraderCandle]':
         """Retrieves price for a symbol (see
         https://metaapi.cloud/docs/client/websocket/api/retrieveMarketData/readCandle/).
 
@@ -784,42 +794,54 @@ class MetaApiWebsocketClient:
             timeframe: Defines the timeframe according to which the candle must be generated. Allowed values for
             MT5 are 1m, 2m, 3m, 4m, 5m, 6m, 10m, 12m, 15m, 20m, 30m, 1h, 2h, 3h, 4h, 6h, 8h, 12h, 1d, 1w, 1mn.
             Allowed values for MT4 are 1m, 5m, 15m 30m, 1h, 4h, 1d, 1w, 1mn.
+            keep_subscription: If set to true, the account will get a long-term subscription to symbol market data.
+            Long-term subscription means that on subsequent calls you will get updated value faster. If set to false or
+            not set, the subscription will be set to expire in 12 minutes.
 
         Returns:
             A coroutine which resolves when candle is retrieved.
         """
         response = await self._rpc_request(account_id, {'application': 'RPC', 'type': 'getCandle',
-                                                        'symbol': symbol, 'timeframe': timeframe})
+                                                        'symbol': symbol, 'timeframe': timeframe,
+                                                        'keepSubscription': keep_subscription})
         return response['candle']
 
-    async def get_tick(self, account_id: str, symbol: str) -> 'asyncio.Future[MetatraderTick]':
-        """Retrieves latest tick for a symbol (see
+    async def get_tick(self, account_id: str, symbol: str, keep_subscription: bool = False) -> \
+            'asyncio.Future[MetatraderTick]':
+        """Retrieves latest tick for a symbol. MT4 G1 accounts do not support this API (see
         https://metaapi.cloud/docs/client/websocket/api/retrieveMarketData/readTick/).
 
         Args:
             account_id: Id of the MetaTrader account to retrieve symbol tick for.
             symbol: Symbol to retrieve tick for.
+            keep_subscription: If set to true, the account will get a long-term subscription to symbol market data.
+            Long-term subscription means that on subsequent calls you will get updated value faster. If set to false or
+            not set, the subscription will be set to expire in 12 minutes.
 
         Returns:
             A coroutine which resolves when tick is retrieved.
         """
         response = await self._rpc_request(account_id, {'application': 'RPC', 'type': 'getTick',
-                                                        'symbol': symbol})
+                                                        'symbol': symbol, 'keepSubscription': keep_subscription})
         return response['tick']
 
-    async def get_book(self, account_id: str, symbol: str) -> 'asyncio.Future[MetatraderBook]':
-        """Retrieves latest order book for a symbol (see
+    async def get_book(self, account_id: str, symbol: str, keep_subscription: bool = False) -> \
+            'asyncio.Future[MetatraderBook]':
+        """Retrieves latest order book for a symbol. MT4 accounts do not support this API (see
         https://metaapi.cloud/docs/client/websocket/api/retrieveMarketData/readBook/).
 
         Args:
             account_id: Id of the MetaTrader account to retrieve symbol order book for.
             symbol: Symbol to retrieve order book for.
+            keep_subscription: If set to true, the account will get a long-term subscription to symbol market data.
+            Long-term subscription means that on subsequent calls you will get updated value faster. If set to false or
+            not set, the subscription will be set to expire in 12 minutes.
 
         Returns:
             A coroutine which resolves when order book is retrieved.
         """
         response = await self._rpc_request(account_id, {'application': 'RPC', 'type': 'getBook',
-                                                        'symbol': symbol})
+                                                        'symbol': symbol, 'keepSubscription': keep_subscription})
         return response['book']
 
     def save_uptime(self, account_id: str, uptime: Dict):
