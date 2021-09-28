@@ -231,6 +231,7 @@ class TestTerminalState:
         await state.on_pending_orders_replaced('1:ps-mpa-1', orders)
         assert state.account_information == {'balance': 1000}
         assert state.specification('EURUSD') == specification
+        await state.on_pending_orders_synchronized('1:ps-mpa-1', 'synchronizationId')
         await state.on_synchronization_started('1:ps-mpa-1', specifications_updated=False, positions_updated=False,
                                                orders_updated=False)
         await state.on_pending_orders_synchronized('1:ps-mpa-1', 'synchronizationId')
@@ -269,7 +270,7 @@ class TestTerminalState:
         orders_hash = md5(('[{"id":"46871284","type":"ORDER_TYPE_BUY_LIMIT","state":"ORDER_STATE_PLACED",'
                            '"symbol":"AUDNZD","magic":123456,"platform":"mt5","openPrice":1.03000000,'
                            '"volume":0.01000000,"currentVolume":0.01000000}]').encode()).hexdigest()
-        hashes = state.get_hashes('cloud-g1')
+        hashes = state.get_hashes('cloud-g1', '1:ps-mpa-1')
         assert hashes['specificationsMd5'] is None
         assert hashes['positionsMd5'] is None
         assert hashes['ordersMd5'] is None
@@ -319,7 +320,7 @@ class TestTerminalState:
             'clientId': 'TE_GBPUSD_7hyINWqAlE',
         }])
         await state.on_pending_orders_synchronized('1:ps-mpa-1', 'synchronizationId')
-        hashes = state.get_hashes('cloud-g1')
+        hashes = state.get_hashes('cloud-g1', '1:ps-mpa-1')
         assert hashes['specificationsMd5'] == specifications_hash
         assert hashes['positionsMd5'] == positions_hash
         assert hashes['ordersMd5'] == orders_hash
@@ -338,7 +339,7 @@ class TestTerminalState:
         orders_hash = md5(('[{"id":"46871284","type":"ORDER_TYPE_BUY_LIMIT","state":"ORDER_STATE_PLACED",'
                            '"symbol":"AUDNZD","magic":123456,"platform":"mt5","time":"2020-04-20T08:38:58.270Z",'
                            '"openPrice":1.03,"volume":0.01,"currentVolume":0.01}]').encode()).hexdigest()
-        hashes = state.get_hashes('cloud-g2')
+        hashes = state.get_hashes('cloud-g2', '1:ps-mpa-1')
         assert hashes['specificationsMd5'] is None
         assert hashes['positionsMd5'] is None
         assert hashes['ordersMd5'] is None
@@ -388,7 +389,7 @@ class TestTerminalState:
             'clientId': 'TE_GBPUSD_7hyINWqAlE',
         }])
         await state.on_pending_orders_synchronized('1:ps-mpa-1', 'synchronizationId')
-        hashes = state.get_hashes('cloud-g2')
+        hashes = state.get_hashes('cloud-g2', '1:ps-mpa-1')
         assert hashes['specificationsMd5'] == specifications_hash
         assert hashes['positionsMd5'] == positions_hash
         assert hashes['ordersMd5'] == orders_hash

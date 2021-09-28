@@ -135,7 +135,7 @@ class StreamingMetaApiConnection(MetaApiConnection):
             .replace(tzinfo=pytz.UTC)
         synchronization_id = random_id()
         self._get_state(instance_index)['lastSynchronizationId'] = synchronization_id
-        hashes = self.terminal_state.get_hashes(self._account.type)
+        hashes = self.terminal_state.get_hashes(self._account.type, instance_index)
         return await self._websocketClient.synchronize(
             self._account.id, instance, host, synchronization_id, starting_history_order_time, starting_deal_time,
             hashes['specificationsMd5'], hashes['positionsMd5'], hashes['ordersMd5'])

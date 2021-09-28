@@ -1,3 +1,6 @@
+15.1.1
+  - fix synchronization after redeploy
+
 15.1.0
   - added option to keep server-side subscription when retrieving latest market data via RPC API
   - updated CopyFactory API to 3.1.0
