@@ -7,7 +7,7 @@ from typing_extensions import TypedDict
 import asyncio
 from datetime import datetime
 from hashlib import md5
-from copy import copy
+from copy import copy, deepcopy
 import json
 
 
@@ -108,16 +108,18 @@ class TerminalState(SynchronizationListener):
         """
         return list(self._combinedState['specificationsBySymbol'].values())
 
-    def get_hashes(self, account_type: str) -> TerminalStateHashes:
+    def get_hashes(self, account_type: str, instance_index: str) -> TerminalStateHashes:
         """Returns hashes of terminal state data for incremental synchronization.
 
         Args:
             account_type: Account type.
+            instance_index: Index of instance state to get hashes of.
 
         Returns:
             Hashes of terminal state data.
         """
-        specifications = copy(self.specifications)
+        state = self._get_state(instance_index)
+        specifications = copy(list(state['specificationsBySymbol'].values()))
         for i in range(len(specifications)):
             specifications[i] = copy(specifications[i])
         specifications = sorted(specifications, key=lambda s: s['symbol'])
@@ -131,7 +133,7 @@ class TerminalState(SynchronizationListener):
                         specification[key] = float(specification[key])
         specifications_hash = self._get_hash(specifications, account_type) if len(specifications) else None
 
-        positions = copy(self.positions)
+        positions = copy(state['positions'])
         for i in range(len(positions)):
             positions[i] = copy(positions[i])
         positions = sorted(positions, key=lambda p: p['id'])
@@ -163,10 +165,10 @@ class TerminalState(SynchronizationListener):
                     if isinstance(position[key], int) and not isinstance(position[key], bool) and \
                             key != 'magic':
                         position[key] = float(position[key])
-        positions_hash = self._get_hash(positions, account_type) if self._combinedState['positionsInitialized'] \
+        positions_hash = self._get_hash(positions, account_type) if state['positionsInitialized'] \
             else None
 
-        orders = copy(self.orders)
+        orders = copy(state['orders'])
         for i in range(len(orders)):
             orders[i] = copy(orders[i])
         orders = sorted(orders, key=lambda p: p['id'])
@@ -189,7 +191,7 @@ class TerminalState(SynchronizationListener):
                     if isinstance(order[key], int) and not isinstance(order[key], bool) and \
                             key != 'magic':
                         order[key] = float(order[key])
-        orders_hash = self._get_hash(orders, account_type) if self._combinedState['ordersInitialized'] else None
+        orders_hash = self._get_hash(orders, account_type) if state['ordersInitialized'] else None
 
         return {
             'specificationsMd5': specifications_hash,
@@ -420,6 +422,7 @@ class TerminalState(SynchronizationListener):
         """
         state = self._get_state(instance_index)
         state['completedOrders'] = {}
+        state['positionsInitialized'] = True
         state['ordersInitialized'] = True
         self._combinedState['accountInformation'] = state['accountInformation']
         self._combinedState['positions'] = state['positions']
