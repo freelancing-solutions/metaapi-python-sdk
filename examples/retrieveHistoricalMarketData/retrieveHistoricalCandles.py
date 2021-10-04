@@ -46,5 +46,6 @@ async def retrieve_historical_candles():
 
     except Exception as err:
         print(api.format_error(err))
+    exit()
 
 asyncio.run(retrieve_historical_candles())
