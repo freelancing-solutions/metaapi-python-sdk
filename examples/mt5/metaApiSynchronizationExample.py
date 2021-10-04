@@ -102,5 +102,6 @@ async def test_meta_api_synchronization():
 
     except Exception as err:
         print(api.format_error(err))
+    exit()
 
 asyncio.run(test_meta_api_synchronization())
