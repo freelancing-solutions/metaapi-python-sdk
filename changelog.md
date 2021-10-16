@@ -1,3 +1,6 @@
+15.1.2
+  - updated dependencies
+
 15.1.1
   - fix synchronization after redeploy
 
