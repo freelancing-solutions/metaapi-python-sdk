@@ -48,6 +48,8 @@ class MetaApiOpts(TypedDict):
     """Application id."""
     domain: Optional[str]
     """Domain to connect to, default is agiliumtrade.agiliumtrade.ai."""
+    region: Optional[str]
+    """Region to connect to."""
     requestTimeout: Optional[float]
     """Timeout for socket requests in seconds."""
     connectTimeout: Optional[float]
@@ -90,6 +92,7 @@ class MetaApi:
         opts: MetaApiOpts = opts or {}
         application = opts['application'] if 'application' in opts else 'MetaApi'
         domain = opts['domain'] if 'domain' in opts else 'agiliumtrade.agiliumtrade.ai'
+        region = opts['region'] if 'region' in opts else None
         request_timeout = validator.validate_non_zero(opts['requestTimeout'] if 'requestTimeout' in opts else None,
                                                       60, 'requestTimeout')
         historical_market_data_request_timeout = validator.validate_non_zero(
@@ -117,6 +120,7 @@ class MetaApi:
         self._metaApiWebsocketClient = MetaApiWebsocketClient(
             http_client, token, {'application': application, 'domain': domain, 'requestTimeout': request_timeout,
                                  'connectTimeout': connect_timeout, 'packetLogger': packet_logger,
+                                 'region': region,
                                  'packetOrderingTimeout': packet_ordering_timeout,
                                  'synchronizationThrottler': synchronization_throttler,
                                  'retryOpts': retry_opts,

@@ -47,8 +47,10 @@ class MetaApiWebsocketClient:
                                                                                opts else {}
         self._httpClient = http_client
         self._application = opts['application'] if 'application' in opts else 'MetaApi'
-        self._domain = opts["domain"] if "domain" in opts else "agiliumtrade.agiliumtrade.ai"
-        self._url = f'https://mt-client-api-v1.{self._domain}'
+        self._domain = opts['domain'] if 'domain' in opts else 'agiliumtrade.agiliumtrade.ai'
+        self._region = opts['region'] if 'region' in opts else None
+        self._hostname = 'mt-client-api-v1'
+        self._url = f'https://{self._hostname}.{self._domain}'
         self._request_timeout = validator.validate_non_zero(
             opts['requestTimeout'] if 'requestTimeout' in opts else None, 60, 'requestTimeout')
         self._connect_timeout = validator.validate_non_zero(
@@ -1900,19 +1902,47 @@ class MetaApiWebsocketClient:
             self._logger.error(f'Failed to process reconnected event ' + string_format_error(err))
 
     async def _get_server_url(self):
+        is_default_region = self._region is None
+        if self._region:
+            opts = {
+                'url': f'https://mt-provisioning-api-v1.{self._domain}/users/current/regions',
+                'method': 'GET',
+                'headers': {
+                    'auth-token': self._token
+                }
+            }
+            regions = await self._httpClient.request(opts)
+            if self._region not in regions:
+                error_message = f'The region "{self._region}" you are trying to connect to does not exist ' + \
+                                 'or is not available to you. Please specify a correct region name in the ' + \
+                                 'region MetaApi constructor option.'
+                self._logger.error(error_message)
+                raise NotFoundException(error_message)
+
+            if self._region == regions[0]:
+                is_default_region = True
+
         if self._useSharedClientApi:
-            url = self._url
+            if is_default_region:
+                url = self._url
+            else:
+                url = f'https://{self._hostname}.{self._region}.{self._domain}'
+
         else:
             opts = {
-                'url': f"https://mt-provisioning-api-v1.{self._domain}/users/current/servers/mt-client-api",
+                'url': f'https://mt-provisioning-api-v1.{self._domain}/users/current/servers/mt-client-api',
                 'method': 'GET',
                 'headers': {
                     'auth-token': self._token
                 }
             }
             response = await self._httpClient.request(opts)
-            url = response['url']
-        is_shared_client_api = url == self._url
+            if is_default_region:
+                url = response['url']
+            else:
+                url = f'https://{response["hostname"]}.{self._region}.{response["domain"]}'
+
+        is_shared_client_api = url in [self._url, f'https://{self._hostname}.{self._region}.${self._domain}']
         log_message = f'Connecting MetaApi websocket client to the MetaApi server ' \
                       f'via {url} {"shared" if is_shared_client_api else "dedicated"} server.'
         if self._firstConnect and not is_shared_client_api:

@@ -1,3 +1,7 @@
+15.1.3
+  - added point field to symbol specification
+  - added region selection
+
 15.1.2
   - updated dependencies
 
