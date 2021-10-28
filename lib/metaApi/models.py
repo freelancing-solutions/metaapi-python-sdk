@@ -545,6 +545,8 @@ class MetatraderSymbolSpecification(TypedDict):
     details."""
     digits: int
     """Digits after a decimal point."""
+    point: float
+    """Point size."""
     path: Optional[str]
     """Path in the symbol tree."""
     description: str

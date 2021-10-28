@@ -191,6 +191,75 @@ class TestMetaApiWebsocketClient:
         assert actual == positions
 
     @pytest.mark.asyncio
+    async def test_throw_error_if_region_not_found(self):
+        """Should throw error if region not found."""
+        async def side_effect_func(request):
+            if request['url'] == 'https://mt-provisioning-api-v1.project-stock.agiliumlabs.cloud/' + \
+                    'users/current/regions':
+                return ['canada', 'us-west']
+
+        http_client.request = AsyncMock(side_effect=side_effect_func)
+        client = MetaApiWebsocketClient(http_client, 'token', {
+            'application': 'application', 'domain': 'project-stock.agiliumlabs.cloud', 'region': 'wrong',
+            'requestTimeout': 3, 'useSharedClientApi': False})
+        try:
+            await client._get_server_url()
+        except Exception as err:
+            assert err.__class__.__name__ == 'NotFoundException'
+
+    @pytest.mark.asyncio
+    async def test_connect_to_legacy_url_if_default_region(self):
+        """Should connect to legacy url if default region selected."""
+        async def side_effect_func(request):
+            if request['url'] == 'https://mt-provisioning-api-v1.project-stock.agiliumlabs.cloud/' + \
+                    'users/current/regions':
+                return ['canada', 'us-west']
+
+        http_client.request = AsyncMock(side_effect=side_effect_func)
+        client = MetaApiWebsocketClient(http_client, 'token', {
+            'application': 'application', 'domain': 'project-stock.agiliumlabs.cloud', 'region': 'canada',
+            'requestTimeout': 3, 'useSharedClientApi': True})
+        url = await client._get_server_url()
+        assert url == 'https://mt-client-api-v1.project-stock.agiliumlabs.cloud'
+
+    @pytest.mark.asyncio
+    async def test_connect_to_shared_selected_region(self):
+        """Should connect to shared selected region"""
+        async def side_effect_func(request):
+            if request['url'] == 'https://mt-provisioning-api-v1.project-stock.agiliumlabs.cloud/' + \
+                    'users/current/regions':
+                return ['canada', 'us-west']
+
+        http_client.request = AsyncMock(side_effect=side_effect_func)
+        client = MetaApiWebsocketClient(http_client, 'token', {
+            'application': 'application', 'domain': 'project-stock.agiliumlabs.cloud', 'region': 'us-west',
+            'requestTimeout': 3, 'useSharedClientApi': True})
+        url = await client._get_server_url()
+        assert url == 'https://mt-client-api-v1.us-west.project-stock.agiliumlabs.cloud'
+
+    @pytest.mark.asyncio
+    async def test_connect_to_dedicated_selected_region(self):
+        """Should connect to dedicated selected region"""
+        async def side_effect_func(request):
+            if request['url'] == 'https://mt-provisioning-api-v1.project-stock.agiliumlabs.cloud/' + \
+                    'users/current/regions':
+                return ['canada', 'us-west']
+            elif request['url'] == f'https://mt-provisioning-api-v1.project-stock.agiliumlabs.cloud/' + \
+                    'users/current/servers/mt-client-api':
+                return {
+                    'url': 'http://localhost:8081',
+                    'hostname': 'mt-client-api-dedicated',
+                    'domain': 'project-stock.agiliumlabs.cloud'
+                }
+
+        http_client.request = AsyncMock(side_effect=side_effect_func)
+        client = MetaApiWebsocketClient(http_client, 'token', {
+            'application': 'application', 'domain': 'project-stock.agiliumlabs.cloud', 'region': 'us-west',
+            'requestTimeout': 3, 'useSharedClientApi': False})
+        url = await client._get_server_url()
+        assert url == 'https://mt-client-api-dedicated.us-west.project-stock.agiliumlabs.cloud'
+
+    @pytest.mark.asyncio
     async def test_retrieve_account(self):
         """Should retrieve MetaTrader account information from API."""
 
