@@ -239,7 +239,7 @@ Query account information, positions, orders and history via RPC API
 --------------------------------------------------------------------
 .. code-block:: python
 
-    connection = await account.get_rpc_connection()
+    connection = account.get_rpc_connection()
 
     await connection.wait_synchronized()
 
@@ -270,7 +270,7 @@ Query contract specifications and quotes via RPC API
 ----------------------------------------------------
 .. code-block:: python
 
-    connection = await account.get_rpc_connection()
+    connection = account.get_rpc_connection()
 
     await connection.wait_synchronized()
 
@@ -316,7 +316,8 @@ Synchronizing and reading terminal state
 .. code-block:: python
 
     account = await api.metatrader_account_api.get_account(account_id='accountId')
-    connection = await account.get_streaming_connection()
+    connection = account.get_streaming_connection()
+    await connection.connect()
 
     # access local copy of terminal state
     terminalState = connection.terminal_state
@@ -342,6 +343,9 @@ Synchronizing and reading terminal state
     print(historyStorage.order_synchronization_finished)
     print(historyStorage.deal_synchronization_finished)
 
+    print(historyStorage.deals)
+    print(historyStorage.history_orders)
+
 Overriding local history storage
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 By default history is stored in memory only. You can override history storage to save trade history to a persistent storage like MongoDB database.
@@ -358,7 +362,8 @@ By default history is stored in memory only. You can override history storage to
 
     # Note: if you will not specify history storage, then in-memory storage
     # will be used (instance of MemoryHistoryStorage)
-    connection = await account.get_streaming_connection(history_storage=historyStorage)
+    connection = account.get_streaming_connection(history_storage=historyStorage)
+    await connection.connect()
 
     # access history storage
     historyStorage = connection.history_storage;
@@ -379,6 +384,9 @@ You can override SynchronizationListener in order to receive synchronization eve
     class MySynchronizationListener(SynchronizationListener):
         # override abstract methods you want to receive notifications for
 
+    # retrieving a connection
+    connection = account.get_streaming_connection(history_storage=historyStorage)
+
     # now add the listener
     listener = MySynchronizationListener()
     connection.add_synchronization_listener(listener=listener)
@@ -386,11 +394,15 @@ You can override SynchronizationListener in order to receive synchronization eve
     # remove the listener when no longer needed
     connection.remove_synchronization_listener(listener=listener)
 
+    # open the connection after adding listeners
+    await connection.connect()
+
 Retrieve contract specifications and quotes via streaming API
 -------------------------------------------------------------
 .. code-block:: python
 
-    connection = await account.get_streaming_connection()
+    connection = account.get_streaming_connection()
+    await connection.connect()
 
     await connection.wait_synchronized()
 
@@ -410,9 +422,10 @@ Execute trades (both RPC and streaming APIs)
 --------------------------------------------
 .. code-block:: python
 
-    connection = await account.get_rpc_connection()
+    connection = account.get_rpc_connection()
     # or
-    connection = await account.get_streaming_connection()
+    connection = account.get_streaming_connection()
+    await connection.connect()
 
     await connection.wait_synchronized()
 

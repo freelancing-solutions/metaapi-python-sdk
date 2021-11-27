@@ -13,7 +13,7 @@ from ..optionsValidator import OptionsValidator
 from ...logger import LoggerManager
 
 
-class PacketLoggerOpts(TypedDict):
+class PacketLoggerOpts(TypedDict, total=False):
     """Packet logger options."""
 
     enabled: Optional[bool]

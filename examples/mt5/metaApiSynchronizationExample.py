@@ -67,7 +67,8 @@ async def test_meta_api_synchronization():
         await account.wait_connected()
 
         # connect to MetaApi API
-        connection = await account.get_streaming_connection()
+        connection = account.get_streaming_connection()
+        await connection.connect()
 
         # wait until terminal state synchronized to the local state
         print('Waiting for SDK to synchronize to terminal state (may take some time depending on your history size)')
@@ -83,6 +84,12 @@ async def test_meta_api_synchronization():
         print('orders:', terminal_state.orders)
         print('specifications:', terminal_state.specifications)
         print('EURUSD specification:', terminal_state.specification('EURUSD'))
+
+        # access history storage
+        history_storage = connection.history_storage
+        print('deals:', history_storage.deals[-5:])
+        print('history orders:', history_storage.history_orders[-5:])
+
         await connection.subscribe_to_market_data('EURUSD')
         print('EURUSD price:', terminal_state.price('EURUSD'))
 

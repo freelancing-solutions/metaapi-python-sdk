@@ -11,14 +11,15 @@ broker_srv_file = os.getenv('PATH_TO_BROKER_SRV') or './lib/integration_tests/fi
 api: MetaApi = None
 
 
-async def check_positions(connection):
-    return {'local': len(connection.terminal_state.positions), 'real': len(await connection.get_positions())}
+async def check_positions(streaming_connection, rpc_connection):
+    return {'local': len(streaming_connection.terminal_state.positions),
+            'real': len(await rpc_connection.get_positions())}
 
 
 @pytest.fixture(autouse=True)
 async def run_around_tests():
     global api
-    api = MetaApi(token, {'application': 'MetaApi', 'domain': 'project-stock.v2.agiliumlabs.cloud'})
+    api = MetaApi(token, {'application': 'MetaApi', 'domain': 'project-stock.v3.agiliumlabs.cloud'})
     yield
 
 
@@ -62,32 +63,35 @@ class TestSyncPositions:
                 })
             await account.deploy()
             await account.wait_connected()
-            connection = await account.connect()
-            await connection.wait_synchronized({'timeoutInSeconds': 600})
-            start_positions = len(connection.terminal_state.positions)
+            streaming_connection = account.get_streaming_connection()
+            rpc_connection = account.get_rpc_connection()
+            await streaming_connection.connect()
+            await streaming_connection.wait_synchronized({'timeoutInSeconds': 600})
+            await rpc_connection.wait_synchronized()
+            start_positions = len(streaming_connection.terminal_state.positions)
             position_ids = []
-            positions = await check_positions(connection)
+            positions = await check_positions(streaming_connection, rpc_connection)
             assert positions['local'] == positions['real']
             for i in range(10):
-                result = await connection.create_market_buy_order('GBPUSD', 0.01, 0.9, 2.0)
+                result = await streaming_connection.create_market_buy_order('GBPUSD', 0.01, 0.9, 2.0)
                 position_ids.append(result['positionId'])
                 await asyncio.sleep(0.2)
-            positions = await check_positions(connection)
+            positions = await check_positions(streaming_connection, rpc_connection)
             await asyncio.sleep(3)
             assert positions['local'] == start_positions + 10
             assert positions['real'] == start_positions + 10
             await asyncio.sleep(5)
-            await asyncio.gather(*list(map(lambda id: connection.close_position(id), position_ids)))
+            await asyncio.gather(*list(map(lambda id: streaming_connection.close_position(id), position_ids)))
             await asyncio.sleep(1)
 
             async def close_position_test(id):
                 try:
-                    await connection.get_position(id)
+                    await rpc_connection.get_position(id)
                     pytest.fail()
                 except Exception as err:
                     pass
             await asyncio.gather(*list(map(lambda id: close_position_test(id), position_ids)))
-            positions = await check_positions(connection)
+            positions = await check_positions(streaming_connection, rpc_connection)
             await asyncio.sleep(3)
             assert positions['local'] == start_positions
             assert positions['real'] == start_positions

@@ -22,7 +22,7 @@ import asyncio
 from ..logger import LoggerManager
 
 
-class RetryOpts(TypedDict):
+class RetryOpts(TypedDict, total=False):
     """Request retry options."""
     retries: Optional[int]
     """Maximum amount of request retries, default value is 5."""
@@ -34,7 +34,7 @@ class RetryOpts(TypedDict):
     """Time to disable new subscriptions for """
 
 
-class RefreshSubscriptionsOpts(TypedDict):
+class RefreshSubscriptionsOpts(TypedDict, total=False):
     """Subscriptions refresh options."""
     minDelayInSeconds: Optional[float]
     """Minimum delay in seconds until subscriptions refresh request, default value is 1."""
@@ -42,7 +42,7 @@ class RefreshSubscriptionsOpts(TypedDict):
     """Maximum delay in seconds until subscriptions refresh request, default value is 600."""
 
 
-class MetaApiOpts(TypedDict):
+class MetaApiOpts(TypedDict, total=False):
     """MetaApi options"""
     application: Optional[str]
     """Application id."""
@@ -76,6 +76,9 @@ class MetaApiOpts(TypedDict):
     """Option to enable debug mode."""
     refreshSubscriptionsOpts: Optional[RefreshSubscriptionsOpts]
     """Subscriptions refresh options."""
+    unsubscribeThrottlingIntervalInSeconds: Optional[float]
+    """A timeout in seconds for throttling repeat unsubscribe
+    requests when synchronization packets still arrive after unsubscription, default is 10 seconds"""
 
 
 class MetaApi:
@@ -93,6 +96,8 @@ class MetaApi:
         application = opts['application'] if 'application' in opts else 'MetaApi'
         domain = opts['domain'] if 'domain' in opts else 'agiliumtrade.agiliumtrade.ai'
         region = opts['region'] if 'region' in opts else None
+        unsubscribe_throttling_interval_in_seconds = opts['unsubscribeThrottlingIntervalInSeconds'] if \
+            'unsubscribeThrottlingIntervalInSeconds' in opts else None
         request_timeout = validator.validate_non_zero(opts['requestTimeout'] if 'requestTimeout' in opts else None,
                                                       60, 'requestTimeout')
         historical_market_data_request_timeout = validator.validate_non_zero(
@@ -125,7 +130,8 @@ class MetaApi:
                                  'synchronizationThrottler': synchronization_throttler,
                                  'retryOpts': retry_opts,
                                  'useSharedClientApi': use_shared_client_api,
-                                 'enableSocketioDebugger': enable_socketio_debugger})
+                                 'enableSocketioDebugger': enable_socketio_debugger,
+                                 'unsubscribeThrottlingIntervalInSeconds': unsubscribe_throttling_interval_in_seconds})
         self._provisioningProfileApi = ProvisioningProfileApi(ProvisioningProfileClient(http_client, token, domain))
         self._connectionRegistry = ConnectionRegistry(self._metaApiWebsocketClient, application,
                                                       refresh_subscriptions_opts)

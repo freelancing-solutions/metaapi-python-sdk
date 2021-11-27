@@ -72,6 +72,9 @@ class MetaApiWebsocketClient:
         self._enableSocketioDebugger = validator.validate_boolean(
             opts['enableSocketioDebugger'] if 'enableSocketioDebugger' in opts else None, False,
             'enableSocketioDebugger')
+        self._unsubscribeThrottlingInterval = validator.validate_non_zero(
+            opts['unsubscribeThrottlingIntervalInSeconds'] if 'unsubscribeThrottlingIntervalInSeconds' in opts else
+            None, 10, 'unsubscribeThrottlingIntervalInSeconds')
         self._token = token
         self._synchronizationListeners = {}
         self._latencyListeners = []
@@ -87,6 +90,7 @@ class MetaApiWebsocketClient:
         self._synchronizationFlags = {}
         self._subscribeLock = None
         self._firstConnect = True
+        self._lastRequestsTime = {}
         self._logger = LoggerManager.get_logger('MetaApiWebsocketClient')
         if 'packetLogger' in opts and 'enabled' in opts['packetLogger'] and opts['packetLogger']['enabled']:
             self._packetLogger = PacketLogger(opts['packetLogger'])
@@ -106,10 +110,11 @@ class MetaApiWebsocketClient:
             packet: Packet data.
             received_at: Time the packet was received at.
         """
-        self._logger.error(f'MetaApi websocket client received an out of order packet '
-                           f'type {packet["type"]} for account id {account_id}:{instance_index}. Expected s/n '
-                           f'{expected_sequence_number} does not match the actual of {actual_sequence_number}')
-        self.ensure_subscribe(account_id, instance_index)
+        if self._subscriptionManager.is_subscription_active(account_id):
+            self._logger.error(f'MetaApi websocket client received an out of order packet '
+                               f'type {packet["type"]} for account id {account_id}:{instance_index}. Expected s/n '
+                               f'{expected_sequence_number} does not match the actual of {actual_sequence_number}')
+            self.ensure_subscribe(account_id, instance_index)
 
     def set_url(self, url: str):
         """Patch server URL for use in unit tests
@@ -304,11 +309,23 @@ class MetaApiWebsocketClient:
                     'application': data['application'] if 'application' in data else None,
                     'host': data['host'] if 'host' in data else None
                 }))
-            if ('synchronizationId' not in data) or \
-                    (data['synchronizationId'] in instance['synchronizationThrottler'].active_synchronization_ids):
+            active_synchronization_ids = instance['synchronizationThrottler'].active_synchronization_ids
+            if ('synchronizationId' not in data) or (data['synchronizationId'] in active_synchronization_ids):
                 if self._packetLogger:
                     self._packetLogger.log_packet(data)
                 self._convert_iso_time_to_date(data)
+                if not self._subscriptionManager.is_subscription_active(data['accountId']) and \
+                        data['type'] != 'disconnected':
+                    if self._throttle_request('unsubscribe', data['accountId'], self._unsubscribeThrottlingInterval):
+                        async def unsubscribe():
+                            try:
+                                await self.unsubscribe(data['accountId'])
+                            except Exception as err:
+                                self._logger.warn(f'{data["accountId"]}:'
+                                                  f'{data["instanceIndex"] if "instanceIndex" in data else 0}: '
+                                                  'failed to unsubscribe', format_error(err))
+                        asyncio.create_task(unsubscribe())
+                    return
             else:
                 data['type'] = 'noop'
             self.queue_packet(data)
@@ -354,7 +371,7 @@ class MetaApiWebsocketClient:
         Returns:
             A coroutine resolving with account information.
         """
-        response = await self._rpc_request(account_id, {'application': 'RPC', 'type': 'getAccountInformation'})
+        response = await self.rpc_request(account_id, {'application': 'RPC', 'type': 'getAccountInformation'})
         return response['accountInformation']
 
     async def get_positions(self, account_id: str) -> 'asyncio.Future[List[MetatraderPosition]]':
@@ -367,7 +384,7 @@ class MetaApiWebsocketClient:
         Returns:
             A coroutine resolving with array of open positions.
         """
-        response = await self._rpc_request(account_id, {'application': 'RPC', 'type': 'getPositions'})
+        response = await self.rpc_request(account_id, {'application': 'RPC', 'type': 'getPositions'})
         return response['positions']
 
     async def get_position(self, account_id: str, position_id: str) -> 'asyncio.Future[MetatraderPosition]':
@@ -381,8 +398,8 @@ class MetaApiWebsocketClient:
         Returns:
             A coroutine resolving with MetaTrader position found.
         """
-        response = await self._rpc_request(account_id, {'application': 'RPC', 'type': 'getPosition',
-                                                        'positionId': position_id})
+        response = await self.rpc_request(account_id, {'application': 'RPC', 'type': 'getPosition',
+                                                       'positionId': position_id})
         return response['position']
 
     async def get_orders(self, account_id: str) -> 'asyncio.Future[List[MetatraderOrder]]':
@@ -395,7 +412,7 @@ class MetaApiWebsocketClient:
         Returns:
             A coroutine resolving with open MetaTrader orders.
         """
-        response = await self._rpc_request(account_id, {'application': 'RPC', 'type': 'getOrders'})
+        response = await self.rpc_request(account_id, {'application': 'RPC', 'type': 'getOrders'})
         return response['orders']
 
     async def get_order(self, account_id: str, order_id: str) -> 'asyncio.Future[MetatraderOrder]':
@@ -409,7 +426,7 @@ class MetaApiWebsocketClient:
         Returns:
             A coroutine resolving with metatrader order found.
         """
-        response = await self._rpc_request(account_id, {'application': 'RPC', 'type': 'getOrder', 'orderId': order_id})
+        response = await self.rpc_request(account_id, {'application': 'RPC', 'type': 'getOrder', 'orderId': order_id})
         return response['order']
 
     async def get_history_orders_by_ticket(self, account_id: str, ticket: str) -> MetatraderHistoryOrders:
@@ -423,8 +440,8 @@ class MetaApiWebsocketClient:
         Returns:
             A coroutine resolving with request results containing history orders found.
         """
-        response = await self._rpc_request(account_id, {'application': 'RPC', 'type': 'getHistoryOrdersByTicket',
-                                                        'ticket': ticket})
+        response = await self.rpc_request(account_id, {'application': 'RPC', 'type': 'getHistoryOrdersByTicket',
+                                                       'ticket': ticket})
         return {
             'historyOrders': response['historyOrders'],
             'synchronizing': response['synchronizing']
@@ -441,8 +458,8 @@ class MetaApiWebsocketClient:
         Returns:
             A coroutine resolving with request results containing history orders found.
         """
-        response = await self._rpc_request(account_id, {'application': 'RPC', 'type': 'getHistoryOrdersByPosition',
-                                                        'positionId': position_id})
+        response = await self.rpc_request(account_id, {'application': 'RPC', 'type': 'getHistoryOrdersByPosition',
+                                                       'positionId': position_id})
         return {
             'historyOrders': response['historyOrders'],
             'synchronizing': response['synchronizing']
@@ -463,10 +480,10 @@ class MetaApiWebsocketClient:
         Returns:
             A coroutine resolving with request results containing history orders found.
         """
-        response = await self._rpc_request(account_id, {'application': 'RPC', 'type': 'getHistoryOrdersByTimeRange',
-                                                        'startTime': format_date(start_time),
-                                                        'endTime': format_date(end_time),
-                                                        'offset': offset, 'limit': limit})
+        response = await self.rpc_request(account_id, {'application': 'RPC', 'type': 'getHistoryOrdersByTimeRange',
+                                                       'startTime': format_date(start_time),
+                                                       'endTime': format_date(end_time),
+                                                       'offset': offset, 'limit': limit})
         return {
             'historyOrders': response['historyOrders'],
             'synchronizing': response['synchronizing']
@@ -483,8 +500,8 @@ class MetaApiWebsocketClient:
         Returns:
             A coroutine resolving with request results containing deals found.
         """
-        response = await self._rpc_request(account_id, {'application': 'RPC', 'type': 'getDealsByTicket',
-                                                        'ticket': ticket})
+        response = await self.rpc_request(account_id, {'application': 'RPC', 'type': 'getDealsByTicket',
+                                                       'ticket': ticket})
         return {
             'deals': response['deals'],
             'synchronizing': response['synchronizing']
@@ -501,8 +518,8 @@ class MetaApiWebsocketClient:
         Returns:
             A coroutine resolving with request results containing deals found.
         """
-        response = await self._rpc_request(account_id, {'application': 'RPC', 'type': 'getDealsByPosition',
-                                                        'positionId': position_id})
+        response = await self.rpc_request(account_id, {'application': 'RPC', 'type': 'getDealsByPosition',
+                                                       'positionId': position_id})
         return {
             'deals': response['deals'],
             'synchronizing': response['synchronizing']
@@ -523,10 +540,10 @@ class MetaApiWebsocketClient:
         Returns:
             A coroutine resolving with request results containing deals found.
         """
-        response = await self._rpc_request(account_id, {'application': 'RPC', 'type': 'getDealsByTimeRange',
-                                                        'startTime': format_date(start_time),
-                                                        'endTime': format_date(end_time),
-                                                        'offset': offset, 'limit': limit})
+        response = await self.rpc_request(account_id, {'application': 'RPC', 'type': 'getDealsByTimeRange',
+                                                       'startTime': format_date(start_time),
+                                                       'endTime': format_date(end_time),
+                                                       'offset': offset, 'limit': limit})
         return {
             'deals': response['deals'],
             'synchronizing': response['synchronizing']
@@ -546,7 +563,7 @@ class MetaApiWebsocketClient:
         params = {'type': 'removeHistory'}
         if application:
             params['application'] = application
-        return self._rpc_request(account_id, params)
+        return self.rpc_request(account_id, params)
 
     def remove_application(self, account_id: str) -> Coroutine:
         """Clears the order and transaction history of a specified application and removes the application
@@ -558,7 +575,7 @@ class MetaApiWebsocketClient:
         Returns:
             A coroutine resolving when the history is cleared.
         """
-        return self._rpc_request(account_id, {'type': 'removeApplication'})
+        return self.rpc_request(account_id, {'type': 'removeApplication'})
 
     async def trade(self, account_id: str, trade, application: str = None) -> \
             'asyncio.Future[MetatraderTradeResponse]':
@@ -577,8 +594,8 @@ class MetaApiWebsocketClient:
             TradeException: On trade error, check error properties for error code details.
         """
         self._format_request(trade)
-        response = await self._rpc_request(account_id, {'type': 'trade', 'trade': trade,
-                                                        'application': application or self._application})
+        response = await self.rpc_request(account_id, {'type': 'trade', 'trade': trade,
+                                                       'application': application or self._application})
         if 'response' not in response:
             response['response'] = {}
         if 'stringCode' not in response['response']:
@@ -599,7 +616,7 @@ class MetaApiWebsocketClient:
             account_id: Account id to subscribe.
             instance_number: Instance index number.
         """
-        asyncio.create_task(self._subscriptionManager.subscribe(account_id, instance_number))
+        asyncio.create_task(self._subscriptionManager.schedule_subscribe(account_id, instance_number))
 
     def subscribe(self, account_id: str, instance_number: int = None):
         """Subscribes to the Metatrader terminal events
@@ -612,10 +629,7 @@ class MetaApiWebsocketClient:
         Returns:
             A coroutine which resolves when subscription started.
         """
-        packet = {'type': 'subscribe'}
-        if instance_number is not None:
-            packet['instanceIndex'] = instance_number
-        return self._rpc_request(account_id, packet)
+        return self._subscriptionManager.subscribe(account_id, instance_number)
 
     def reconnect(self, account_id: str) -> Coroutine:
         """Reconnects to the Metatrader terminal (see https://metaapi.cloud/docs/client/websocket/api/reconnect/).
@@ -626,7 +640,7 @@ class MetaApiWebsocketClient:
         Returns:
             A coroutine which resolves when reconnection started
         """
-        return self._rpc_request(account_id, {'type': 'reconnect'})
+        return self.rpc_request(account_id, {'type': 'reconnect'})
 
     def synchronize(self, account_id: str, instance_number: int, host: str, synchronization_id: str,
                     starting_history_order_time: datetime, starting_deal_time: datetime,
@@ -675,10 +689,10 @@ class MetaApiWebsocketClient:
             timeout_in_seconds: Timeout in seconds, default is 300 seconds.
             application: Application to synchronize with.
         """
-        return self._rpc_request(account_id, {'type': 'waitSynchronized', 'applicationPattern': application_pattern,
-                                              'timeoutInSeconds': timeout_in_seconds, 'instanceIndex': instance_number,
-                                              'application': application or self._application},
-                                 timeout_in_seconds + 1)
+        return self.rpc_request(account_id, {'type': 'waitSynchronized', 'applicationPattern': application_pattern,
+                                             'timeoutInSeconds': timeout_in_seconds, 'instanceIndex': instance_number,
+                                             'application': application or self._application},
+                                timeout_in_seconds + 1)
 
     def subscribe_to_market_data(self, account_id: str, instance_number: int, symbol: str,
                                  subscriptions: List[MarketDataSubscription] = None) -> Coroutine:
@@ -699,7 +713,7 @@ class MetaApiWebsocketClient:
             packet['instanceIndex'] = instance_number
         if subscriptions is not None:
             packet['subscriptions'] = subscriptions
-        return self._rpc_request(account_id, packet)
+        return self.rpc_request(account_id, packet)
 
     def refresh_market_data_subscriptions(self, account_id: str, instance_number: int, subscriptions: List[dict]) \
             -> Coroutine:
@@ -713,8 +727,8 @@ class MetaApiWebsocketClient:
         Returns:
             A coroutine which resolves when refresh request was processed.
         """
-        return self._rpc_request(account_id, {'type': 'refreshMarketDataSubscriptions', 'subscriptions': subscriptions,
-                                              'instanceIndex': instance_number})
+        return self.rpc_request(account_id, {'type': 'refreshMarketDataSubscriptions', 'subscriptions': subscriptions,
+                                             'instanceIndex': instance_number})
 
     def unsubscribe_from_market_data(self, account_id: str, instance_number: int, symbol: str,
                                      subscriptions: List[MarketDataUnsubscription] = None) -> Coroutine:
@@ -735,7 +749,7 @@ class MetaApiWebsocketClient:
             packet['instanceIndex'] = instance_number
         if subscriptions is not None:
             packet['subscriptions'] = subscriptions
-        return self._rpc_request(account_id, packet)
+        return self.rpc_request(account_id, packet)
 
     async def get_symbols(self, account_id: str) -> 'asyncio.Future[List[str]]':
         """Retrieves symbols available on an account (see
@@ -747,7 +761,7 @@ class MetaApiWebsocketClient:
         Returns:
             A coroutine which resolves when symbols are retrieved.
         """
-        response = await self._rpc_request(account_id, {'application': 'RPC', 'type': 'getSymbols'})
+        response = await self.rpc_request(account_id, {'application': 'RPC', 'type': 'getSymbols'})
         return response['symbols']
 
     async def get_symbol_specification(self, account_id: str, symbol: str) -> \
@@ -762,8 +776,8 @@ class MetaApiWebsocketClient:
         Returns:
             A coroutine which resolves when specification is retrieved.
         """
-        response = await self._rpc_request(account_id, {'application': 'RPC', 'type': 'getSymbolSpecification',
-                                                        'symbol': symbol})
+        response = await self.rpc_request(account_id, {'application': 'RPC', 'type': 'getSymbolSpecification',
+                                                       'symbol': symbol})
         return response['specification']
 
     async def get_symbol_price(self, account_id: str, symbol: str, keep_subscription: bool = False) -> \
@@ -781,8 +795,8 @@ class MetaApiWebsocketClient:
         Returns:
             A coroutine which resolves when price is retrieved.
         """
-        response = await self._rpc_request(account_id, {'application': 'RPC', 'type': 'getSymbolPrice',
-                                                        'symbol': symbol, 'keepSubscription': keep_subscription})
+        response = await self.rpc_request(account_id, {'application': 'RPC', 'type': 'getSymbolPrice',
+                                                       'symbol': symbol, 'keepSubscription': keep_subscription})
         return response['price']
 
     async def get_candle(self, account_id: str, symbol: str, timeframe: str, keep_subscription: bool = False) -> \
@@ -803,9 +817,9 @@ class MetaApiWebsocketClient:
         Returns:
             A coroutine which resolves when candle is retrieved.
         """
-        response = await self._rpc_request(account_id, {'application': 'RPC', 'type': 'getCandle',
-                                                        'symbol': symbol, 'timeframe': timeframe,
-                                                        'keepSubscription': keep_subscription})
+        response = await self.rpc_request(account_id, {'application': 'RPC', 'type': 'getCandle',
+                                                       'symbol': symbol, 'timeframe': timeframe,
+                                                       'keepSubscription': keep_subscription})
         return response['candle']
 
     async def get_tick(self, account_id: str, symbol: str, keep_subscription: bool = False) -> \
@@ -823,8 +837,8 @@ class MetaApiWebsocketClient:
         Returns:
             A coroutine which resolves when tick is retrieved.
         """
-        response = await self._rpc_request(account_id, {'application': 'RPC', 'type': 'getTick',
-                                                        'symbol': symbol, 'keepSubscription': keep_subscription})
+        response = await self.rpc_request(account_id, {'application': 'RPC', 'type': 'getTick',
+                                                       'symbol': symbol, 'keepSubscription': keep_subscription})
         return response['tick']
 
     async def get_book(self, account_id: str, symbol: str, keep_subscription: bool = False) -> \
@@ -842,35 +856,34 @@ class MetaApiWebsocketClient:
         Returns:
             A coroutine which resolves when order book is retrieved.
         """
-        response = await self._rpc_request(account_id, {'application': 'RPC', 'type': 'getBook',
-                                                        'symbol': symbol, 'keepSubscription': keep_subscription})
+        response = await self.rpc_request(account_id, {'application': 'RPC', 'type': 'getBook',
+                                                       'symbol': symbol, 'keepSubscription': keep_subscription})
         return response['book']
 
     def save_uptime(self, account_id: str, uptime: Dict):
         """Sends client uptime stats to the server.
 
         Args:
-            account_id: Id of the MetaTrader account to retrieve symbol price for.
+            account_id: Id of the MetaTrader account to save uptime.
             uptime: Uptime statistics to send to the server.
 
         Returns:
             A coroutine which resolves when uptime statistics is submitted.
         """
-        return self._rpc_request(account_id, {'type': 'saveUptime', 'uptime': uptime})
+        return self.rpc_request(account_id, {'type': 'saveUptime', 'uptime': uptime})
 
     async def unsubscribe(self, account_id: str):
         """Unsubscribe from account (see https://metaapi.cloud/docs/client/websocket/api/synchronizing/unsubscribe).
 
         Args:
-            account_id: Id of the MetaTrader account to retrieve symbol price for.
+            account_id: Id of the MetaTrader account to unsubscribe.
 
         Returns:
             A coroutine which resolves when socket is unsubscribed."""
-        self._subscriptionManager.cancel_account(account_id)
         try:
-            await self._rpc_request(account_id, {'type': 'unsubscribe'})
+            await self._subscriptionManager.unsubscribe(account_id)
             del self._socketInstancesByAccounts[account_id]
-        except NotFoundException as err:
+        except (NotFoundException, TimeoutException):
             pass
 
     def add_synchronization_listener(self, account_id: str, listener: SynchronizationListener):
@@ -1013,7 +1026,14 @@ class MetaApiWebsocketClient:
                     instance['connectResult'] = None
                     await asyncio.sleep(1)
 
-    async def _rpc_request(self, account_id: str, request: dict, timeout_in_seconds: float = None) -> Coroutine:
+    async def rpc_request(self, account_id: str, request: dict, timeout_in_seconds: float = None) -> Coroutine:
+        """Makes a RPC request.
+
+        Args:
+            account_id: Metatrader account id.
+            request: Base request data.
+            timeout_in_seconds: Request timeout in seconds.
+        """
         if account_id in self._socketInstancesByAccounts:
             socket_instance_index = self._socketInstancesByAccounts[account_id]
         else:
@@ -1109,6 +1129,8 @@ class MetaApiWebsocketClient:
             resolve = await asyncio.wait_for(socket_instance['requestResolves'][request_id],
                                              timeout=timeout_in_seconds or self._request_timeout)
         except asyncio.TimeoutError:
+            if request_id in socket_instance['requestResolves']:
+                del socket_instance['requestResolves'][request_id]
             raise TimeoutException(f"MetaApi websocket client request {request['requestId']} of type "
                                    f"{request['type']} timed out. Please make sure your account is connected "
                                    f"to broker before retrying your request.")
@@ -1951,3 +1973,11 @@ class MetaApiWebsocketClient:
             self._firstConnect = False
         self._logger.info(log_message)
         return url
+
+    def _throttle_request(self, type, account_id, time_in_ms):
+        self._lastRequestsTime[type] = self._lastRequestsTime[type] if type in self._lastRequestsTime else {}
+        last_time = self._lastRequestsTime[type][account_id] if account_id in self._lastRequestsTime[type] else None
+        if last_time is None or last_time < datetime.now().timestamp() - time_in_ms / 1000:
+            self._lastRequestsTime[type][account_id] = datetime.now().timestamp()
+            return last_time is not None
+        return False

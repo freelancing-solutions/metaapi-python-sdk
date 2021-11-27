@@ -34,7 +34,7 @@ class ConnectionStatus(Enum):
     DISCONNECTED_FROM_BROKER = 'DISCONNECTED_FROM_BROKER'
 
 
-class AccountsFilter(TypedDict):
+class AccountsFilter(TypedDict, total=False):
 
     offset: Optional[int]
     """Search offset (defaults to 0) (must be greater or equal to 0)."""
@@ -61,7 +61,7 @@ class MetatraderAccountIdDto(TypedDict):
     """MetaTrader account unique identifier"""
 
 
-class MetatraderAccountDto(TypedDict):
+class MetatraderAccountDto(TypedDict, total=False):
     """MetaTrader account model"""
 
     _id: str
@@ -123,7 +123,7 @@ class MetatraderAccountDto(TypedDict):
     Default is 1."""
 
 
-class NewMetatraderAccountDto(TypedDict):
+class NewMetatraderAccountDto(TypedDict, total=False):
     """New MetaTrader account model"""
 
     name: str
@@ -171,7 +171,7 @@ class NewMetatraderAccountDto(TypedDict):
     note that allocating extra resource slots is a paid option. Default is 1."""
 
 
-class MetatraderAccountUpdateDto(TypedDict):
+class MetatraderAccountUpdateDto(TypedDict, total=False):
     """Updated MetaTrader account data"""
 
     name: str

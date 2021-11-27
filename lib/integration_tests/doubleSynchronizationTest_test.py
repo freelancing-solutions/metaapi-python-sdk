@@ -61,8 +61,10 @@ class TestDoubleSync:
                 account.wait_connected(),
                 account_copy.wait_connected()
             ])
-            connection = await account.connect()
-            connection_copy = await account_copy.connect()
+            connection = account.get_streaming_connection()
+            connection_copy = account_copy.get_streaming_connection()
+            await connection.connect()
+            await connection_copy.connect()
             await asyncio.gather(*[
                 connection.wait_synchronized({'timeoutInSeconds': 1200}),
                 connection_copy.wait_synchronized({'timeoutInSeconds': 1200})

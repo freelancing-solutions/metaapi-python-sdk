@@ -6,7 +6,7 @@ from typing import List, Optional
 from typing_extensions import TypedDict
 
 
-class HealthStatus(TypedDict):
+class HealthStatus(TypedDict, total=False):
     """Server-side application health status."""
     restApiHealthy: Optional[bool]
     """Flag indicating that REST API is healthy."""
