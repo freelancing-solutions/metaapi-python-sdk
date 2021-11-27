@@ -12,7 +12,7 @@ from ...metaApi.models import string_format_error
 import math
 
 
-class SynchronizationThrottlerOpts(TypedDict):
+class SynchronizationThrottlerOpts(TypedDict, total=False):
     """Options for synchronization throttler."""
     maxConcurrentSynchronizations: Optional[int]
     """Amount of maximum allowed concurrent synchronizations."""
@@ -239,5 +239,5 @@ class SynchronizationThrottler:
                 raise TimeoutException(f'Account {account_id} synchronization {synchronization_id} timed out in '
                                        f'synchronization queue')
         self.update_synchronization_id(synchronization_id)
-        await self._client._rpc_request(account_id, request)
+        await self._client.rpc_request(account_id, request)
         return True

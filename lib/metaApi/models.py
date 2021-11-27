@@ -164,7 +164,7 @@ class G2Encoder(json.JSONEncoder):
                 yield chunk
 
 
-class MetatraderAccountInformation(TypedDict):
+class MetatraderAccountInformation(TypedDict, total=False):
     """MetaTrader account information (see https://metaapi.cloud/docs/client/models/metatraderAccountInformation/)"""
 
     platform: str
@@ -202,7 +202,7 @@ class MetatraderAccountInformation(TypedDict):
     """Account credit in the deposit currency."""
 
 
-class MetatraderPosition(TypedDict):
+class MetatraderPosition(TypedDict, total=False):
     """MetaTrader position"""
 
     id: int
@@ -260,7 +260,7 @@ class MetatraderPosition(TypedDict):
     """Current comment value on broker side (possibly overriden by the broker)."""
 
 
-class MetatraderOrder(TypedDict):
+class MetatraderOrder(TypedDict, total=False):
     """MetaTrader order"""
 
     id: int
@@ -344,7 +344,7 @@ class MetatraderHistoryOrders(TypedDict):
     and thus search results may be incomplete"""
 
 
-class MetatraderDeal(TypedDict):
+class MetatraderDeal(TypedDict, total=False):
     """MetaTrader deal"""
 
     id: str
@@ -422,7 +422,7 @@ MetatraderSession = TypedDict(
 """Metatrader trade or quote session"""
 
 
-class MetatraderSessions(TypedDict):
+class MetatraderSessions(TypedDict, total=False):
     """Metatrader trade or quote session container, indexed by weekday."""
     SUNDAY: Optional[List[MetatraderSession]]
     """Array of sessions for SUNDAY."""
@@ -440,7 +440,7 @@ class MetatraderSessions(TypedDict):
     """Array of sessions for SATURDAY."""
 
 
-class MetatraderSymbolSpecification(TypedDict):
+class MetatraderSymbolSpecification(TypedDict, total=False):
     """MetaTrader symbol specification. Contains symbol specification (see
     https://metaapi.cloud/docs/client/models/metatraderSymbolSpecification/)"""
 
@@ -599,7 +599,7 @@ class MetatraderTradeResponse(TypedDict):
     """Position id which was modified during the trade."""
 
 
-class TradeOptions(TypedDict):
+class TradeOptions(TypedDict, total=False):
     """Common trade options."""
 
     comment: Optional[str]
@@ -629,7 +629,7 @@ class MarketTradeOptions(TradeOptions):
     explanation."""
 
 
-class ExpirationOptions(TypedDict):
+class ExpirationOptions(TypedDict, total=False):
     """Pending order expiration settings."""
 
     type: str
@@ -649,7 +649,7 @@ class PendingTradeOptions(TradeOptions):
     """Optional pending order expiration settings. See Pending order expiration settings section."""
 
 
-class ValidationDetails(TypedDict):
+class ValidationDetails(TypedDict, total=False):
     """Object to supply additional information for validation exceptions."""
     parameter: str
     """Name of invalid parameter."""
@@ -659,7 +659,7 @@ class ValidationDetails(TypedDict):
     """Error message."""
 
 
-class ExceptionMessage(TypedDict):
+class ExceptionMessage(TypedDict, total=False):
     """A REST API response that contains an exception message"""
     id: int
     """Error id"""
@@ -675,7 +675,7 @@ class ExceptionMessage(TypedDict):
     """Additional information about error. Used to supply validation error details."""
 
 
-class MarketDataSubscription(TypedDict):
+class MarketDataSubscription(TypedDict, total=False):
     """Market data subscription."""
     type: str
     """Subscription type, one of quotes, candles, ticks, or marketDepth."""
@@ -721,7 +721,7 @@ class MetatraderCandle(TypedDict):
     """Trade volume."""
 
 
-class MetatraderTick(TypedDict):
+class MetatraderTick(TypedDict, total=False):
     """MetaTrader tick data."""
     symbol: str
     """Symbol (e.g. a currency pair or an index)."""

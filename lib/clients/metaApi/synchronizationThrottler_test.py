@@ -13,7 +13,7 @@ class MockClient(MetaApiWebsocketClient):
         super().__init__(MagicMock(), token)
         self._subscribed_account_ids = ['accountId1'] * 11
 
-    async def _rpc_request(self, account_id: str, request: dict, timeout_in_seconds: float = None):
+    async def rpc_request(self, account_id: str, request: dict, timeout_in_seconds: float = None):
         await sleep(0.1)
         pass
 
@@ -31,7 +31,7 @@ async def run_around_tests():
     with patch('lib.clients.metaApi.synchronizationThrottler.asyncio.sleep', new=lambda x: sleep(x / 20)):
         global client
         client = MockClient('token')
-        client._rpc_request = AsyncMock()
+        client.rpc_request = AsyncMock()
         global throttler
         throttler = SynchronizationThrottler(client, 0)
         throttler.start()
@@ -48,7 +48,7 @@ class TestSynchronizationThrottler:
             await throttler.schedule_synchronize('accountId', {'requestId': 'test'})
             assert throttler._synchronizationIds == {'test': 1602291601.0}
             throttler.remove_synchronization_id('test')
-            client._rpc_request.assert_called_with('accountId', {'requestId': 'test'})
+            client.rpc_request.assert_called_with('accountId', {'requestId': 'test'})
             assert throttler._synchronizationIds == {}
 
     @pytest.mark.asyncio
@@ -61,22 +61,22 @@ class TestSynchronizationThrottler:
             assert throttler._synchronizationIds == {'test': 1602291601.0, 'test1': 1602291601.0}
             throttler.remove_synchronization_id('test')
             assert throttler._synchronizationIds == {'test1': 1602291601.0}
-            client._rpc_request.assert_any_call('accountId', {'requestId': 'test', 'instanceIndex': 0})
-            client._rpc_request.assert_any_call('accountId', {'requestId': 'test1', 'instanceIndex': 1})
+            client.rpc_request.assert_any_call('accountId', {'requestId': 'test', 'instanceIndex': 0})
+            client.rpc_request.assert_any_call('accountId', {'requestId': 'test1', 'instanceIndex': 1})
 
     @pytest.mark.asyncio
     async def test_sync_with_queue(self):
         """Should wait for other sync requests to finish if slots are full."""
         await throttler.schedule_synchronize('accountId1', {'requestId': 'test1'})
         await throttler.schedule_synchronize('accountId2', {'requestId': 'test2'})
-        client._rpc_request.assert_any_call('accountId1', {'requestId': 'test1'})
-        client._rpc_request.assert_any_call('accountId2', {'requestId': 'test2'})
+        client.rpc_request.assert_any_call('accountId1', {'requestId': 'test1'})
+        client.rpc_request.assert_any_call('accountId2', {'requestId': 'test2'})
         asyncio.create_task(throttler.schedule_synchronize('accountId3', {'requestId': 'test3'}))
         await sleep(0.1)
-        assert client._rpc_request.call_count == 2
+        assert client.rpc_request.call_count == 2
         throttler.remove_synchronization_id('test1')
         await sleep(0.1)
-        assert client._rpc_request.call_count == 3
+        assert client.rpc_request.call_count == 3
 
     @pytest.mark.asyncio
     async def test_increase_slots_with_more_accounts(self):
@@ -85,10 +85,10 @@ class TestSynchronizationThrottler:
         await throttler.schedule_synchronize('accountId1', {'requestId': 'test1'})
         await throttler.schedule_synchronize('accountId2', {'requestId': 'test2'})
         await throttler.schedule_synchronize('accountId3', {'requestId': 'test3'})
-        client._rpc_request.assert_any_call('accountId1', {'requestId': 'test1'})
-        client._rpc_request.assert_any_call('accountId2', {'requestId': 'test2'})
-        client._rpc_request.assert_any_call('accountId3', {'requestId': 'test3'})
-        assert client._rpc_request.call_count == 3
+        client.rpc_request.assert_any_call('accountId1', {'requestId': 'test1'})
+        client.rpc_request.assert_any_call('accountId2', {'requestId': 'test2'})
+        client.rpc_request.assert_any_call('accountId3', {'requestId': 'test3'})
+        assert client.rpc_request.call_count == 3
 
     @pytest.mark.asyncio
     async def test_limit_slots_in_options(self):
@@ -102,10 +102,10 @@ class TestSynchronizationThrottler:
         asyncio.create_task(throttler.schedule_synchronize('accountId3', {'requestId': 'test3'}))
         asyncio.create_task(throttler.schedule_synchronize('accountId4', {'requestId': 'test4'}))
         await sleep(0.1)
-        assert client._rpc_request.call_count == 2
+        assert client.rpc_request.call_count == 2
         throttler.remove_synchronization_id('test1')
         await sleep(0.1)
-        assert client._rpc_request.call_count == 3
+        assert client.rpc_request.call_count == 3
 
     @pytest.mark.asyncio
     async def test_not_take_slots_if_same_account(self):
@@ -115,10 +115,10 @@ class TestSynchronizationThrottler:
         asyncio.create_task(throttler.schedule_synchronize('accountId2', {'requestId': 'test2'}))
         asyncio.create_task(throttler.schedule_synchronize('accountId3', {'requestId': 'test3'}))
         await sleep(0.2)
-        assert client._rpc_request.call_count == 3
-        client._rpc_request.assert_any_call('accountId', {'requestId': 'test', 'instanceIndex': 0})
-        client._rpc_request.assert_any_call('accountId', {'requestId': 'test1', 'instanceIndex': 1})
-        client._rpc_request.assert_any_call('accountId2', {'requestId': 'test2'})
+        assert client.rpc_request.call_count == 3
+        client.rpc_request.assert_any_call('accountId', {'requestId': 'test', 'instanceIndex': 0})
+        client.rpc_request.assert_any_call('accountId', {'requestId': 'test1', 'instanceIndex': 1})
+        client.rpc_request.assert_any_call('accountId2', {'requestId': 'test2'})
 
     @pytest.mark.asyncio
     async def test_clear_expired_slots(self):
@@ -128,10 +128,10 @@ class TestSynchronizationThrottler:
             await throttler.schedule_synchronize('accountId2', {'requestId': 'test2'})
             asyncio.create_task(throttler.schedule_synchronize('accountId3', {'requestId': 'test3'}))
             await sleep(0.2)
-            assert client._rpc_request.call_count == 2
+            assert client.rpc_request.call_count == 2
             frozen_datetime.tick(20)
             await sleep(0.2)
-            assert client._rpc_request.call_count == 3
+            assert client.rpc_request.call_count == 3
 
     @pytest.mark.asyncio
     async def test_renew_sync(self):
@@ -141,16 +141,16 @@ class TestSynchronizationThrottler:
             await throttler.schedule_synchronize('accountId2', {'requestId': 'test2'})
             asyncio.create_task(throttler.schedule_synchronize('accountId3', {'requestId': 'test3'}))
             await sleep(0.2)
-            assert client._rpc_request.call_count == 2
+            assert client.rpc_request.call_count == 2
             frozen_datetime.tick(11)
             await sleep(0.2)
-            assert client._rpc_request.call_count == 3
+            assert client.rpc_request.call_count == 3
             frozen_datetime.tick(11)
             throttler.update_synchronization_id('test1')
             asyncio.create_task(throttler.schedule_synchronize('accountId4', {'requestId': 'test4'}))
             asyncio.create_task(throttler.schedule_synchronize('accountId5', {'requestId': 'test5'}))
             await sleep(0.2)
-            assert client._rpc_request.call_count == 4
+            assert client.rpc_request.call_count == 4
 
     @pytest.mark.asyncio
     async def test_replace_previous_syncs(self):
@@ -162,7 +162,7 @@ class TestSynchronizationThrottler:
         asyncio.create_task(throttler.schedule_synchronize('accountId3', {'requestId': 'test5'}))
         asyncio.create_task(throttler.schedule_synchronize('accountId1', {'requestId': 'test6', 'instanceIndex': 0}))
         await sleep(0.2)
-        assert client._rpc_request.call_count == 4
+        assert client.rpc_request.call_count == 4
 
     @pytest.mark.asyncio
     async def test_clear_on_disconnect(self):
@@ -170,11 +170,11 @@ class TestSynchronizationThrottler:
         await throttler.schedule_synchronize('accountId1', {'requestId': 'test1'})
         await throttler.schedule_synchronize('accountId2', {'requestId': 'test2'})
         await sleep(0.2)
-        assert client._rpc_request.call_count == 2
+        assert client.rpc_request.call_count == 2
         throttler.on_disconnect()
         await throttler.schedule_synchronize('accountId3', {'requestId': 'test3'})
         await sleep(0.2)
-        assert client._rpc_request.call_count == 3
+        assert client.rpc_request.call_count == 3
 
     @pytest.mark.asyncio
     async def test_remove_from_queue(self):
@@ -201,13 +201,13 @@ class TestSynchronizationThrottler:
             await sleep(0.2)
             frozen_datetime.tick(21)
             await sleep(0.2)
-            assert client._rpc_request.call_count == 6
-            client._rpc_request.assert_any_call('accountId1', {'requestId': 'test1'})
-            client._rpc_request.assert_any_call('accountId2', {'requestId': 'test2'})
-            client._rpc_request.assert_any_call('accountId3', {'requestId': 'test8'})
-            client._rpc_request.assert_any_call('accountId3', {'requestId': 'test10', 'instanceIndex': 0})
-            client._rpc_request.assert_any_call('accountId4', {'requestId': 'test7'})
-            client._rpc_request.assert_any_call('accountId5', {'requestId': 'test9'})
+            assert client.rpc_request.call_count == 6
+            client.rpc_request.assert_any_call('accountId1', {'requestId': 'test1'})
+            client.rpc_request.assert_any_call('accountId2', {'requestId': 'test2'})
+            client.rpc_request.assert_any_call('accountId3', {'requestId': 'test8'})
+            client.rpc_request.assert_any_call('accountId3', {'requestId': 'test10', 'instanceIndex': 0})
+            client.rpc_request.assert_any_call('accountId4', {'requestId': 'test7'})
+            client.rpc_request.assert_any_call('accountId5', {'requestId': 'test9'})
 
     @pytest.mark.asyncio
     async def test_remove_expired_from_queue(self):
@@ -228,10 +228,10 @@ class TestSynchronizationThrottler:
             await sleep(0.1)
             frozen_datetime.tick(21)
             await sleep(0.1)
-            assert client._rpc_request.call_count == 3
-            client._rpc_request.assert_any_call('accountId1', {'requestId': 'test1'})
-            client._rpc_request.assert_any_call('accountId2', {'requestId': 'test2'})
-            client._rpc_request.assert_any_call('accountId5', {'requestId': 'test5'})
+            assert client.rpc_request.call_count == 3
+            client.rpc_request.assert_any_call('accountId1', {'requestId': 'test1'})
+            client.rpc_request.assert_any_call('accountId2', {'requestId': 'test2'})
+            client.rpc_request.assert_any_call('accountId5', {'requestId': 'test5'})
 
     @pytest.mark.asyncio
     async def test_should_not_get_stuck_due_to_app_limit(self):
@@ -247,15 +247,15 @@ class TestSynchronizationThrottler:
             asyncio.create_task(throttler.schedule_synchronize('accountId2', {'requestId': 'test2'}))
             asyncio.create_task(throttler.schedule_synchronize('accountId3', {'requestId': 'test3'}))
             await sleep(0.11)
-            client._rpc_request.assert_not_called()
+            client.rpc_request.assert_not_called()
             throttler._client.socket_instances[0]['synchronizationThrottler'].synchronizing_accounts = \
                 throttler._client.socket_instances[0]['synchronizationThrottler'].synchronizing_accounts[1:]
             await sleep(0.11)
-            assert client._rpc_request.call_count == 1
+            assert client.rpc_request.call_count == 1
             throttler._client.socket_instances[0]['synchronizationThrottler'].synchronizing_accounts = \
                 throttler._client.socket_instances[0]['synchronizationThrottler'].synchronizing_accounts[1:]
             await sleep(0.11)
-            assert client._rpc_request.call_count == 2
+            assert client.rpc_request.call_count == 2
 
     @pytest.mark.asyncio
     async def test_should_not_skip_queue_items(self):
@@ -272,7 +272,7 @@ class TestSynchronizationThrottler:
             throttler.remove_synchronization_id('test1')
             throttler.remove_synchronization_id('test2')
             await sleep(0.1)
-            assert client._rpc_request.call_count == 4
+            assert client.rpc_request.call_count == 4
 
     @pytest.mark.asyncio
     async def test_should_remove_id_by_parameters(self):
@@ -295,7 +295,7 @@ class TestSynchronizationThrottler:
         throttler.remove_id_by_parameters('accountId2', 1, 'ps-mpa-1')
         throttler.remove_synchronization_id('test1')
         await sleep(0.1)
-        client._rpc_request.assert_any_call('accountId3', {'requestId': 'test3'})
-        client._rpc_request.assert_any_call('accountId2', {'requestId': 'test5', 'instanceIndex': 0,
-                                                           'host': 'ps-mpa-2'})
-        assert client._rpc_request.call_count == 4
+        client.rpc_request.assert_any_call('accountId3', {'requestId': 'test3'})
+        client.rpc_request.assert_any_call('accountId2', {'requestId': 'test5', 'instanceIndex': 0,
+                                                          'host': 'ps-mpa-2'})
+        assert client.rpc_request.call_count == 4

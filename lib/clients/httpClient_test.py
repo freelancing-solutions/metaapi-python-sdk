@@ -172,7 +172,7 @@ class TestHttpClient:
             raise Exception('TimeoutException is expected')
         except Exception as err:
             assert err.__class__.__name__ == 'TimeoutException'
-            assert err.args[0] == 'Timed out waiting for the end of the process of calculating metrics'
+            assert err.args[0] == 'Timed out waiting for the response'
         assert respx.get(test_url).call_count == 1
 
     @respx.mock
@@ -186,5 +186,5 @@ class TestHttpClient:
             raise Exception('TimeoutException is expected')
         except Exception as err:
             assert err.__class__.__name__ == 'TimeoutException'
-            assert err.args[0] == 'Timed out waiting for the end of the process of calculating metrics'
+            assert err.args[0] == 'Timed out waiting for the response'
         assert respx.get(test_url).call_count == 6

@@ -81,7 +81,7 @@ class MockAccount(MetatraderAccount):
 
 
 def create_connection_mock():
-    mock = MagicMock()
+    mock = StreamingMetaApiConnection(MagicMock(), MagicMock(), MagicMock(), MagicMock())
     mock.initialize = AsyncMock()
     mock.subscribe = AsyncMock()
     return mock
@@ -107,7 +107,8 @@ class TestConnectionRegistry:
             connection_instance = create_connection_mock()
             mock_connection.return_value = connection_instance
             account = MockAccount('id')
-            connection = await registry.connect(account, mock_storage)
+            connection = registry.connect(account, mock_storage)
+            await connection.connect()
             assert connection.history_storage == connection_instance.history_storage
             connection_instance.initialize.assert_called()
             connection_instance.subscribe.assert_called()
@@ -123,9 +124,12 @@ class TestConnectionRegistry:
             connection_mock3 = create_connection_mock()
             mock_connection.side_effect = [connection_mock1, connection_mock2, connection_mock3]
             accounts = [MockAccount('id0'), MockAccount('id1')]
-            connection0 = await registry.connect(accounts[0], mock_storage)
-            connection02 = await registry.connect(accounts[0], mock_storage)
-            connection1 = await registry.connect(accounts[1], mock_storage)
+            connection0 = registry.connect(accounts[0], mock_storage)
+            connection02 = registry.connect(accounts[0], mock_storage)
+            connection1 = registry.connect(accounts[1], mock_storage)
+            await connection0.connect()
+            await connection02.connect()
+            await connection1.connect()
             connection_mock1.initialize.assert_called()
             connection_mock1.subscribe.assert_called()
             connection_mock2.initialize.assert_called()
@@ -142,8 +146,8 @@ class TestConnectionRegistry:
             connection_instance = create_connection_mock()
             mock_connection.return_value = connection_instance
             accounts = [MockAccount('id0'), MockAccount('id1')]
-            connection0 = await registry.connect(accounts[0], mock_storage)
-            connection1 = await registry.connect(accounts[1], mock_storage)
+            connection0 = registry.connect(accounts[0], mock_storage)
+            connection1 = registry.connect(accounts[1], mock_storage)
             assert registry._connections['id0'] == connection0
             assert registry._connections['id1'] == connection1
             registry.remove(accounts[0].id)

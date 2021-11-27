@@ -659,7 +659,7 @@ class TestMetatraderAccountApi:
             client.get_account = AsyncMock(return_value={'_id': 'id'})
             account = await api.get_account('id')
             storage = MockStorage('accountId')
-            await account.get_streaming_connection(storage)
+            account.get_streaming_connection(storage)
             registry.connect.assert_called_with(account, storage, None)
 
     @pytest.mark.asyncio

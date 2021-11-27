@@ -8,8 +8,8 @@ class ConnectionRegistryModel(ABC):
     """Defines interface for a connection registry class."""
 
     @abstractmethod
-    async def connect(self, account: MetatraderAccountModel, history_storage: HistoryStorage,
-                      history_start_time: datetime = None):
+    def connect(self, account: MetatraderAccountModel, history_storage: HistoryStorage,
+                history_start_time: datetime = None):
         """Creates and returns a new account connection if doesnt exist, otherwise returns old.
 
         Args:
@@ -18,7 +18,7 @@ class ConnectionRegistryModel(ABC):
             history_start_time: History start time.
 
         Returns:
-            A coroutine resolving with account connection.
+           Streaming metaapi connection.
         """
 
     @abstractmethod

@@ -1,3 +1,13 @@
+16.0.0
+  - breaking change: fixed opening streaming connection - now it must be opened explicitly after creating a streaming connection
+  - fixed ensuring unsubscribed for accounts with high reliability
+  - fixed potential memory leaks
+  - updated MetaStats SDK to 1.1.0
+  - fixed potential memory leaks
+
+15.1.4
+  - added history storage example
+
 15.1.3
   - added point field to symbol specification
   - added region selection

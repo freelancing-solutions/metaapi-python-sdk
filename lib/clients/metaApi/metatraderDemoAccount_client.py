@@ -3,7 +3,7 @@ from typing_extensions import TypedDict
 from typing import Optional
 
 
-class NewMT4DemoAccount(TypedDict):
+class NewMT4DemoAccount(TypedDict, total=False):
     """New MetaTrader 4 demo account model."""
     accountType: Optional[str]
     """Account type."""
@@ -31,7 +31,7 @@ class NewMT4DemoAccount(TypedDict):
     """Zip address."""
 
 
-class NewMT5DemoAccount(TypedDict):
+class NewMT5DemoAccount(TypedDict, total=False):
     """New MetaTrader 5 demo account model."""
     address: Optional[str]
     """Account holder's address."""

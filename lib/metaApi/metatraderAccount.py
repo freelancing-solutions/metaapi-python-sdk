@@ -397,8 +397,8 @@ class MetatraderAccount(MetatraderAccountModel):
         if self.connection_status != 'CONNECTED':
             raise TimeoutException('Timed out waiting for account ' + self.id + ' to connect to the broker')
 
-    async def get_streaming_connection(self, history_storage: HistoryStorage = None,
-                                       history_start_time: datetime = None) -> StreamingMetaApiConnection:
+    def get_streaming_connection(self, history_storage: HistoryStorage = None,
+                                 history_start_time: datetime = None) -> StreamingMetaApiConnection:
         """Connects to MetaApi via streaming connection.
 
         Args:
@@ -408,9 +408,9 @@ class MetatraderAccount(MetatraderAccountModel):
         Returns:
             MetaApi connection.
         """
-        return await self._connectionRegistry.connect(self, history_storage, history_start_time)
+        return self._connectionRegistry.connect(self, history_storage, history_start_time)
 
-    async def get_rpc_connection(self) -> RpcMetaApiConnection:
+    def get_rpc_connection(self) -> RpcMetaApiConnection:
         """Connects to MetaApi via RPC connection.
 
         Returns:

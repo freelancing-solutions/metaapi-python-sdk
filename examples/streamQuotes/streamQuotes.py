@@ -60,11 +60,15 @@ async def stream_quotes():
         if account.connection_status != 'CONNECTED':
             await account.wait_connected()
 
-        # connect to MetaApi API
-        connection = await account.get_streaming_connection()
+        # create connection
+        connection = account.get_streaming_connection()
 
+        # add listener
         quote_listener = QuoteListener()
         connection.add_synchronization_listener(quote_listener)
+
+        # connect to MetaApi API
+        await connection.connect()
 
         # wait until terminal state synchronized to the local state
         print('Waiting for SDK to synchronize to terminal state (may take some time depending on your history size), the price streaming will start once synchronization finishes')

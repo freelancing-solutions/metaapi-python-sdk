@@ -17,7 +17,7 @@ if sys.version_info[0] == 3 and sys.version_info[1] >= 8 and sys.platform.starts
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
 
-class RequestOptions(TypedDict):
+class RequestOptions(TypedDict, total=False):
     """Options for HttpClient requests."""
     method: Optional[str]
     url: str
@@ -97,7 +97,7 @@ class HttpClient:
         if end_time > datetime.now().timestamp() + retry_after:
             await asyncio.sleep(retry_after)
         else:
-            raise TimeoutException('Timed out waiting for the end of the process of calculating metrics')
+            raise TimeoutException('Timed out waiting for the response')
 
     async def _handle_error(self, err, retry_counter: int, end_time: float):
         if err.__class__.__name__ == 'ConnectTimeout':

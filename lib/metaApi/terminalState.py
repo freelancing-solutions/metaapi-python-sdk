@@ -11,7 +11,7 @@ from copy import copy, deepcopy
 import json
 
 
-class TerminalStateDict(TypedDict):
+class TerminalStateDict(TypedDict, total=False):
     instanceIndex: Union[str, None]
     connected: bool
     connectedToBroker: bool

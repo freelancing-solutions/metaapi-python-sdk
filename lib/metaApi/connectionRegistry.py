@@ -26,8 +26,8 @@ class ConnectionRegistry(ConnectionRegistryModel):
         self._connections = {}
         self._connectionLocks = {}
 
-    async def connect(self, account: MetatraderAccountModel, history_storage: HistoryStorage,
-                      history_start_time: datetime = None) -> StreamingMetaApiConnection:
+    def connect(self, account: MetatraderAccountModel, history_storage: HistoryStorage,
+                history_start_time: datetime = None) -> StreamingMetaApiConnection:
         """Creates and returns a new account connection if doesnt exist, otherwise returns old.
 
         Args:
@@ -41,22 +41,10 @@ class ConnectionRegistry(ConnectionRegistryModel):
         if account.id in self._connections:
             return self._connections[account.id]
         else:
-            while account.id in self._connectionLocks:
-                await self._connectionLocks[account.id]['promise']
-            if account.id in self._connections:
-                return self._connections[account.id]
-            connection_lock = asyncio.Future()
-            self._connectionLocks[account.id] = {'promise': connection_lock}
-            connection = StreamingMetaApiConnection(self._meta_api_websocket_client, account, history_storage, self,
-                                                    history_start_time, self._refresh_subscriptions_opts)
-            try:
-                await connection.initialize()
-                await connection.subscribe()
-                self._connections[account.id] = connection
-            finally:
-                del self._connectionLocks[account.id]
-                connection_lock.set_result(None)
-            return connection
+            self._connections[account.id] = StreamingMetaApiConnection(self._meta_api_websocket_client, account,
+                                                                       history_storage, self, history_start_time,
+                                                                       self._refresh_subscriptions_opts)
+            return self._connections[account.id]
 
     def remove(self, account_id: str):
         """Removes an account from registry.
