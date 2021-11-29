@@ -11,6 +11,9 @@ import httpx
 from datetime import datetime
 from httpx import HTTPError, Response
 from .optionsValidator import OptionsValidator
+from ..logger import LoggerManager
+import pytz
+import math
 
 
 if sys.version_info[0] == 3 and sys.version_info[1] >= 8 and sys.platform.startswith('win'):
@@ -48,6 +51,7 @@ class HttpClient:
         self._maxRetryDelayInSeconds = validator.validate_non_zero(
             retry_opts['maxDelayInSeconds'] if 'maxDelayInSeconds' in retry_opts else None, 30,
             'retryOpts.maxDelayInSeconds')
+        self._logger = LoggerManager.get_logger('HttpClient')
 
     async def request(self, options: RequestOptions, retry_counter: int = 0, end_time: float = None) -> Response:
         """Performs a request. Response errors are returned as ApiException or subclasses.
@@ -67,7 +71,11 @@ class HttpClient:
             if response.status_code == 202:
                 retry_after_seconds = response.headers['retry-after']
                 if isinstance(retry_after_seconds, str):
-                    retry_after_seconds = float(retry_after_seconds)
+                    try:
+                        retry_after_seconds = float(retry_after_seconds)
+                    except Exception:
+                        retry_after_seconds = datetime.strptime(retry_after_seconds, '%a, %d %b %Y %H:%M:%S GMT')\
+                                                  .replace(tzinfo=pytz.UTC).timestamp() - datetime.now().timestamp()
             if response.content:
                 try:
                     response = response.json()
@@ -77,6 +85,9 @@ class HttpClient:
             retry_counter = await self._handle_error(err, retry_counter, end_time)
             return await self.request(options, retry_counter, end_time)
         if retry_after_seconds:
+            if isinstance(response, dict) and 'message' in response:
+                self._logger.info(f'Retrying request in {math.floor(retry_after_seconds)} seconds because request '
+                                  'returned message:', response['message'])
             await self._handle_retry(end_time, retry_after_seconds)
             response = await self.request(options, retry_counter, end_time)
         return response

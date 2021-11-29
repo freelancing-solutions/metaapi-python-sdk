@@ -5,6 +5,7 @@ import respx
 from datetime import datetime
 import json
 from httpx import Response
+from freezegun import freeze_time
 from ..metaApi.models import format_date
 httpClient: HttpClient = None
 test_url = 'http://example.com'
@@ -157,6 +158,20 @@ class TestHttpClient:
         response = await httpClient.request(opts)
         assert response == 'response'
         assert respx.get(test_url).call_count == 3
+
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_wait_for_retry_after_header_if_http_time(self):
+        """Should wait for the retry-after header time before retrying if header is in http time."""
+        with freeze_time('2020-10-05 07:00:00.000', tick=True):
+            httpClient = HttpClient()
+            respx.get(test_url).mock(side_effect=[
+                Response(202, headers={'retry-after': 'Mon, 05 Oct 2020 07:00:01 GMT'}),
+                Response(202, headers={'retry-after': 'Mon, 05 Oct 2020 07:00:02 GMT'}),
+                Response(200, content=json.dumps('response'))])
+            response = await httpClient.request(opts)
+            assert response == 'response'
+            assert respx.get(test_url).call_count == 3
 
     @respx.mock
     @pytest.mark.asyncio

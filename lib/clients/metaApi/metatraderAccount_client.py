@@ -76,7 +76,7 @@ class MetatraderAccountDto(TypedDict, total=False):
     """MetaTrader server which hosts the account."""
     version: int
     """MT version (allowed values are 4 and 5)."""
-    provisioningProfileId: str
+    provisioningProfileId: Optional[str]
     """Id of the account's provisioning profile."""
     application: str
     """Application name to connect the account to. Currently allowed values are MetaApi and AgiliumTrade"""
@@ -139,7 +139,9 @@ class NewMetatraderAccountDto(TypedDict, total=False):
     password to enable trading features. Required for cloud account."""
     server: str
     """MetaTrader server which hosts the account."""
-    provisioningProfileId: str
+    platform: Optional[str]
+    """Platform id (mt4 or mt5)"""
+    provisioningProfileId: Optional[str]
     """Id of the account's provisioning profile."""
     application: str
     """Application name to connect the account to. Currently allowed values are MetaApi and AgiliumTrade."""

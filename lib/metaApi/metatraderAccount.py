@@ -92,7 +92,7 @@ class MetatraderAccount(MetatraderAccountModel):
         Returns:
             Id of the account's provisioning profile.
         """
-        return self._data['provisioningProfileId']
+        return self._data['provisioningProfileId'] if 'provisioningProfileId' in self._data else None
 
     @property
     def application(self) -> str:
