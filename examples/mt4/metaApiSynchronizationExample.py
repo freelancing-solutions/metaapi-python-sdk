@@ -3,41 +3,17 @@ import asyncio
 from metaapi_cloud_sdk import MetaApi
 
 from metaapi_cloud_sdk.clients.metaApi.tradeException import TradeException
-# Note: for information on how to use this example code please read https://metaapi.cloud/docs/client/usingCodeExamples
+# Note: for information on how to use this example code please read https://metaapi.cloud/docs/client/usingCodeExamples/
 
 token = os.getenv('TOKEN') or '<put in your token here>'
 login = os.getenv('LOGIN') or '<put in your MT login here>'
 password = os.getenv('PASSWORD') or '<put in your MT password here>'
 server_name = os.getenv('SERVER') or '<put in your MT server name here>'
-broker_srv_file = os.getenv('PATH_TO_BROKER_SRV') or '/path/to/your/broker.srv'
 
 
-async def test_meta_api_synchronization():
+async def meta_api_synchronization():
     api = MetaApi(token)
     try:
-        profiles = await api.provisioning_profile_api.get_provisioning_profiles()
-
-        # create test MetaTrader account profile
-        profile = None
-        for item in profiles:
-            if item.name == server_name:
-                profile = item
-                break
-        if not profile:
-            print('Creating account profile')
-            profile = await api.provisioning_profile_api.create_provisioning_profile({
-                'name': server_name,
-                'version': 4,
-                'brokerTimezone': 'EET',
-                'brokerDSTSwitchTimezone': 'EET'
-            })
-            await profile.upload_file('broker.srv', broker_srv_file)
-        if profile and profile.status == 'new':
-            print('Uploading broker.srv')
-            await profile.upload_file('broker.srv', broker_srv_file)
-        else:
-            print('Account profile already created')
-
         # Add test MetaTrader account
         accounts = await api.metatrader_account_api.get_accounts()
         account = None
@@ -53,7 +29,7 @@ async def test_meta_api_synchronization():
                 'login': login,
                 'password': password,
                 'server': server_name,
-                'provisioningProfileId': profile.id,
+                'platform': 'mt4',
                 'application': 'MetaApi',
                 'magic': 1000
             })
@@ -108,7 +84,21 @@ async def test_meta_api_synchronization():
         await account.undeploy()
 
     except Exception as err:
+        # process errors
+        if hasattr(err, 'details'):
+            # returned if the server file for the specified server name has not been found
+            # recommended to check the server name or create the account using a provisioning profile
+            if err.details == 'E_SRV_NOT_FOUND':
+                print(err)
+            # returned if the server has failed to connect to the broker using your credentials
+            # recommended to check your login and password
+            elif err.details == 'E_AUTH':
+                print(err)
+            # returned if the server has failed to detect the broker settings
+            # recommended to try again later or create the account using a provisioning profile
+            elif err.details == 'E_SERVER_TIMEZONE':
+                print(err)
         print(api.format_error(err))
     exit()
 
-asyncio.run(test_meta_api_synchronization())
+asyncio.run(meta_api_synchronization())
