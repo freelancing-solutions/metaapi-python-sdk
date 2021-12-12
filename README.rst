@@ -573,6 +573,44 @@ Execute trades (both RPC and streaming APIs)
     except Exception as err:
         print(api.format_error(err))
 
+Trailing stop loss
+^^^^^^^^^^^^^^^^^^
+Trailing stop loss is a trade option that allows you to automatically configure and change the order/position stop loss
+based on the current price of the symbol. The specified settings are run on the server and modify the stop loss
+regardless of your connection to the account. The stop loss can be modified no more often than once in 15 seconds. Two
+types of trailing stop loss are available: distance stop loss and threshold stop loss, but both can be specified at the
+same time. You can find the full description here:
+`https://metaapi.cloud/docs/client/models/trailingStopLoss/ <https://metaapi.cloud/docs/client/models/trailingStopLoss/>`_
+
+.. code-block:: python
+
+    # distance trailing stop loss
+    print(await connection.create_market_buy_order('GBPUSD', 0.07, 0.9, 2.0, {
+        'trailingStopLoss': {
+            'distance': {
+                'distance': 200,
+                'units': 'RELATIVE_POINTS'
+            }
+        }
+    }))
+
+    # threshold trailing stop loss
+    print(await connection.create_market_buy_order('GBPUSD', 0.07, 0.9, 2.0, {
+        'trailingStopLoss': {
+            'thresholds': [
+                {
+                    'threshold": 50,
+                    'stopLoss": 100
+                },
+                {
+                    'threshold": 100,
+                    'stopLoss": 50
+                }
+            ],
+            'units': 'RELATIVE_POINTS'
+        }
+    }))
+
 Monitoring account connection health and uptime
 ===============================================
 You can monitor account connection health using MetaApiConnection.health_monitor API.

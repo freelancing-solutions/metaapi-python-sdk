@@ -1,3 +1,7 @@
+16.2.0
+  - expanded trade options
+  - added trailing stop loss
+
 16.1.0
   - make it possible to detect broker settings automatically (create accounts without provisioning profiles)
 

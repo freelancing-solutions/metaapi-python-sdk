@@ -202,6 +202,51 @@ class MetatraderAccountInformation(TypedDict, total=False):
     """Account credit in the deposit currency."""
 
 
+class StopLossThreshold(TypedDict):
+    """Stop loss threshold."""
+
+    threshold: float
+    """Price threshold relative to position open price, interpreted according to units field value."""
+    stopLoss: float
+    """Stop loss value, interpreted according to units and basePrice field values."""
+
+
+class ThresholdTrailingStopLoss(TypedDict, total=False):
+    """Threshold trailing stop loss configuration."""
+
+    thresholds: List[StopLossThreshold]
+    """Stop loss thresholds."""
+    units: Optional[str]
+    """Threshold stop loss units. ABSOLUTE_PRICE means the that the value of stop loss threshold fields contain a
+    final threshold & stop loss value. RELATIVE* means that the threshold fields value contains relative threshold &
+    stop loss values, expressed either in price, points, account currency or balance percentage. Default is
+    ABSOLUTE_PRICE. One of ABSOLUTE_PRICE, RELATIVE_PRICE, RELATIVE_POINTS, RELATIVE_CURRENCY,
+    RELATIVE_BALANCE_PERCENTAGE."""
+    stopPriceBase: Optional[str]
+    """Defines the base price to calculate SL relative to for POSITION_MODIFY and pending order requests. Default is
+    OPEN_PRICE. One of CURRENT_PRICE, OPEN_PRICE."""
+
+
+class DistanceTrailingStopLoss(TypedDict, total=False):
+    """Distance trailing stop loss configuration."""
+
+    distance: Optional[float]
+    """SL distance relative to current price, interpreted according to units field value."""
+    units: Optional[str]
+    """Distance trailing stop loss units. RELATIVE_* means that the distance field value contains relative stop loss
+    expressed either in price, points, account currency or balance percentage. Default is RELATIVE_PRICE. One of
+    RELATIVE_PRICE, RELATIVE_POINTS, RELATIVE_CURRENCY, RELATIVE_BALANCE_PERCENTAGE"""
+
+
+class TrailingStopLoss(TypedDict, total=False):
+    """Distance trailing stop loss configuration."""
+
+    distance: Optional[DistanceTrailingStopLoss]
+    """Distance trailing stop loss configuration."""
+    threshold: Optional[ThresholdTrailingStopLoss]
+    """Threshold trailing stop loss configuration."""
+
+
 class MetatraderPosition(TypedDict, total=False):
     """MetaTrader position"""
 
@@ -229,6 +274,8 @@ class MetatraderPosition(TypedDict, total=False):
     """Optional position stop loss price."""
     takeProfit: Optional[float]
     """Optional position take profit price."""
+    trailingStopLoss: Optional[TrailingStopLoss]
+    """Distance trailing stop loss configuration."""
     volume: float
     """Position volume."""
     swap: float
@@ -244,16 +291,16 @@ class MetatraderPosition(TypedDict, total=False):
     your trades to objects in your application and then track trade progress. The sum of the line lengths of the
     comment and the clientId must be less than or equal to 26. For more information see
     https://metaapi.cloud/docs/client/clientIdUsage/"""
-    unrealizedProfit: float
-    """Profit of the part of the position which is not yet closed, including swap."""
-    realizedProfit: float
-    """Profit of the already closed part, including commissions and swap."""
     commission: Optional[float]
     """Optional position commission."""
     reason: str
     """Position opening reason. One of POSITION_REASON_CLIENT, POSITION_REASON_EXPERT, POSITION_REASON_MOBILE,
     POSITION_REASON_WEB, POSITION_REASON_UNKNOWN. See
     https://www.mql5.com/en/docs/constants/tradingconstants/positionproperties#enum_position_reason"""
+    unrealizedProfit: float
+    """Profit of the part of the position which is not yet closed, including swap."""
+    realizedProfit: float
+    """Profit of the already closed part, including commissions and swap."""
     accountCurrencyExchangeRate: Optional[float]
     """Current exchange rate of account currency into account base currency (USD if you did not override it)."""
     brokerComment: Optional[str]
@@ -289,12 +336,16 @@ class MetatraderOrder(TypedDict, total=False):
     """Order symbol."""
     openPrice: float
     """Order open price (market price for market orders, limit price for limit orders or stop price for stop orders)."""
+    stopLimitPrice: Optional[float]
+    """The limit order price for the StopLimit order."""
     currentPrice: Optional[float]
     """Current price, filled for pending orders only. Not filled for history orders."""
     stopLoss: Optional[float]
     """Optional order stop loss price."""
     takeProfit: Optional[float]
     """Optional order take profit price."""
+    trailingStopLoss: Optional[TrailingStopLoss]
+    """Distance trailing stop loss configuration."""
     volume: float
     """Order requested quantity."""
     currentVolume: float
@@ -330,8 +381,6 @@ class MetatraderOrder(TypedDict, total=False):
     """Current exchange rate of account currency into account base currency (USD if you did not override it)."""
     closeByPositionId: Optional[str]
     """Identifier of an opposite position used for closing by order ORDER_TYPE_CLOSE_BY"""
-    stopLimitPrice: Optional[float]
-    """The limit order price for the StopLimit order."""
 
 
 class MetatraderHistoryOrders(TypedDict):
@@ -555,6 +604,8 @@ class MetatraderSymbolSpecification(TypedDict, total=False):
     """Date of the symbol trade beginning (usually used for futures)."""
     expirationTime: Optional[datetime]
     """Date of the symbol trade end (usually used for futures)."""
+    pipSize: Optional[float]
+    """Size of a pip. Pip size is defined for spot and CFD symbols only."""
 
 
 class MetatraderSymbolPrice(TypedDict):
@@ -619,7 +670,7 @@ class TradeOptions(TypedDict, total=False):
     symbol specification. Not used for close by orders."""
 
 
-class MarketTradeOptions(TradeOptions):
+class MarketTradeOptions(TradeOptions, total=False):
     """Market trade options."""
 
     fillingModes: Optional[List[str]]
@@ -627,6 +678,13 @@ class MarketTradeOptions(TradeOptions):
     ORDER_FILLING_FOK over ORDER_FILLING_IOC. See
     https://www.mql5.com/en/docs/constants/tradingconstants/orderproperties#enum_order_type_filling for extra
     explanation."""
+
+
+class CreateMarketTradeOptions(MarketTradeOptions, total=False):
+    """Create market trade options."""
+
+    trailingStopLoss: Optional[TrailingStopLoss]
+    """Distance trailing stop loss configuration."""
 
 
 class ExpirationOptions(TypedDict, total=False):
@@ -647,6 +705,58 @@ class PendingTradeOptions(TradeOptions):
 
     expiration: Optional[ExpirationOptions]
     """Optional pending order expiration settings. See Pending order expiration settings section."""
+    trailingStopLoss: Optional[TrailingStopLoss]
+    """Distance trailing stop loss configuration."""
+    stopPriceBase: Optional[str]
+    """Defines the base price to calculate SL/TP relative to for *_MODIFY and pending order requests. STOP_PRICE means
+    the SL/TP is relative to previous SL/TP value. Default is OPEN_PRICE, one of CURRENT_PRICE, OPEN_PRICE."""
+    openPriceUnits: Optional[str]
+    """Open price units. ABSOLUTE_PRICE means the that the value of openPrice field is a final open price value.
+    RELATIVE* means that the openPrice field value contains relative open price expressed either in price, points,
+    account currency or balance percentage. Default is ABSOLUTE_PRICE. One of ABSOLUTE_PRICE, RELATIVE_PRICE,
+    RELATIVE_POINTS, RELATIVE_CURRENCY, RELATIVE_BALANCE_PERCENTAGE."""
+
+
+class StopLimitPendingTradeOptions(PendingTradeOptions, total=False):
+    """Options for creating a stop limit pending order."""
+
+    openPriceBase: Optional[str]
+    """Defines the base price to calculate open price relative to for ORDER_MODIFY and pending order requests. Default
+    is CURRENT_PRICE for pending orders or STOP_LIMIT_PRICE for stop limit orders. One of CURRENT_PRICE, OPEN_PRICE,
+    STOP_LIMIT_PRICE."""
+    stopLimitPriceUnits: Optional[str]
+    """Stop limit price units. ABSOLUTE_PRICE means the that the value of stopLimitPrice field is a final stop limit
+    price value. RELATIVE* means that the stopLimitPrice field value contains relative stop limit price expressed
+    either in price, points, account currency or balance percentage. Default is ABSOLUTE_PRICE. One of ABSOLUTE_PRICE,
+    RELATIVE_PRICE, RELATIVE_POINTS, RELATIVE_CURRENCY, RELATIVE_BALANCE_PERCENTAGE."""
+
+
+class ModifyOrderOptions(TypedDict, total=False):
+    """Options for modifying orders."""
+
+    trailingStopLoss: Optional[TrailingStopLoss]
+    """Distance trailing stop loss configuration."""
+    stopPriceBase: Optional[str]
+    """Defines the base price to calculate SL/TP relative to for *_MODIFY and pending order requests. STOP_PRICE means
+    the SL/TP is relative to previous SL/TP value. Default is OPEN_PRICE, one of CURRENT_PRICE, OPEN_PRICE,
+    STOP_PRICE."""
+    openPriceUnits: Optional[str]
+    """Open price units. ABSOLUTE_PRICE means the that the value of openPrice field is a final open price value.
+    RELATIVE* means that the openPrice field value contains relative open price expressed either in price, points,
+    account currency or balance percentage. Default is ABSOLUTE_PRICE. One of ABSOLUTE_PRICE, RELATIVE_PRICE,
+    RELATIVE_POINTS, RELATIVE_CURRENCY, RELATIVE_BALANCE_PERCENTAGE."""
+    openPriceBase: Optional[str]
+    """Defines the base price to calculate open price relative to for ORDER_MODIFY and pending order requests. Default
+    is CURRENT_PRICE for pending orders or STOP_LIMIT_PRICE for stop limit orders. One of CURRENT_PRICE, OPEN_PRICE,
+    STOP_LIMIT_PRICE."""
+    stopLimitPriceUnits: Optional[str]
+    """Stop limit price units. ABSOLUTE_PRICE means the that the value of stopLimitPrice field is a final stop limit
+    price value. RELATIVE* means that the stopLimitPrice field value contains relative stop limit price expressed
+    either in price, points, account currency or balance percentage. Default is ABSOLUTE_PRICE. One of ABSOLUTE_PRICE,
+    RELATIVE_PRICE, RELATIVE_POINTS, RELATIVE_CURRENCY, RELATIVE_BALANCE_PERCENTAGE."""
+    stopLimitPriceBase: Optional[str]
+    """Defines the base price to calculate stop limit price relative to for ORDER_MODIFY requests. One of
+    CURRENT_PRICE, STOP_LIMIT_PRICE."""
 
 
 class ValidationDetails(TypedDict, total=False):
