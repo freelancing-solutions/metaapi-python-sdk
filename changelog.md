@@ -1,3 +1,6 @@
+16.2.1
+  - added RELATIVE_PIPS trade option
+
 16.2.0
   - expanded trade options
   - added trailing stop loss
