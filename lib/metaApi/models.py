@@ -219,8 +219,8 @@ class ThresholdTrailingStopLoss(TypedDict, total=False):
     units: Optional[str]
     """Threshold stop loss units. ABSOLUTE_PRICE means the that the value of stop loss threshold fields contain a
     final threshold & stop loss value. RELATIVE* means that the threshold fields value contains relative threshold &
-    stop loss values, expressed either in price, points, account currency or balance percentage. Default is
-    ABSOLUTE_PRICE. One of ABSOLUTE_PRICE, RELATIVE_PRICE, RELATIVE_POINTS, RELATIVE_CURRENCY,
+    stop loss values, expressed either in price, points, pips, account currency or balance percentage. Default is
+    ABSOLUTE_PRICE. One of ABSOLUTE_PRICE, RELATIVE_PRICE, RELATIVE_POINTS, RELATIVE_PIPS, RELATIVE_CURRENCY,
     RELATIVE_BALANCE_PERCENTAGE."""
     stopPriceBase: Optional[str]
     """Defines the base price to calculate SL relative to for POSITION_MODIFY and pending order requests. Default is
@@ -234,8 +234,8 @@ class DistanceTrailingStopLoss(TypedDict, total=False):
     """SL distance relative to current price, interpreted according to units field value."""
     units: Optional[str]
     """Distance trailing stop loss units. RELATIVE_* means that the distance field value contains relative stop loss
-    expressed either in price, points, account currency or balance percentage. Default is RELATIVE_PRICE. One of
-    RELATIVE_PRICE, RELATIVE_POINTS, RELATIVE_CURRENCY, RELATIVE_BALANCE_PERCENTAGE"""
+    expressed either in price, points, pips, account currency or balance percentage. Default is RELATIVE_PRICE. One of
+    RELATIVE_PRICE, RELATIVE_POINTS, RELATIVE_PIPS, RELATIVE_CURRENCY, RELATIVE_BALANCE_PERCENTAGE"""
 
 
 class TrailingStopLoss(TypedDict, total=False):
@@ -713,8 +713,8 @@ class PendingTradeOptions(TradeOptions):
     openPriceUnits: Optional[str]
     """Open price units. ABSOLUTE_PRICE means the that the value of openPrice field is a final open price value.
     RELATIVE* means that the openPrice field value contains relative open price expressed either in price, points,
-    account currency or balance percentage. Default is ABSOLUTE_PRICE. One of ABSOLUTE_PRICE, RELATIVE_PRICE,
-    RELATIVE_POINTS, RELATIVE_CURRENCY, RELATIVE_BALANCE_PERCENTAGE."""
+    pips, account currency or balance percentage. Default is ABSOLUTE_PRICE. One of ABSOLUTE_PRICE, RELATIVE_PRICE,
+    RELATIVE_POINTS, RELATIVE_PIPS, RELATIVE_CURRENCY, RELATIVE_BALANCE_PERCENTAGE."""
 
 
 class StopLimitPendingTradeOptions(PendingTradeOptions, total=False):
@@ -727,8 +727,8 @@ class StopLimitPendingTradeOptions(PendingTradeOptions, total=False):
     stopLimitPriceUnits: Optional[str]
     """Stop limit price units. ABSOLUTE_PRICE means the that the value of stopLimitPrice field is a final stop limit
     price value. RELATIVE* means that the stopLimitPrice field value contains relative stop limit price expressed
-    either in price, points, account currency or balance percentage. Default is ABSOLUTE_PRICE. One of ABSOLUTE_PRICE,
-    RELATIVE_PRICE, RELATIVE_POINTS, RELATIVE_CURRENCY, RELATIVE_BALANCE_PERCENTAGE."""
+    either in price, points, pips, account currency or balance percentage. Default is ABSOLUTE_PRICE. One of
+    ABSOLUTE_PRICE, RELATIVE_PRICE, RELATIVE_POINTS, RELATIVE_PIPS, RELATIVE_CURRENCY, RELATIVE_BALANCE_PERCENTAGE."""
 
 
 class ModifyOrderOptions(TypedDict, total=False):
@@ -743,8 +743,8 @@ class ModifyOrderOptions(TypedDict, total=False):
     openPriceUnits: Optional[str]
     """Open price units. ABSOLUTE_PRICE means the that the value of openPrice field is a final open price value.
     RELATIVE* means that the openPrice field value contains relative open price expressed either in price, points,
-    account currency or balance percentage. Default is ABSOLUTE_PRICE. One of ABSOLUTE_PRICE, RELATIVE_PRICE,
-    RELATIVE_POINTS, RELATIVE_CURRENCY, RELATIVE_BALANCE_PERCENTAGE."""
+    pips, account currency or balance percentage. Default is ABSOLUTE_PRICE. One of ABSOLUTE_PRICE, RELATIVE_PRICE,
+    RELATIVE_POINTS, RELATIVE_PIPS, RELATIVE_CURRENCY, RELATIVE_BALANCE_PERCENTAGE."""
     openPriceBase: Optional[str]
     """Defines the base price to calculate open price relative to for ORDER_MODIFY and pending order requests. Default
     is CURRENT_PRICE for pending orders or STOP_LIMIT_PRICE for stop limit orders. One of CURRENT_PRICE, OPEN_PRICE,
@@ -752,8 +752,8 @@ class ModifyOrderOptions(TypedDict, total=False):
     stopLimitPriceUnits: Optional[str]
     """Stop limit price units. ABSOLUTE_PRICE means the that the value of stopLimitPrice field is a final stop limit
     price value. RELATIVE* means that the stopLimitPrice field value contains relative stop limit price expressed
-    either in price, points, account currency or balance percentage. Default is ABSOLUTE_PRICE. One of ABSOLUTE_PRICE,
-    RELATIVE_PRICE, RELATIVE_POINTS, RELATIVE_CURRENCY, RELATIVE_BALANCE_PERCENTAGE."""
+    either in price, points, pips, account currency or balance percentage. Default is ABSOLUTE_PRICE. One of
+    ABSOLUTE_PRICE, RELATIVE_PRICE, RELATIVE_POINTS, RELATIVE_PIPS, RELATIVE_CURRENCY, RELATIVE_BALANCE_PERCENTAGE."""
     stopLimitPriceBase: Optional[str]
     """Defines the base price to calculate stop limit price relative to for ORDER_MODIFY requests. One of
     CURRENT_PRICE, STOP_LIMIT_PRICE."""
@@ -878,7 +878,7 @@ class StopOptions(TypedDict):
     value: float
     """Stop (SL or TP) value."""
     units: str
-    """stop units. ABSOLUTE_PRICE means the that the value of value field is a final stop value.
-    RELATIVE_* means that the value field value contains relative stop expressed either in price, points, account
+    """Stop units. ABSOLUTE_PRICE means the that the value of value field is a final stop value.
+    RELATIVE_* means that the value field value contains relative stop expressed either in price, points, pips, account
     currency or balance percentage. Default is ABSOLUTE_PRICE. Allowed values are ABSOLUTE_PRICE, RELATIVE_PRICE,
-    RELATIVE_POINTS, RELATIVE_CURRENCY, RELATIVE_BALANCE_PERCENTAGE."""
+    RELATIVE_POINTS, RELATIVE_PIPS, RELATIVE_CURRENCY, RELATIVE_BALANCE_PERCENTAGE."""
