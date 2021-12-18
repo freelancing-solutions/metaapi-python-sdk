@@ -242,9 +242,11 @@ class TrailingStopLoss(TypedDict, total=False):
     """Distance trailing stop loss configuration."""
 
     distance: Optional[DistanceTrailingStopLoss]
-    """Distance trailing stop loss configuration."""
+    """Distance trailing stop loss configuration. If both distance and threshold TSL are set, then the resulting SL
+    will be the one which is closest to the current price."""
     threshold: Optional[ThresholdTrailingStopLoss]
-    """Threshold trailing stop loss configuration."""
+    """Threshold trailing stop loss configuration. If both distance and threshold TSL are set, then the resulting SL
+    will be the one which is closest to the current price."""
 
 
 class MetatraderPosition(TypedDict, total=False):
@@ -685,6 +687,9 @@ class CreateMarketTradeOptions(MarketTradeOptions, total=False):
 
     trailingStopLoss: Optional[TrailingStopLoss]
     """Distance trailing stop loss configuration."""
+    stopPriceBase: Optional[str]
+    """Defines the base price to calculate SL/TP relative to for pending order requests. Default is CURRENT_PRICE,
+    one of CURRENT_PRICE."""
 
 
 class ExpirationOptions(TypedDict, total=False):
