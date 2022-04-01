@@ -1,14 +1,14 @@
-from ..clients.metaApi.metatraderDemoAccount_client import MetatraderDemoAccountDto
+from ..clients.metaApi.metatraderAccountGenerator_client import MetatraderAccountCredentialsDto
 
 
-class MetatraderDemoAccount:
-    """Implements a MetaTrader demo account entity."""
+class MetatraderAccountCredentials:
+    """Implements a MetaTrader account credentials entity."""
 
-    def __init__(self, data: MetatraderDemoAccountDto):
+    def __init__(self, data: MetatraderAccountCredentialsDto):
         """Inits a MetaTrader demo account entity.
 
         Args:
-            data: MetaTrader demo account data.
+            data: MetaTrader account credentials data.
         """
         self._data = data
 

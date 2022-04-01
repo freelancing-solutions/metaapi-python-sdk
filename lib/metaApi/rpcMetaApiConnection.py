@@ -22,6 +22,22 @@ class RpcMetaApiConnection(MetaApiConnection):
         super().__init__(websocket_client, account, 'RPC')
         self._logger = LoggerManager.get_logger('RpcMetaApiConnection')
 
+    async def connect(self):
+        """Opens the connection. Can only be called the first time, next calls will be ignored.
+
+        Returns:
+            A coroutine resolving when the connection is opened
+        """
+        if not self._opened:
+            self._opened = True
+            self._websocketClient.add_account_region(self.account.id, self.account.region)
+
+    async def close(self):
+        """Closes the connection. The instance of the class should no longer be used after this method is invoked."""
+        if not self._closed:
+            self._websocketClient.remove_account_region(self.account.id)
+            self._closed = True
+
     def get_account_information(self) -> 'Coroutine[asyncio.Future[MetatraderAccountInformation]]':
         """Returns account information (see
         https://metaapi.cloud/docs/client/websocket/api/readTradingTerminalState/readAccountInformation/).
@@ -29,6 +45,7 @@ class RpcMetaApiConnection(MetaApiConnection):
         Returns:
             A coroutine resolving with account information.
         """
+        self._check_is_connection_active()
         return self._websocketClient.get_account_information(self._account.id)
 
     def get_positions(self) -> 'Coroutine[asyncio.Future[List[MetatraderPosition]]]':
@@ -38,6 +55,7 @@ class RpcMetaApiConnection(MetaApiConnection):
         Returns:
             A coroutine resolving with array of open positions.
         """
+        self._check_is_connection_active()
         return self._websocketClient.get_positions(self._account.id)
 
     def get_position(self, position_id: str) -> 'Coroutine[asyncio.Future[MetatraderPosition]]':
@@ -50,6 +68,7 @@ class RpcMetaApiConnection(MetaApiConnection):
         Returns:
             A coroutine resolving with MetaTrader position found.
         """
+        self._check_is_connection_active()
         return self._websocketClient.get_position(self._account.id, position_id)
 
     def get_orders(self) -> 'Coroutine[asyncio.Future[List[MetatraderOrder]]]':
@@ -59,6 +78,7 @@ class RpcMetaApiConnection(MetaApiConnection):
         Returns:
             A coroutine resolving with open MetaTrader orders.
         """
+        self._check_is_connection_active()
         return self._websocketClient.get_orders(self._account.id)
 
     def get_order(self, order_id: str) -> 'Coroutine[asyncio.Future[MetatraderOrder]]':
@@ -71,6 +91,7 @@ class RpcMetaApiConnection(MetaApiConnection):
         Returns:
             A coroutine resolving with metatrader order found.
         """
+        self._check_is_connection_active()
         return self._websocketClient.get_order(self._account.id, order_id)
 
     def get_history_orders_by_ticket(self, ticket: str) -> 'Coroutine[MetatraderHistoryOrders]':
@@ -83,6 +104,7 @@ class RpcMetaApiConnection(MetaApiConnection):
         Returns:
             A coroutine resolving with request results containing history orders found.
         """
+        self._check_is_connection_active()
         return self._websocketClient.get_history_orders_by_ticket(self._account.id, ticket)
 
     def get_history_orders_by_position(self, position_id: str) -> 'Coroutine[MetatraderHistoryOrders]':
@@ -95,6 +117,7 @@ class RpcMetaApiConnection(MetaApiConnection):
         Returns:
             A coroutine resolving with request results containing history orders found.
         """
+        self._check_is_connection_active()
         return self._websocketClient.get_history_orders_by_position(self._account.id, position_id)
 
     def get_history_orders_by_time_range(self, start_time: datetime, end_time: datetime, offset: int = 0,
@@ -111,6 +134,7 @@ class RpcMetaApiConnection(MetaApiConnection):
         Returns:
             A coroutine resolving with request results containing history orders found.
         """
+        self._check_is_connection_active()
         return self._websocketClient.get_history_orders_by_time_range(self._account.id, start_time, end_time,
                                                                       offset, limit)
 
@@ -124,6 +148,7 @@ class RpcMetaApiConnection(MetaApiConnection):
         Returns:
             A coroutine resolving with request results containing deals found.
         """
+        self._check_is_connection_active()
         return self._websocketClient.get_deals_by_ticket(self._account.id, ticket)
 
     def get_deals_by_position(self, position_id) -> 'Coroutine[MetatraderDeals]':
@@ -136,6 +161,7 @@ class RpcMetaApiConnection(MetaApiConnection):
         Returns:
             A coroutine resolving with request results containing deals found.
         """
+        self._check_is_connection_active()
         return self._websocketClient.get_deals_by_position(self._account.id, position_id)
 
     def get_deals_by_time_range(self, start_time: datetime, end_time: datetime, offset: int = 0,
@@ -152,19 +178,8 @@ class RpcMetaApiConnection(MetaApiConnection):
         Returns:
             A coroutine resolving with request results containing deals found.
         """
+        self._check_is_connection_active()
         return self._websocketClient.get_deals_by_time_range(self._account.id, start_time, end_time, offset, limit)
-
-    def remove_history(self, application: str = None) -> Coroutine:
-        """Clears the order and transaction history of a specified account so that it can be synchronized from scratch
-        (see https://metaapi.cloud/docs/client/websocket/api/removeHistory/).
-
-        Args:
-            application: Application to remove history for.
-
-        Returns:
-            A coroutine resolving when the history is cleared.
-        """
-        return self._websocketClient.remove_history(self._account.id, application)
 
     def get_symbols(self) -> 'Coroutine[asyncio.Future[List[str]]]':
         """Retrieves available symbols for an account (see
@@ -173,6 +188,7 @@ class RpcMetaApiConnection(MetaApiConnection):
         Returns:
             A coroutine which resolves when symbols are retrieved.
         """
+        self._check_is_connection_active()
         return self._websocketClient.get_symbols(self._account.id)
 
     def get_symbol_specification(self, symbol: str) -> 'Coroutine[asyncio.Future[MetatraderSymbolSpecification]]':
@@ -185,6 +201,7 @@ class RpcMetaApiConnection(MetaApiConnection):
         Returns:
             A coroutine which resolves when specification MetatraderSymbolSpecification is retrieved.
         """
+        self._check_is_connection_active()
         return self._websocketClient.get_symbol_specification(self._account.id, symbol)
 
     def get_symbol_price(self, symbol: str, keep_subscription: bool = False) -> \
@@ -201,6 +218,7 @@ class RpcMetaApiConnection(MetaApiConnection):
         Returns:
             A coroutine which resolves when price MetatraderSymbolPrice is retrieved.
         """
+        self._check_is_connection_active()
         return self._websocketClient.get_symbol_price(self._account.id, symbol, keep_subscription)
 
     def get_candle(self, symbol: str, timeframe: str, keep_subscription: bool = False) -> \
@@ -220,6 +238,7 @@ class RpcMetaApiConnection(MetaApiConnection):
         Returns:
             A coroutine which resolves when candle is retrieved.
         """
+        self._check_is_connection_active()
         return self._websocketClient.get_candle(self._account.id, symbol, timeframe, keep_subscription)
 
     def get_tick(self, symbol: str, keep_subscription: bool = False) -> 'Coroutine[asyncio.Future[MetatraderTick]]':
@@ -235,6 +254,7 @@ class RpcMetaApiConnection(MetaApiConnection):
         Returns:
             A coroutine which resolves when tick is retrieved.
         """
+        self._check_is_connection_active()
         return self._websocketClient.get_tick(self._account.id, symbol, keep_subscription)
 
     def get_book(self, symbol: str, keep_subscription: bool = False) -> 'Coroutine[asyncio.Future[MetatraderBook]]':
@@ -250,6 +270,7 @@ class RpcMetaApiConnection(MetaApiConnection):
         Returns:
             A coroutine which resolves when order book is retrieved.
         """
+        self._check_is_connection_active()
         return self._websocketClient.get_book(self._account.id, symbol, keep_subscription)
 
     async def wait_synchronized(self, timeout_in_seconds: float = 300):
@@ -264,10 +285,11 @@ class RpcMetaApiConnection(MetaApiConnection):
         Raises:
             TimeoutException: If application failed to synchronize with the terminal within timeout allowed.
         """
+        self._check_is_connection_active()
         start_time = datetime.now().timestamp()
         while True:
             try:
-                await self._websocketClient.wait_synchronized(self._account.id, 0, 'RPC', 5, 'RPC')
+                await self._websocketClient.wait_synchronized(self._account.id, None, 'RPC', 5, 'RPC')
                 break
             except Exception as err:
                 if datetime.now().timestamp() > start_time + timeout_in_seconds:

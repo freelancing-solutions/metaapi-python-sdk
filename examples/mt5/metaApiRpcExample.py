@@ -45,6 +45,7 @@ async def meta_api_synchronization():
 
         # connect to MetaApi API
         connection = account.get_rpc_connection()
+        await connection.connect()
 
         # wait until terminal state synchronized to the local state
         print('Waiting for SDK to synchronize to terminal state (may take some time depending on your history size)')
@@ -79,6 +80,7 @@ async def meta_api_synchronization():
 
         # finally, undeploy account after the test
         print('Undeploying MT5 account so that it does not consume any unwanted resources')
+        await connection.close()
         await account.undeploy()
 
     except Exception as err:

@@ -59,7 +59,7 @@ class SubscriptionManager:
         """
         return account_id in self._subscriptionState
 
-    def subscribe(self, account_id: str, instance_number: int = None):
+    def subscribe(self, account_id: str, instance_number):
         """Subscribes to the Metatrader terminal events
         (see https://metaapi.cloud/docs/client/websocket/api/subscribe/).
 
@@ -100,15 +100,17 @@ class SubscriptionManager:
                     try:
                         await self.subscribe(account_id, instance_number)
                     except TooManyRequestsException as err:
-                        socket_instance_index = self._websocketClient.socket_instances_by_accounts[account_id]
+                        socket_instance_index = \
+                            self._websocketClient.socket_instances_by_accounts[instance_number][account_id]
                         if err.metadata['type'] == 'LIMIT_ACCOUNT_SUBSCRIPTIONS_PER_USER':
                             self._logger.error(f'{instance_id}: Failed to subscribe ' + string_format_error(err))
                         if err.metadata['type'] in ['LIMIT_ACCOUNT_SUBSCRIPTIONS_PER_USER',
                                                     'LIMIT_ACCOUNT_SUBSCRIPTIONS_PER_SERVER',
                                                     'LIMIT_ACCOUNT_SUBSCRIPTIONS_PER_USER_PER_SERVER']:
-                            del self._websocketClient.socket_instances_by_accounts[account_id]
-                            asyncio.create_task(self._websocketClient.lock_socket_instance(socket_instance_index,
-                                                                                           err.metadata))
+                            del self._websocketClient.socket_instances_by_accounts[instance_number][account_id]
+                            asyncio.create_task(self._websocketClient.lock_socket_instance(
+                                instance_number, socket_instance_index,
+                                self._websocketClient.get_account_region(account_id), err.metadata))
                         else:
                             nonlocal subscribe_retry_interval_in_seconds
                             retry_time = date(err.metadata['recommendedRetryTime']).timestamp()
@@ -138,18 +140,20 @@ class SubscriptionManager:
                     break
             del self._subscriptions[instance_id]
 
-    async def unsubscribe(self, account_id: str):
+    async def unsubscribe(self, account_id: str, instance_number: int):
         """Unsubscribe from account (see https://metaapi.cloud/docs/client/websocket/api/synchronizing/unsubscribe).
 
         Args:
             account_id: Id of the MetaTrader account to retrieve symbol price for.
+            instance_number: Instance index number.
 
         Returns:
             A coroutine which resolves when socket is unsubscribed."""
         self.cancel_account(account_id)
         if account_id in self._subscriptionState:
             del self._subscriptionState[account_id]
-        return await self._websocketClient.rpc_request(account_id, {'type': 'unsubscribe'})
+        return await self._websocketClient.rpc_request(account_id, {'type': 'unsubscribe',
+                                                                    'instanceIndex': instance_number})
 
     def cancel_subscribe(self, instance_id: str):
         """Cancels active subscription tasks for an instance id.
@@ -174,6 +178,9 @@ class SubscriptionManager:
         """
         for instance_id in list(filter(lambda key: key.startswith(account_id), self._subscriptions.keys())):
             self.cancel_subscribe(instance_id)
+        for instance_number in self._awaitingResubscribe.keys():
+            if account_id in self._awaitingResubscribe[instance_number]:
+                del self._awaitingResubscribe[instance_number][account_id]
 
     def on_timeout(self, account_id: str, instance_number: int = None):
         """Invoked on account timeout.
@@ -182,8 +189,11 @@ class SubscriptionManager:
             account_id: Id of the MetaTrader account.
             instance_number: Instance index number.
         """
-        if account_id in self._websocketClient.socket_instances_by_accounts and \
-                self._websocketClient.connected(self._websocketClient.socket_instances_by_accounts[account_id]):
+        region = self._websocketClient.get_account_region(account_id)
+        if account_id in self._websocketClient.socket_instances_by_accounts[instance_number] and \
+            self._websocketClient.connected(
+                instance_number, self._websocketClient.socket_instances_by_accounts[instance_number][account_id],
+                region):
             asyncio.create_task(self.schedule_subscribe(account_id, instance_number, is_disconnected_retry_mode=True))
 
     async def on_disconnected(self, account_id: str, instance_number: int = None):
@@ -194,32 +204,36 @@ class SubscriptionManager:
             instance_number: Instance index number.
         """
         await asyncio.sleep(uniform(1, 5))
-        if account_id in self._websocketClient.socket_instances_by_accounts:
+        if instance_number in self._websocketClient.socket_instances_by_accounts and \
+                account_id in self._websocketClient.socket_instances_by_accounts[instance_number]:
             asyncio.create_task(self.schedule_subscribe(account_id, instance_number, is_disconnected_retry_mode=True))
 
-    def on_reconnected(self, socket_instance_index: int, reconnect_account_ids: List[str]):
+    def on_reconnected(self, instance_number: int, socket_instance_index: int, reconnect_account_ids: List[str]):
         """Invoked when connection to MetaApi websocket API restored after a disconnect.
 
         Args:
+            instance_number: Instance index number.
             socket_instance_index: Socket instance index.
             reconnect_account_ids: Account ids to reconnect.
         """
+        if instance_number not in self._awaitingResubscribe:
+            self._awaitingResubscribe[instance_number] = {}
 
         async def wait_resubscribe(account_id):
             try:
-                if account_id not in self._awaitingResubscribe:
-                    self._awaitingResubscribe[account_id] = True
-                    while self.is_account_subscribing(account_id):
+                if account_id not in self._awaitingResubscribe[instance_number]:
+                    self._awaitingResubscribe[instance_number][account_id] = True
+                    while self.is_account_subscribing(account_id, instance_number):
                         await asyncio.sleep(1)
-                    if account_id in self._awaitingResubscribe:
-                        del self._awaitingResubscribe[account_id]
                     await asyncio.sleep(uniform(0, 5))
-                    asyncio.create_task(self.schedule_subscribe(account_id))
+                    if account_id in self._awaitingResubscribe[instance_number]:
+                        del self._awaitingResubscribe[instance_number][account_id]
+                        asyncio.create_task(self.schedule_subscribe(account_id, instance_number))
             except Exception as err:
                 self._logger.error(f'{account_id}: Account resubscribe task failed ' + string_format_error(err))
 
         try:
-            socket_instances_by_accounts = self._websocketClient.socket_instances_by_accounts
+            socket_instances_by_accounts = self._websocketClient.socket_instances_by_accounts[instance_number]
             for instance_id in self._subscriptions.keys():
                 account_id = instance_id.split(':')[0]
                 if account_id in socket_instances_by_accounts and \

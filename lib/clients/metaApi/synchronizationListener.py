@@ -83,7 +83,8 @@ class SynchronizationListener(ABC):
         pass
 
     async def on_synchronization_started(self, instance_index: str, specifications_updated: bool = True,
-                                         positions_updated: bool = True, orders_updated: bool = True):
+                                         positions_updated: bool = True, orders_updated: bool = True,
+                                         synchronization_id: str = None):
         """Invoked when MetaTrader terminal state synchronization is started.
 
         Args:
@@ -91,6 +92,7 @@ class SynchronizationListener(ABC):
             specifications_updated: Whether specifications are going to be updated during synchronization.
             positions_updated: Whether positions are going to be updated during synchronization.
             orders_updated: Whether orders are going to be updated during synchronization.
+            synchronization_id: Synchronization id.
 
         Returns:
             A coroutine which resolves when the asynchronous event is processed.

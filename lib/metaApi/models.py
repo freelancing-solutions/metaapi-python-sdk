@@ -8,6 +8,7 @@ import pytz
 import re
 import traceback
 import json
+import asyncio
 
 
 def date(date_time: str or float or int) -> datetime:
@@ -81,6 +82,21 @@ def string_format_error(err: Exception or any):
         Error information in string format.
     """
     return json.dumps(format_error(err))
+
+
+async def promise_any(coroutines):
+    exception_task = None
+    while len(coroutines):
+        done, coroutines = await asyncio.wait(coroutines, return_when=asyncio.FIRST_COMPLETED)
+        for task in done:
+            if not exception_task and task.exception():
+                exception_task = task
+            else:
+                for wait_task in coroutines:
+                    wait_task.cancel()
+                return task.result()
+
+    return exception_task.result()
 
 
 class G1Encoder(json.JSONEncoder):
@@ -280,10 +296,27 @@ class MetatraderPosition(TypedDict, total=False):
     """Distance trailing stop loss configuration."""
     volume: float
     """Position volume."""
-    swap: float
-    """Position cumulative swap."""
     profit: float
-    """Position cumulative profit."""
+    """Position cumulative profit, including unrealized profit resulting from currently open position part (except
+    swap and commissions) and realized profit resulting from partially closed position part and including swap and
+    commissions."""
+    realizedProfit: float
+    """Profit of the already closed part, including commissions and swap (realized and unrealized)."""
+    unrealizedProfit: float
+    """Profit of the part of the position which is not yet closed, excluding swap and commissions."""
+    swap: float
+    """Position cumulative swap, including both swap from currently open position part (unrealized
+    swap) and swap from partially closed position part (realized swap)."""
+    realizedSwap: float
+    """Swap from partially closed position part."""
+    unrealizedSwap: float
+    """Swap resulting from currently open position part."""
+    commission: float
+    """Total position commissions, resulting both from currently open and closed position parts."""
+    realizedCommission: float
+    """Position realized commission, resulting from partially closed position part."""
+    unrealizedCommission: float
+    """Position unrealized commission, resulting from currently open position part."""
     comment: Optional[str]
     """Optional position comment. The sum of the line lengths of the comment and the clientId
     must be less than or equal to 26. For more information see https://metaapi.cloud/docs/client/clientIdUsage/"""
@@ -293,16 +326,10 @@ class MetatraderPosition(TypedDict, total=False):
     your trades to objects in your application and then track trade progress. The sum of the line lengths of the
     comment and the clientId must be less than or equal to 26. For more information see
     https://metaapi.cloud/docs/client/clientIdUsage/"""
-    commission: Optional[float]
-    """Optional position commission."""
     reason: str
     """Position opening reason. One of POSITION_REASON_CLIENT, POSITION_REASON_EXPERT, POSITION_REASON_MOBILE,
     POSITION_REASON_WEB, POSITION_REASON_UNKNOWN. See
     https://www.mql5.com/en/docs/constants/tradingconstants/positionproperties#enum_position_reason"""
-    unrealizedProfit: float
-    """Profit of the part of the position which is not yet closed, including swap."""
-    realizedProfit: float
-    """Profit of the already closed part, including commissions and swap."""
     accountCurrencyExchangeRate: Optional[float]
     """Current exchange rate of account currency into account base currency (USD if you did not override it)."""
     brokerComment: Optional[str]
@@ -451,6 +478,12 @@ class MetatraderDeal(TypedDict, total=False):
     https://www.mql5.com/en/docs/constants/tradingconstants/dealproperties#enum_deal_reason."""
     accountCurrencyExchangeRate: Optional[float]
     """Current exchange rate of account currency into account base currency (USD if you did not override it)."""
+    stopLoss: Optional[float]
+    """Deal stop loss. For MT5 opening deal this is the SL of the order opening the position. For MT4 deals or MT5
+    closing deal this is the last known position SL."""
+    takeProfit: Optional[float]
+    """Deal take profit. For MT5 opening deal this is the TP of the order opening the position. For MT4 deals or MT5
+    closing deal this is the last known position TP."""
 
 
 class MetatraderDeals(TypedDict):
@@ -608,6 +641,10 @@ class MetatraderSymbolSpecification(TypedDict, total=False):
     """Date of the symbol trade end (usually used for futures)."""
     pipSize: Optional[float]
     """Size of a pip. Pip size is defined for spot and CFD symbols only."""
+    stopsLevel: float
+    """Minimal indention in points from the current close price to place stop orders."""
+    freezeLevel: float
+    """Distance to freeze trade operations in points."""
 
 
 class MetatraderSymbolPrice(TypedDict):

@@ -1,3 +1,30 @@
+19.0.0
+  - breaking change: refactored demo account generator API to allow creating demo accounts without need to specify a provisioning profile, using server name only
+  - improved stability of subscribeToMarketData, unsubscribeFromMarketData, trade requests
+  - simplified interface of subscribeToMarketData, unsubscribeFromMarketData requests
+  - improve logging of important events in streaming connection
+  - improve waitSynchronized stability for streaming API
+  - improve synchronization stability in case concurrent synchronizations are streamed
+  - added pip size, stops level and freeze level to symbol specification model
+  - added ability to specify region to only allow region accounts
+  - added increasing wait time on socket failed reconnect
+  - make it possible to add and remove listeners when connection is not connected yet
+  - initialize protected properties in base history storage
+  - throw error if a connection method is invoked and connection is not active
+  - breaking change: refactored HistoryStorage & MemoryHistoryStorage classes
+  - breaking change: changed rpc connection initialization
+  - split account instance connections into multiple availability zones for redundancy and failover
+  - implemented region support for historical market data requests and socket connections
+  - improved price and equity tracking
+  - added SL and TP fields to MetatraderDeal
+  - breaking change: replaced MetatraderDemoAccountApi with MetatraderAccountGeneratorApi since we can create live accounts now as well
+  - breaking change: refactored MetatraderPosition model, see updated descriptions for *commission, *swap and *profit fields
+  - optimized CPU load during mass synchronization
+  - support regular account synchronization with a non-zero instance index
+  - added stopPriceBase option to create market order methods
+  - fixed hashing of null fields
+  - breaking change: removed reconnect RPC method
+
 16.2.1
   - added RELATIVE_PIPS trade option
   - added stopPriceBase option to create market order methods

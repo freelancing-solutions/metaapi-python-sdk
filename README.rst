@@ -420,6 +420,8 @@ Synchronizing and reading terminal state
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 .. code-block:: python
 
+    from datetime import datetime
+
     account = await api.metatrader_account_api.get_account(account_id='accountId')
     connection = account.get_streaming_connection()
     await connection.connect()
@@ -449,7 +451,16 @@ Synchronizing and reading terminal state
     print(historyStorage.deal_synchronization_finished)
 
     print(historyStorage.deals)
+    print(historyStorage.get_deals_by_ticket('1'))
+    print(historyStorage.get_deals_by_position('1'))
+    print(historyStorage.get_deals_by_time_range(
+        datetime.fromtimestamp(datetime.now().timestamp() - 24 * 60 * 60), datetime.now())
+
     print(historyStorage.history_orders)
+    print(historyStorage.get_history_orders_by_ticket('1'))
+    print(historyStorage.get_history_orders_by_position('1'))
+    print(historyStorage.get_history_orders_by_time_range(
+        datetime.fromtimestamp(datetime.now().timestamp() - 24 * 60 * 60), datetime.now())
 
 Overriding local history storage
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -642,7 +653,7 @@ You can track latencies using MetaApi.latency_monitor API. Client-side latencies
     # retrieve request latency stats
     print(monitor.request_latencies)
 
-Managing MetaTrader demo accounts via API
+Managing MetaTrader accounts via API
 =========================================
 Please note that not all MT4/MT5 servers allows you to create demo accounts using the method below.
 
@@ -650,25 +661,125 @@ Create a MetaTrader 4 demo account
 ----------------------------------
 .. code-block:: python
 
-    demo_account = await api.metatrader_demo_account_api.create_mt4_demo_account(profile_id=provisioningProfile.id,
+    demo_account = await api.metatrader_account_generator_api.create_mt4_demo_account(
+        account={
+            'balance': 100000,
+            'accountType': 'type',
+            'email': 'example@example.com',
+            'leverage': 100,
+            'serverName': 'Exness-Trial4',
+            'name': 'Test User',
+            'phone': '+12345678901'
+        })
+
+    # optionally specify a provisioning profile id if servers file is not found by server name
+    demo_account = await api.metatrader_account_generator_api.create_mt4_demo_account(
+        account={
+            'balance': 100000,
+            'accountType': 'type',
+            'email': 'example@example.com',
+            'leverage': 100,
+            'serverName': 'Exness-Trial4',
+            'name': 'Test User',
+            'phone': '+12345678901'
+        }, profile_id=provisioningProfile.id)
+
+Create a MetaTrader 4 live account
+----------------------------------
+.. code-block:: python
+
+    live_account = await api.metatrader_account_generator_api.create_mt4_live_account(
         account={
             'balance': 100000,
             'email': 'example@example.com',
             'leverage': 100,
-            'serverName': 'Exness-Trial4'
+            'serverName': 'Exness-Trial4',
+            'name': 'Test User',
+            'phone': '+12345678901',
+            'country': 'Unites States',
+            'zip': '12345',
+            'state': 'New York',
+            'city': 'New York',
+            'address': 'customer address'
         })
+
+    # optionally specify a provisioning profile id if servers file is not found by server name
+    live_account = await api.metatrader_account_generator_api.create_mt4_live_account(
+        account={
+            'balance': 100000,
+            'email': 'example@example.com',
+            'leverage': 100,
+            'serverName': 'Exness-Trial4',
+            'name': 'Test User',
+            'phone': '+12345678901',
+            'country': 'Unites States',
+            'zip': '12345',
+            'state': 'New York',
+            'city': 'New York',
+            'address': 'customer address'
+        }, profile_id=provisioningProfile.id)
 
 Create a MetaTrader 5 demo account
 ----------------------------------
 .. code-block:: python
 
-    demo_account = await api.metatrader_demo_account_api.create_mt5_demo_account(profile_id=provisioningProfile.id,
+    demo_account = await api.metatrader_demo_account_api.create_mt5_demo_account(
         account={
+            'accountType': 'type',
             'balance': 100000,
             'email': 'example@example.com',
             'leverage': 100,
             'serverName': 'ICMarketsSC-Demo'
         })
+
+    # optionally specify a provisioning profile id if servers file is not found by server name
+    demo_account = await api.metatrader_account_generator_api.create_mt5_demo_account(
+        account={
+            'accountType': 'type',
+            'balance': 100000,
+            'email': 'example@example.com',
+            'leverage': 100,
+            'serverName': 'Exness-Trial4',
+            'name': 'Test User',
+            'phone': '+12345678901'
+        }, profile_id=provisioningProfile.id)
+
+Create a MetaTrader 5 live account
+----------------------------------
+.. code-block:: python
+
+    live_account = await api.metatrader_account_generator_api.create_mt5_live_account(
+        account={
+            'accountType': 'type',
+            'balance': 100000,
+            'email': 'example@example.com',
+            'leverage': 100,
+            'serverName': 'Exness-Trial4',
+            'name': 'Test User',
+            'phone': '+12345678901',
+            'country': 'Unites States',
+            'zip': '12345',
+            'state': 'New York',
+            'city': 'New York',
+            'address': 'customer address'
+        })
+
+    # optionally specify a provisioning profile id if servers file is not found by server name
+    live_account = await api.metatrader_account_generator_api.create_mt5_live_account(
+        account={
+            'accountType': 'type',
+            'balance': 100000,
+            'email': 'example@example.com',
+            'leverage': 100,
+            'serverName': 'Exness-Trial4',
+            'name': 'Test User',
+            'phone': '+12345678901',
+            'country': 'Unites States',
+            'zip': '12345',
+            'state': 'New York',
+            'city': 'New York',
+            'address': 'customer address'
+        }, profile_id=provisioningProfile.id)
 
 Enable Logging logging
 ===========================================

@@ -71,8 +71,8 @@ registry: ConnectionRegistry = None
 
 class MockAccount(MetatraderAccount):
 
-    def __init__(self, id):
-        super().__init__(MagicMock(), MagicMock(), MagicMock(), MagicMock(), MagicMock(), MagicMock())
+    def __init__(self, id: str):
+        super().__init__(MagicMock(), MagicMock(), MagicMock(), MagicMock(), MagicMock(), MagicMock(), '')
         self._id = id
 
     @property
@@ -81,7 +81,7 @@ class MockAccount(MetatraderAccount):
 
 
 def create_connection_mock():
-    mock = StreamingMetaApiConnection(MagicMock(), MagicMock(), MagicMock(), MagicMock())
+    mock = StreamingMetaApiConnection(MagicMock(), MagicMock(), MagicMock(), MagicMock(), registry)
     mock.initialize = AsyncMock()
     mock.subscribe = AsyncMock()
     return mock
@@ -92,9 +92,9 @@ async def run_around_tests():
     global mock_client
     mock_client = MockClient(MagicMock(), 'token')
     global mock_storage
-    mock_storage = MockStorage()
+    mock_storage = MagicMock()
     global registry
-    registry = ConnectionRegistry(mock_client)
+    registry = ConnectionRegistry(mock_client, MagicMock())
     yield
 
 

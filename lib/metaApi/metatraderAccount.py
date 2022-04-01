@@ -4,7 +4,7 @@ from ..clients.metaApi.metaApiWebsocket_client import MetaApiWebsocketClient
 from ..clients.timeoutException import TimeoutException
 from .streamingMetaApiConnection import StreamingMetaApiConnection
 from .metatraderAccountModel import MetatraderAccountModel
-from ..metaApi.historyFileManager import HistoryFileManager
+from ..metaApi.filesystemHistoryDatabase import FilesystemHistoryDatabase
 from .historyStorage import HistoryStorage
 from .connectionRegistryModel import ConnectionRegistryModel
 from .expertAdvisor import ExpertAdvisorClient, ExpertAdvisor, NewExpertAdvisorDto
@@ -22,7 +22,8 @@ class MetatraderAccount(MetatraderAccountModel):
 
     def __init__(self, data: MetatraderAccountDto, metatrader_account_client: MetatraderAccountClient,
                  meta_api_websocket_client: MetaApiWebsocketClient, connection_registry: ConnectionRegistryModel,
-                 expert_advisor_client: ExpertAdvisorClient, historical_market_data_client: HistoricalMarketDataClient):
+                 expert_advisor_client: ExpertAdvisorClient, historical_market_data_client: HistoricalMarketDataClient,
+                 application: str):
         """Inits a MetaTrader account entity.
 
         Args:
@@ -32,6 +33,7 @@ class MetatraderAccount(MetatraderAccountModel):
             connection_registry: Metatrader account connection registry.
             expert_advisor_client: Expert advisor REST API client.
             historical_market_data_client: Historical market data HTTP API client.
+            application: Application name.
         """
         self._data = data
         self._metatraderAccountClient = metatrader_account_client
@@ -39,6 +41,7 @@ class MetatraderAccount(MetatraderAccountModel):
         self._connectionRegistry = connection_registry
         self._expertAdvisorClient = expert_advisor_client
         self._historicalMarketDataClient = historical_market_data_client
+        self._application = application
 
     @property
     def id(self) -> str:
@@ -150,15 +153,6 @@ class MetatraderAccount(MetatraderAccountModel):
         return 'manualTrades' in self._data and self._data['manualTrades']
 
     @property
-    def extensions(self) -> List[Extension]:
-        """Returns API extensions.
-
-        Returns:
-            API extensions.
-        """
-        return self._data['extensions']
-
-    @property
     def metadata(self) -> Dict:
         """Returns extra information which can be stored together with your account.
 
@@ -241,6 +235,15 @@ class MetatraderAccount(MetatraderAccountModel):
         """
         return self._data['version']
 
+    @property
+    def region(self) -> str:
+        """Returns account region.
+
+        Returns:
+            Account region value.
+        """
+        return self._data['region']
+
     async def reload(self):
         """Reloads MetaTrader account from API.
 
@@ -258,8 +261,8 @@ class MetatraderAccount(MetatraderAccountModel):
         """
         self._connectionRegistry.remove(self.id)
         await self._metatraderAccountClient.delete_account(self.id)
-        file_manager = HistoryFileManager(self.id, self.application)
-        await file_manager.delete_storage_from_disk()
+        file_manager = FilesystemHistoryDatabase.get_instance()
+        await file_manager.clear(self.id, self._application)
         if self.type != 'self-hosted':
             try:
                 await self.reload()
@@ -408,6 +411,9 @@ class MetatraderAccount(MetatraderAccountModel):
         Returns:
             MetaApi connection.
         """
+        if self._metaApiWebsocketClient.region and self._metaApiWebsocketClient.region != self.region:
+            raise ValidationException(f'Account {self.id} is not on specified region '
+                                      f'{self._metaApiWebsocketClient.region}')
         return self._connectionRegistry.connect(self, history_storage, history_start_time)
 
     def get_rpc_connection(self) -> RpcMetaApiConnection:
@@ -416,6 +422,9 @@ class MetatraderAccount(MetatraderAccountModel):
         Returns:
             MetaApi connection.
         """
+        if self._metaApiWebsocketClient.region and self._metaApiWebsocketClient.region != self.region:
+            raise ValidationException(f'Account {self.id} is not on specified region '
+                                      f'{self._metaApiWebsocketClient.region}')
         return RpcMetaApiConnection(self._metaApiWebsocketClient, self)
 
     async def update(self, account: MetatraderAccountUpdateDto):
@@ -484,8 +493,8 @@ class MetatraderAccount(MetatraderAccountModel):
         Returns:
             A coroutine resolving with historical candles downloaded.
         """
-        return await self._historicalMarketDataClient.get_historical_candles(self.id, symbol, timeframe, start_time,
-                                                                             limit)
+        return await self._historicalMarketDataClient.get_historical_candles(self.id, self.region, symbol, timeframe,
+                                                                             start_time, limit)
 
     async def get_historical_ticks(self, symbol: str, start_time: datetime = None, offset: int = None,
                                    limit: int = None) -> List[MetatraderTick]:
@@ -502,7 +511,8 @@ class MetatraderAccount(MetatraderAccountModel):
         Returns:
             A coroutine resolving with historical ticks downloaded.
         """
-        return await self._historicalMarketDataClient.get_historical_ticks(self.id, symbol, start_time, offset, limit)
+        return await self._historicalMarketDataClient.get_historical_ticks(self.id, self.region, symbol, start_time,
+                                                                           offset, limit)
 
     def _check_expert_advisor_allowed(self):
         if self.version != 4 or self.type != 'cloud-g1':

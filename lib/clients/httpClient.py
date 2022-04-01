@@ -132,8 +132,11 @@ class HttpClient:
             response: ExceptionMessage or TypedDict = json.loads(err.response.text)
         except Exception:
             response = {}
-        err_message = response['message'] if 'message' in response else err.response.reason_phrase
-        status = err.response.status_code
+        err_message = response['message'] if 'message' in response else (
+            err.response.reason_phrase if hasattr(err, 'response') else None)
+        status = None
+        if hasattr(err, 'response'):
+            status = err.response.status_code
         if status == 400:
             details = response['details'] if 'details' in response else []
             return ValidationException(err_message, details)

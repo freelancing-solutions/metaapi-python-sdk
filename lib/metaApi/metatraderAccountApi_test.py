@@ -85,7 +85,7 @@ async def run_around_tests():
     global websocket_client
     websocket_client = MockWebsocketClient(MagicMock(), 'token')
     global registry
-    registry = MockRegistry(websocket_client)
+    registry = MockRegistry(websocket_client, MagicMock())
     global api
     registry.connect = AsyncMock()
     registry.remove = MagicMock()
@@ -93,7 +93,7 @@ async def run_around_tests():
     ea_client = ExpertAdvisorClient(MagicMock(), 'token')
     global history_client
     history_client = HistoricalMarketDataClient(MagicMock(), 'token')
-    api = MetatraderAccountApi(client, websocket_client, registry, ea_client, history_client)
+    api = MetatraderAccountApi(client, websocket_client, registry, ea_client, history_client, 'MetaApi')
     yield
 
 
@@ -251,7 +251,7 @@ class TestMetatraderAccountApi:
     @pytest.mark.asyncio
     async def test_remove_mt_account(self):
         """Should remove MT account."""
-        with patch('lib.metaApi.metatraderAccount.HistoryFileManager.delete_storage_from_disk',
+        with patch('lib.metaApi.metatraderAccount.FilesystemHistoryDatabase.clear',
                    new_callable=AsyncMock) as delete_mock:
             client.get_account = AsyncMock(side_effect=[{
                 '_id': 'id',
@@ -281,7 +281,7 @@ class TestMetatraderAccountApi:
             client.delete_account = AsyncMock()
             account = await api.get_account('id')
             await account.remove()
-            delete_mock.assert_called()
+            delete_mock.assert_called_with('id', 'MetaApi')
             registry.remove.assert_called_with('id')
             assert account.state == 'DELETING'
             client.delete_account.assert_called_with('id')
@@ -658,9 +658,72 @@ class TestMetatraderAccountApi:
             websocket_client.subscribe = AsyncMock()
             client.get_account = AsyncMock(return_value={'_id': 'id'})
             account = await api.get_account('id')
-            storage = MockStorage('accountId')
+            storage = MockStorage()
             account.get_streaming_connection(storage)
             registry.connect.assert_called_with(account, storage, None)
+
+    @pytest.mark.asyncio
+    async def test_connect_to_terminal_if_in_specified_region(self):
+        """Should connect to an MT terminal if in specified region."""
+        websocket_client._region = 'vint-hill'
+        client.get_account = AsyncMock(return_value={'_id': 'id', 'region': 'vint-hill'})
+        account = await api.get_account('accountId')
+        storage = MockStorage()
+        connect_mock = MagicMock()
+        registry.connect = connect_mock
+        account.get_streaming_connection(storage)
+        connect_mock.assert_called_with(account, storage, None)
+
+    @pytest.mark.asyncio
+    async def test_not_connect_to_terminal_if_in_different_region(self):
+        """Should not connect to an MT terminal if in different region."""
+        websocket_client._region = 'vint-hill'
+        client.get_account = AsyncMock(return_value={'_id': 'id', 'region': 'new-york'})
+        account = await api.get_account('accountId')
+        storage = MockStorage()
+        connect_mock = MagicMock()
+        registry.connect = connect_mock
+        try:
+            account.get_streaming_connection(storage)
+            pytest.fail()
+        except Exception as err:
+            assert err.args[0] == \
+                   'Account id is not on specified region vint-hill, check error.details for more information'
+
+    @pytest.mark.asyncio
+    async def test_create_rpc_connection(self):
+        """Should create RPC connection."""
+        websocket_client._region = None
+        client.get_account = AsyncMock(return_value={'_id': 'id', 'region': 'vint-hill'})
+        account = await api.get_account('accountId')
+        connect_mock = MagicMock()
+        registry.connect = connect_mock
+        account.get_rpc_connection()
+
+    @pytest.mark.asyncio
+    async def test_create_rpc_connection_if_in_specified_region(self):
+        """Should create RPC connection if in specified region."""
+        websocket_client._region = 'vint-hill'
+        client.get_account = AsyncMock(return_value={'_id': 'id', 'region': 'vint-hill'})
+        account = await api.get_account('accountId')
+        connect_mock = MagicMock()
+        registry.connect = connect_mock
+        account.get_rpc_connection()
+
+    @pytest.mark.asyncio
+    async def test_not_create_rpc_connection_if_in_different_region(self):
+        """Should not create RPC connection if in different region."""
+        websocket_client._region = 'vint-hill'
+        client.get_account = AsyncMock(return_value={'_id': 'id', 'region': 'new-york'})
+        account = await api.get_account('accountId')
+        connect_mock = MagicMock()
+        registry.connect = connect_mock
+        try:
+            account.get_rpc_connection()
+            pytest.fail()
+        except Exception as err:
+            assert err.args[0] == 'Account id is not on specified region vint-hill, check error.details for ' +\
+                'more information'
 
     @pytest.mark.asyncio
     async def test_update_mt_account(self):

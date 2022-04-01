@@ -2,6 +2,7 @@ from ..clients.metaApi.synchronizationListener import SynchronizationListener
 from .models import MetatraderOrder, MetatraderDeal
 from datetime import datetime
 from abc import abstractmethod, ABC
+from typing import List
 
 
 class HistoryStorage(SynchronizationListener, ABC):
@@ -12,10 +13,21 @@ class HistoryStorage(SynchronizationListener, ABC):
         super().__init__()
         self._orderSynchronizationFinished = {}
         self._dealSynchronizationFinished = {}
+        self._accountId = None
+        self._application = None
 
-    async def initialize(self):
-        """Initializes the storage and loads required data from a persistent storage."""
-        pass
+    async def initialize(self, account_id: str, application: str):
+        """Initializes the storage and loads required data from a persistent storage.
+
+        Args:
+            account_id: Account id.
+            application: Application.
+
+        Returns:
+            A coroutine resolving when history storage is initialized.
+        """
+        self._accountId = account_id
+        self._application = application
 
     @property
     def order_synchronization_finished(self) -> bool:
@@ -37,7 +49,11 @@ class HistoryStorage(SynchronizationListener, ABC):
 
     @abstractmethod
     async def clear(self):
-        """Clears the storage and deletes persistent data."""
+        """Clears the storage and deletes persistent data.
+
+        Returns:
+            A coroutine resolving when history storage is cleared
+        """
         pass
 
     @abstractmethod
@@ -131,3 +147,97 @@ class HistoryStorage(SynchronizationListener, ABC):
         instance = str(self.get_instance_number(instance_index))
         self._orderSynchronizationFinished[instance] = False
         self._dealSynchronizationFinished[instance] = False
+
+    @property
+    @abstractmethod
+    def deals(self) -> List[MetatraderDeal]:
+        """Returns all deals.
+
+        Returns:
+            All deals.
+        """
+        pass
+
+    @abstractmethod
+    def get_deals_by_ticket(self, id: str) -> List[MetatraderDeal]:
+        """Returns deals by ticket id.
+
+        Args:
+            id: Ticket id.
+
+        Returns:
+            Deals found.
+        """
+        pass
+
+    @abstractmethod
+    def get_deals_by_position(self, position_id: str) -> List[MetatraderDeal]:
+        """Returns deals by position id.
+
+        Args:
+            position_id: Position id.
+
+        Returns:
+            Deals found.
+        """
+        pass
+
+    @abstractmethod
+    def get_deals_by_time_range(self, start_time: datetime, end_time: datetime) -> List[MetatraderDeal]:
+        """Returns deals by time range.
+
+        Args:
+            start_time: Start time, inclusive.
+            end_time: End time, inclusive.
+
+        Returns:
+            Deals found.
+        """
+        pass
+
+    @property
+    @abstractmethod
+    def history_orders(self):
+        """Returns all history orders.
+
+        Returns:
+            All history orders.
+        """
+        pass
+
+    @abstractmethod
+    def get_history_orders_by_ticket(self, id: str) -> List[MetatraderOrder]:
+        """Returns history orders by ticket id.
+
+        Args:
+            id: Ticket id.
+
+        Returns:
+            History orders found.
+        """
+        pass
+
+    @abstractmethod
+    def get_history_orders_by_position(self, position_id: str) -> List[MetatraderOrder]:
+        """Returns history orders by position id.
+
+        Args:
+            position_id: Position id.
+
+        Returns:
+            History orders found.
+        """
+        pass
+
+    @abstractmethod
+    def get_history_orders_by_time_range(self, start_time: datetime, end_time: datetime) -> List[MetatraderOrder]:
+        """Returns history orders by time range.
+
+        Args:
+            start_time: Start time, inclusive.
+            end_time: End time, inclusive.
+
+        Returns:
+            History orders found.
+        """
+        pass

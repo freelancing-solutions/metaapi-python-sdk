@@ -5,6 +5,7 @@ from .metatraderAccountModel import MetatraderAccountModel
 from .models import MetatraderTradeResponse, MarketTradeOptions, StopOptions, TrailingStopLoss, \
     PendingTradeOptions, ModifyOrderOptions, StopLimitPendingTradeOptions, CreateMarketTradeOptions
 from typing import Coroutine
+from abc import abstractmethod
 import asyncio
 
 
@@ -24,6 +25,22 @@ class MetaApiConnection(SynchronizationListener, ReconnectListener):
         self._websocketClient = websocket_client
         self._account = account
         self._application = application
+        self._opened = False
+        self._closed = False
+
+    @abstractmethod
+    async def connect(self):
+        """Opens the connection. Can only be called the first time, next calls will be ignored.
+
+        Returns:
+            A coroutine resolving when the connection is opened
+        """
+        pass
+
+    @abstractmethod
+    async def close(self):
+        """Closes the connection. The instance of the class should no longer be used after this method is invoked."""
+        pass
 
     def create_market_buy_order(self, symbol: str, volume: float, stop_loss: float or StopOptions = None,
                                 take_profit: float or StopOptions = None,
@@ -44,10 +61,11 @@ class MetaApiConnection(SynchronizationListener, ReconnectListener):
         Raises:
             TradeException: On trade error, check error properties for error code details.
         """
+        self._check_is_connection_active()
         trade_params = {'actionType': 'ORDER_TYPE_BUY', 'symbol': symbol, 'volume': volume,
                         **self._generate_stop_options(stop_loss=stop_loss, take_profit=take_profit)}
         trade_params.update(options or {})
-        return self._websocketClient.trade(self._account.id, trade_params, self._application)
+        return self._trade(trade_params)
 
     def create_market_sell_order(self, symbol: str, volume: float, stop_loss: float or StopOptions = None,
                                  take_profit: float or StopOptions = None,
@@ -68,10 +86,11 @@ class MetaApiConnection(SynchronizationListener, ReconnectListener):
         Raises:
             TradeException: On trade error, check error properties for error code details.
         """
+        self._check_is_connection_active()
         trade_params = {'actionType': 'ORDER_TYPE_SELL', 'symbol': symbol, 'volume': volume,
                         **self._generate_stop_options(stop_loss=stop_loss, take_profit=take_profit)}
         trade_params.update(options or {})
-        return self._websocketClient.trade(self._account.id, trade_params, self._application)
+        return self._trade(trade_params)
 
     def create_limit_buy_order(self, symbol: str, volume: float, open_price: float,
                                stop_loss: float or StopOptions = None,
@@ -93,11 +112,12 @@ class MetaApiConnection(SynchronizationListener, ReconnectListener):
         Raises:
             TradeException: On trade error, check error properties for error code details.
         """
+        self._check_is_connection_active()
         trade_params = {'actionType': 'ORDER_TYPE_BUY_LIMIT', 'symbol': symbol, 'volume': volume,
                         'openPrice': open_price,
                         **self._generate_stop_options(stop_loss=stop_loss, take_profit=take_profit)}
         trade_params.update(options or {})
-        return self._websocketClient.trade(self._account.id, trade_params, self._application)
+        return self._trade(trade_params)
 
     def create_limit_sell_order(self, symbol: str, volume: float, open_price: float,
                                 stop_loss: float or StopOptions = None,
@@ -119,11 +139,12 @@ class MetaApiConnection(SynchronizationListener, ReconnectListener):
         Raises:
             TradeException: On trade error, check error properties for error code details.
         """
+        self._check_is_connection_active()
         trade_params = {'actionType': 'ORDER_TYPE_SELL_LIMIT', 'symbol': symbol, 'volume': volume,
                         'openPrice': open_price,
                         **self._generate_stop_options(stop_loss=stop_loss, take_profit=take_profit)}
         trade_params.update(options or {})
-        return self._websocketClient.trade(self._account.id, trade_params, self._application)
+        return self._trade(trade_params)
 
     def create_stop_buy_order(self, symbol: str, volume: float, open_price: float,
                               stop_loss: float or StopOptions = None,
@@ -145,11 +166,12 @@ class MetaApiConnection(SynchronizationListener, ReconnectListener):
         Raises:
             TradeException: On trade error, check error properties for error code details.
         """
+        self._check_is_connection_active()
         trade_params = {'actionType': 'ORDER_TYPE_BUY_STOP', 'symbol': symbol, 'volume': volume,
                         'openPrice': open_price,
                         **self._generate_stop_options(stop_loss=stop_loss, take_profit=take_profit)}
         trade_params.update(options or {})
-        return self._websocketClient.trade(self._account.id, trade_params, self._application)
+        return self._trade(trade_params)
 
     def create_stop_sell_order(self, symbol: str, volume: float, open_price: float,
                                stop_loss: float or StopOptions = None,
@@ -171,11 +193,12 @@ class MetaApiConnection(SynchronizationListener, ReconnectListener):
         Raises:
             TradeException: On trade error, check error properties for error code details.
         """
+        self._check_is_connection_active()
         trade_params = {'actionType': 'ORDER_TYPE_SELL_STOP', 'symbol': symbol, 'volume': volume,
                         'openPrice': open_price,
                         **self._generate_stop_options(stop_loss=stop_loss, take_profit=take_profit)}
         trade_params.update(options or {})
-        return self._websocketClient.trade(self._account.id, trade_params, self._application)
+        return self._trade(trade_params)
 
     def create_stop_limit_buy_order(self, symbol: str, volume: float, open_price: float, stop_limit_price: float,
                                     stop_loss: float or StopOptions = None, take_profit: float or StopOptions = None,
@@ -197,11 +220,12 @@ class MetaApiConnection(SynchronizationListener, ReconnectListener):
         Raises:
             TradeException: On trade error, check error properties for error code details.
         """
+        self._check_is_connection_active()
         trade_params = {'actionType': 'ORDER_TYPE_BUY_STOP_LIMIT', 'symbol': symbol, 'volume': volume,
                         'openPrice': open_price, 'stopLimitPrice': stop_limit_price,
                         **self._generate_stop_options(stop_loss=stop_loss, take_profit=take_profit)}
         trade_params.update(options or {})
-        return self._websocketClient.trade(self._account.id, trade_params, self._application)
+        return self._trade(trade_params)
 
     def create_stop_limit_sell_order(self, symbol: str, volume: float, open_price: float, stop_limit_price: float,
                                      stop_loss: float or StopOptions = None, take_profit: float or StopOptions = None,
@@ -223,11 +247,12 @@ class MetaApiConnection(SynchronizationListener, ReconnectListener):
         Raises:
             TradeException: On trade error, check error properties for error code details.
         """
+        self._check_is_connection_active()
         trade_params = {'actionType': 'ORDER_TYPE_SELL_STOP_LIMIT', 'symbol': symbol, 'volume': volume,
                         'openPrice': open_price, 'stopLimitPrice': stop_limit_price,
                         **self._generate_stop_options(stop_loss=stop_loss, take_profit=take_profit)}
         trade_params.update(options or {})
-        return self._websocketClient.trade(self._account.id, trade_params, self._application)
+        return self._trade(trade_params)
 
     def modify_position(self, position_id: str, stop_loss: float or StopOptions = None,
                         take_profit: float or StopOptions = None, trailing_stop_loss: str = None,
@@ -249,13 +274,14 @@ class MetaApiConnection(SynchronizationListener, ReconnectListener):
         Raises:
             TradeException: On trade error.
         """
+        self._check_is_connection_active()
         trade_params = {'actionType': 'POSITION_MODIFY', 'positionId': position_id,
                         **self._generate_stop_options(stop_loss=stop_loss, take_profit=take_profit)}
         if trailing_stop_loss is not None:
             trade_params['trailingStopLoss'] = trailing_stop_loss
         if stop_price_base is not None:
             trade_params['stopPriceBase'] = stop_price_base
-        return self._websocketClient.trade(self._account.id, trade_params, self._application)
+        return self._trade(trade_params)
 
     def close_position_partially(self, position_id: str, volume: float, options: MarketTradeOptions = None) -> \
             'Coroutine[asyncio.Future[MetatraderTradeResponse]]':
@@ -272,9 +298,10 @@ class MetaApiConnection(SynchronizationListener, ReconnectListener):
         Raises:
             TradeException: On trade error, check error properties for error code details.
         """
+        self._check_is_connection_active()
         trade_params = {'actionType': 'POSITION_PARTIAL', 'positionId': position_id, 'volume': volume}
         trade_params.update(options or {})
-        return self._websocketClient.trade(self._account.id, trade_params, self._application)
+        return self._trade(trade_params)
 
     def close_position(self, position_id: str, options: MarketTradeOptions = None) -> \
             'Coroutine[asyncio.Future[MetatraderTradeResponse]]':
@@ -290,9 +317,10 @@ class MetaApiConnection(SynchronizationListener, ReconnectListener):
         Raises:
             TradeException: On trade error, check error properties for error code details.
         """
+        self._check_is_connection_active()
         trade_params = {'actionType': 'POSITION_CLOSE_ID', 'positionId': position_id}
         trade_params.update(options or {})
-        return self._websocketClient.trade(self._account.id, trade_params, self._application)
+        return self._trade(trade_params)
 
     def close_by(self, position_id: str, opposite_position_id: str, options: MarketTradeOptions = None) -> \
             'Coroutine[asyncio.Future[MetatraderTradeResponse]]':
@@ -309,10 +337,11 @@ class MetaApiConnection(SynchronizationListener, ReconnectListener):
         Raises:
             TradeException: On trade error, check error properties for error code details.
         """
+        self._check_is_connection_active()
         trade_params = {'actionType': 'POSITION_CLOSE_BY', 'positionId': position_id,
                         'closeByPositionId': opposite_position_id}
         trade_params.update(options or {})
-        return self._websocketClient.trade(self._account.id, trade_params, self._application)
+        return self._trade(trade_params)
 
     def close_positions_by_symbol(self, symbol: str, options: MarketTradeOptions = None) -> \
             'Coroutine[asyncio.Future[MetatraderTradeResponse]]':
@@ -328,9 +357,10 @@ class MetaApiConnection(SynchronizationListener, ReconnectListener):
         Raises:
             TradeException: On trade error, check error properties for error code details.
         """
+        self._check_is_connection_active()
         trade_params = {'actionType': 'POSITIONS_CLOSE_SYMBOL', 'symbol': symbol}
         trade_params.update(options or {})
-        return self._websocketClient.trade(self._account.id, trade_params, self._application)
+        return self._trade(trade_params)
 
     def modify_order(self, order_id: str, open_price: float, stop_loss: float or StopOptions = None,
                      take_profit: float or StopOptions = None, options: ModifyOrderOptions = None) -> \
@@ -350,10 +380,11 @@ class MetaApiConnection(SynchronizationListener, ReconnectListener):
         Raises:
             TradeException: On trade error, check error properties for error code details.
         """
+        self._check_is_connection_active()
         trade_params = {'actionType': 'ORDER_MODIFY', 'orderId': order_id, 'openPrice': open_price,
                         **self._generate_stop_options(stop_loss=stop_loss, take_profit=take_profit)}
         trade_params.update(options or {})
-        return self._websocketClient.trade(self._account.id, trade_params, self._application)
+        return self._trade(trade_params)
 
     def cancel_order(self, order_id: str) -> \
             'Coroutine[asyncio.Future[MetatraderTradeResponse]]':
@@ -368,16 +399,8 @@ class MetaApiConnection(SynchronizationListener, ReconnectListener):
         Raises:
             TradeException: On trade error, check error properties for error code details.
         """
-        return self._websocketClient.trade(self._account.id, {'actionType': 'ORDER_CANCEL', 'orderId': order_id},
-                                           self._application)
-
-    def reconnect(self) -> Coroutine:
-        """Reconnects to the Metatrader terminal (see https://metaapi.cloud/docs/client/websocket/api/reconnect/).
-
-        Returns:
-            A coroutine which resolves when reconnection started.
-        """
-        return self._websocketClient.reconnect(self._account.id)
+        self._check_is_connection_active()
+        return self._trade({'actionType': 'ORDER_CANCEL', 'orderId': order_id})
 
     def on_reconnected(self):
         pass
@@ -390,6 +413,9 @@ class MetaApiConnection(SynchronizationListener, ReconnectListener):
             MetaApi account.
         """
         return self._account
+
+    def _trade(self, request: dict):
+        return self._websocketClient.trade(self._account.id, request, self._application, self._account.reliability)
 
     @staticmethod
     def _generate_stop_options(stop_loss, take_profit):
@@ -405,3 +431,10 @@ class MetaApiConnection(SynchronizationListener, ReconnectListener):
             trade['takeProfit'] = take_profit['value']
             trade['takeProfitUnits'] = take_profit['units']
         return trade
+
+    def _check_is_connection_active(self):
+        if not self._opened:
+            raise Exception('This connection has not been initialized yet, please invoke await connection.connect()')
+
+        if self._closed:
+            raise Exception('This connection has been closed, please create a new connection')

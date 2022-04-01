@@ -121,15 +121,6 @@ class MetatraderAccountModel(ABC):
 
     @property
     @abstractmethod
-    def extensions(self):
-        """Returns API extensions.
-
-        Returns:
-            API extensions.
-        """
-
-    @property
-    @abstractmethod
     def metadata(self) -> Dict:
         """Returns extra information which can be stored together with your account.
 
@@ -194,6 +185,15 @@ class MetatraderAccountModel(ABC):
 
         Returns:
             Account version value.
+        """
+
+    @property
+    @abstractmethod
+    def region(self) -> str:
+        """Returns account region.
+
+        Returns:
+            Account region value.
         """
 
     @abstractmethod

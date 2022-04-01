@@ -1,6 +1,7 @@
 import os
 import asyncio
 from metaapi_cloud_sdk import MetaApi
+from datetime import datetime
 
 from metaapi_cloud_sdk.clients.metaApi.tradeException import TradeException
 # Note: for information on how to use this example code please read https://metaapi.cloud/docs/client/usingCodeExamples/
@@ -64,7 +65,16 @@ async def meta_api_synchronization():
         # access history storage
         history_storage = connection.history_storage
         print('deals:', history_storage.deals[-5:])
+        print('deals with id=1:', history_storage.get_deals_by_ticket('1'))
+        print('deals with positionId=1:', history_storage.get_deals_by_position('1'))
+        print('deals for the last day:', history_storage.get_deals_by_time_range(
+            datetime.fromtimestamp(datetime.now().timestamp() - 24 * 60 * 60), datetime.now()))
+
         print('history orders:', history_storage.history_orders[-5:])
+        print('history orders with id=1:', history_storage.get_history_orders_by_ticket('1'))
+        print('history orders with positionId=1:', history_storage.get_history_orders_by_position('1'))
+        print('history orders for the last day:', history_storage.get_history_orders_by_time_range(
+            datetime.fromtimestamp(datetime.now().timestamp() - 24 * 60 * 60), datetime.now()))
 
         await connection.subscribe_to_market_data('EURUSD')
         print('EURUSD price:', terminal_state.price('EURUSD'))
@@ -81,6 +91,7 @@ async def meta_api_synchronization():
 
         # finally, undeploy account after the test
         print('Undeploying MT4 account so that it does not consume any unwanted resources')
+        await connection.close()
         await account.undeploy()
 
     except Exception as err:

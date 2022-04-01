@@ -4,13 +4,80 @@ import asyncio
 from datetime import datetime
 from ..metaApi.models import date
 from hashlib import md5
-state = TerminalState()
+from mock import MagicMock, AsyncMock
+state = TerminalState('accountId', MagicMock())
 
 
 @pytest.fixture(autouse=True)
 def run_around_tests():
+    client_api_client = MagicMock()
+    client_api_client.get_hashing_ignored_field_lists = AsyncMock(return_value={
+        'g1': {
+            'specification': [
+                'description',
+                'expirationTime',
+                'expirationBrokerTime',
+                'startTime',
+                'startBrokerTime',
+                'pipSize'
+            ],
+            'position': [
+                'time',
+                'updateTime',
+                'comment',
+                'brokerComment',
+                'originalComment',
+                'clientId',
+                'profit',
+                'realizedProfit',
+                'unrealizedProfit',
+                'currentPrice',
+                'currentTickValue',
+                'accountCurrencyExchangeRate',
+                'updateSequenceNumber'
+            ],
+            'order': [
+                'time',
+                'expirationTime',
+                'comment',
+                'brokerComment',
+                'originalComment',
+                'clientId',
+                'currentPrice',
+                'accountCurrencyExchangeRate',
+                'updateSequenceNumber'
+            ]
+        },
+        'g2': {
+            'specification': [
+                'pipSize'
+            ],
+            'position': [
+                'comment',
+                'brokerComment',
+                'originalComment',
+                'clientId',
+                'profit',
+                'realizedProfit',
+                'unrealizedProfit',
+                'currentPrice',
+                'currentTickValue',
+                'accountCurrencyExchangeRate',
+                'updateSequenceNumber'
+            ],
+            'order': [
+                'comment',
+                'brokerComment',
+                'originalComment',
+                'clientId',
+                'currentPrice',
+                'accountCurrencyExchangeRate',
+                'updateSequenceNumber'
+            ]
+        }
+    })
     global state
-    state = TerminalState()
+    state = TerminalState('accountId', client_api_client)
     yield
 
 
@@ -65,7 +132,6 @@ class TestTerminalState:
         await state.on_pending_order_updated('1:ps-mpa-1', {'id': '1', 'openPrice': 10})
         await state.on_pending_order_updated('1:ps-mpa-1', {'id': '2'})
         await state.on_pending_order_updated('1:ps-mpa-1', {'id': '1', 'openPrice': 11})
-        await state.on_pending_orders_synchronized('1:ps-mpa-1', 'synchronizationId')
         assert len(state.orders) == 2
         await state.on_pending_order_completed('1:ps-mpa-1', '2')
         assert len(state.orders) == 1
@@ -162,7 +228,8 @@ class TestTerminalState:
     async def test_update_margin_fields(self):
         """Should update margin fields on price update."""
         await state.on_account_information_updated('1:ps-mpa-1', {'equity': 1000, 'balance': 800})
-        await state.on_symbol_prices_updated('1:ps-mpa-1', [], 100, 200, 400, 40000)
+        await state.on_symbol_prices_updated(
+            '1:ps-mpa-1', [{'time': datetime.now(), 'symbol': 'EURUSD', 'bid': 1, 'ask': 1.1}], 100, 200, 400, 40000)
         assert state.account_information['equity'] == 100
         assert state.account_information['margin'] == 200
         assert state.account_information['freeMargin'] == 400
@@ -203,7 +270,7 @@ class TestTerminalState:
                                                              'symbol': 'EURUSD', 'bid': 1, 'ask': 1.1}])
         assert state.price('EURUSD') == {'time': datetime.fromtimestamp(1000000),
                                          'symbol': 'EURUSD', 'bid': 1, 'ask': 1.1}
-        await state.on_stream_closed('1:ps-mpa-1')
+        await state.on_disconnected('1:ps-mpa-1')
 
     @pytest.mark.asyncio
     async def test_on_synchronization_started(self):
@@ -270,7 +337,7 @@ class TestTerminalState:
         orders_hash = md5(('[{"id":"46871284","type":"ORDER_TYPE_BUY_LIMIT","state":"ORDER_STATE_PLACED",'
                            '"symbol":"AUDNZD","magic":123456,"platform":"mt5","openPrice":1.03000000,'
                            '"volume":0.01000000,"currentVolume":0.01000000}]').encode()).hexdigest()
-        hashes = state.get_hashes('cloud-g1', '1:ps-mpa-1')
+        hashes = await state.get_hashes('cloud-g1', '1:ps-mpa-1')
         assert hashes['specificationsMd5'] is None
         assert hashes['positionsMd5'] is None
         assert hashes['ordersMd5'] is None
@@ -320,7 +387,7 @@ class TestTerminalState:
             'clientId': 'TE_GBPUSD_7hyINWqAlE',
         }])
         await state.on_pending_orders_synchronized('1:ps-mpa-1', 'synchronizationId')
-        hashes = state.get_hashes('cloud-g1', '1:ps-mpa-1')
+        hashes = await state.get_hashes('cloud-g1', '1:ps-mpa-1')
         assert hashes['specificationsMd5'] == specifications_hash
         assert hashes['positionsMd5'] == positions_hash
         assert hashes['ordersMd5'] == orders_hash
@@ -339,7 +406,7 @@ class TestTerminalState:
         orders_hash = md5(('[{"id":"46871284","type":"ORDER_TYPE_BUY_LIMIT","state":"ORDER_STATE_PLACED",'
                            '"symbol":"AUDNZD","magic":123456,"platform":"mt5","time":"2020-04-20T08:38:58.270Z",'
                            '"openPrice":1.03,"volume":0.01,"currentVolume":0.01}]').encode()).hexdigest()
-        hashes = state.get_hashes('cloud-g2', '1:ps-mpa-1')
+        hashes = await state.get_hashes('cloud-g2', '1:ps-mpa-1')
         assert hashes['specificationsMd5'] is None
         assert hashes['positionsMd5'] is None
         assert hashes['ordersMd5'] is None
@@ -389,7 +456,173 @@ class TestTerminalState:
             'clientId': 'TE_GBPUSD_7hyINWqAlE',
         }])
         await state.on_pending_orders_synchronized('1:ps-mpa-1', 'synchronizationId')
-        hashes = state.get_hashes('cloud-g2', '1:ps-mpa-1')
+        hashes = await state.get_hashes('cloud-g2', '1:ps-mpa-1')
         assert hashes['specificationsMd5'] == specifications_hash
         assert hashes['positionsMd5'] == positions_hash
         assert hashes['ordersMd5'] == orders_hash
+
+    @pytest.mark.asyncio
+    async def test_cache_specifications_hash(self):
+        """Should cache specifications hash."""
+        get_hash_mock = MagicMock(return_value='hash')
+        state._get_hash = get_hash_mock
+        await state.on_symbol_specifications_updated('1:ps-mpa-1', [
+            {'symbol': 'AUDNZD', 'tickSize': 0.01, 'description': 'Test1'}
+        ], [])
+        await state.get_hashes('cloud-g2', '1:ps-mpa-1')
+        await state.get_hashes('cloud-g2', '1:ps-mpa-1')
+        assert get_hash_mock.call_count == 1
+        await state.on_symbol_specifications_updated('1:ps-mpa-1', [
+               {'symbol': 'AUDNZD', 'tickSize': 0.02, 'description': 'Test1'}], [])
+        await state.get_hashes('cloud-g2', '1:ps-mpa-1')
+        assert get_hash_mock.call_count == 2
+
+    @pytest.mark.asyncio
+    async def test_cache_positions_hash(self):
+        """Should cache positions hash."""
+        get_hash_mock = MagicMock(return_value='hash')
+        state._get_hash = get_hash_mock
+        await state.on_positions_replaced('1:ps-mpa-1', [{
+            'id': '1',
+            'symbol': 'EURUSD',
+            'type': 'POSITION_TYPE_BUY',
+            'currentPrice': 9,
+            'currentTickValue': 0.5,
+            'openPrice': 8,
+            'profit': 100,
+            'volume': 2
+        }])
+        await state.on_positions_synchronized('1:ps-mpa-1', 'synchronizationId')
+        await state.get_hashes('cloud-g2', '1:ps-mpa-1')
+        await state.get_hashes('cloud-g2', '1:ps-mpa-1')
+        assert get_hash_mock.call_count == 1
+        await state.on_position_updated('1:ps-mpa-1', {
+            'id': '1',
+            'symbol': 'EURUSD',
+            'type': 'POSITION_TYPE_BUY',
+            'currentPrice': 9,
+            'currentTickValue': 0.5,
+            'openPrice': 8,
+            'profit': 100,
+            'volume': 2
+        })
+        await state.get_hashes('cloud-g2', '1:ps-mpa-1')
+        await state.get_hashes('cloud-g2', '1:ps-mpa-1')
+        assert get_hash_mock.call_count == 2
+        await state.on_position_removed('1:ps-mpa-1', '1')
+        await state.get_hashes('cloud-g2', '1:ps-mpa-1')
+        assert get_hash_mock.call_count == 3
+        await state.on_positions_replaced('1:ps-mpa-1', [{
+            'id': '1',
+            'symbol': 'EURUSD',
+            'type': 'POSITION_TYPE_BUY',
+            'currentPrice': 9,
+            'currentTickValue': 0.5,
+            'openPrice': 8,
+            'profit': 100,
+            'volume': 2
+        }])
+        await state.get_hashes('cloud-g2', '1:ps-mpa-1')
+        await state.get_hashes('cloud-g2', '1:ps-mpa-1')
+        assert get_hash_mock.call_count == 4
+
+    @pytest.mark.asyncio
+    async def test_cache_orders_hash(self):
+        """Should cache orders hash."""
+        get_hash_mock = MagicMock(return_value='hash')
+        state._get_hash = get_hash_mock
+        await state.on_pending_orders_replaced('1:ps-mpa-1', [{
+                'id': '1',
+                'symbol': 'EURUSD',
+                'type': 'ORDER_TYPE_BUY_LIMIT',
+                'currentPrice': 9
+        }])
+        await state.on_pending_orders_synchronized('1:ps-mpa-1', 'synchronizationId')
+        await state.get_hashes('cloud-g2', '1:ps-mpa-1')
+        await state.get_hashes('cloud-g2', '1:ps-mpa-1')
+        assert get_hash_mock.call_count == 2
+        await state.on_pending_order_updated('1:ps-mpa-1', {
+            'id': '1',
+            'symbol': 'EURUSD',
+            'type': 'ORDER_TYPE_BUY_LIMIT',
+            'currentPrice': 10
+        })
+        await state.get_hashes('cloud-g2', '1:ps-mpa-1')
+        await state.get_hashes('cloud-g2', '1:ps-mpa-1')
+        assert get_hash_mock.call_count == 3
+        await state.on_pending_order_completed('1:ps-mpa-1', '1')
+        await state.get_hashes('cloud-g2', '1:ps-mpa-1')
+        assert get_hash_mock.call_count == 4
+        await state.on_pending_orders_replaced('1:ps-mpa-1', [{
+            'id': '1',
+            'symbol': 'EURUSD',
+            'type': 'ORDER_TYPE_BUY_LIMIT',
+            'currentPrice': 10
+        }])
+        await state.get_hashes('cloud-g2', '1:ps-mpa-1')
+        await state.get_hashes('cloud-g2', '1:ps-mpa-1')
+        assert get_hash_mock.call_count == 5
+
+    @pytest.mark.asyncio
+    async def test_delete_unfinished_states_except_latest_on_sync_started(self):
+        """Should delete all unfinished states except for the latest on sync started."""
+        await state.on_account_information_updated('2:ps-mpa-3', {'balance': 1000})
+        await state.on_account_information_updated('1:ps-mpa-1', {'balance': 1000})
+        await state.on_account_information_updated('1:ps-mpa-2', {'balance': 1000})
+        await state.on_synchronization_started('1:ps-mpa-4', True, True, True)
+        assert '1:ps-mpa-1' in state._stateByInstanceIndex
+        assert '1:ps-mpa-2' not in state._stateByInstanceIndex
+        assert '2:ps-mpa-3' in state._stateByInstanceIndex
+
+    @pytest.mark.asyncio
+    async def test_delete_disconnected_states_on_sync_finished(self):
+        """Should delete all disconnected states on sync finished."""
+        await state.on_account_information_updated('2:ps-mpa-3', {'balance': 1000})
+        await state.on_pending_orders_synchronized('2:ps-mpa-3', 'synchronizationId')
+        await state.on_account_information_updated('1:ps-mpa-1', {'balance': 1000})
+        await state.on_connected('1:ps-mpa-1', 1)
+        await state.on_account_information_updated('1:ps-mpa-2', {'balance': 1000})
+        await state.on_pending_orders_synchronized('1:ps-mpa-2', 'synchronizationId2')
+        await state.on_account_information_updated('1:ps-mpa-4', {'balance': 1000})
+        await state.on_pending_orders_synchronized('1:ps-mpa-4', 'synchronizationId2')
+        assert '1:ps-mpa-1' in state._stateByInstanceIndex
+        assert '1:ps-mpa-2' not in state._stateByInstanceIndex
+        assert '2:ps-mpa-3' in state._stateByInstanceIndex
+
+    @pytest.mark.asyncio
+    async def test_delete_state_on_disconnected_if_there_is_another_synced_state(self):
+        """Should delete state on disconnected if there is another synced state."""
+        await state.on_account_information_updated('1:ps-mpa-1', {'balance': 1000})
+        await state.on_connected('1:ps-mpa-1', 1)
+        await state.on_pending_orders_synchronized('1:ps-mpa-1', 'synchronizationId2')
+        await state.on_account_information_updated('1:ps-mpa-2', {'balance': 1000})
+        await state.on_connected('1:ps-mpa-2', 1)
+        await state.on_pending_orders_synchronized('1:ps-mpa-2', 'synchronizationId2')
+        await state.on_stream_closed('1:ps-mpa-2')
+        assert '1:ps-mpa-1' in state._stateByInstanceIndex
+        assert '1:ps-mpa-2' not in state._stateByInstanceIndex
+
+    @pytest.mark.asyncio
+    async def test_delete_partially_synced_state_on_disconnected_if_there_is_fresher_state(self):
+        """Should delete partially synced state on disconnected if there is another fresher state."""
+        await state.on_account_information_updated('1:ps-mpa-1', {'balance': 1000})
+        await state.on_connected('1:ps-mpa-1', 1)
+        await state.on_account_information_updated('1:ps-mpa-2', {'balance': 1000})
+        await state.on_connected('1:ps-mpa-2', 1)
+        await state.on_stream_closed('1:ps-mpa-1')
+        assert '1:ps-mpa-1' not in state._stateByInstanceIndex
+        assert '1:ps-mpa-2' in state._stateByInstanceIndex
+
+    @pytest.mark.asyncio
+    async def test_not_delete_partially_synced_state_on_disconnected_if_there_is_no_fresher_state(self):
+        """Should not delete partially synced state on disconnected if there is no fresher state."""
+        await state.on_synchronization_started('1:ps-mpa-1', False, False, False)
+        await state.on_account_information_updated('1:ps-mpa-1', {'balance': 1000})
+        await state.on_connected('1:ps-mpa-1', 1)
+        await asyncio.sleep(0.1)
+        await state.on_synchronization_started('1:ps-mpa-2', False, False, False)
+        await state.on_account_information_updated('1:ps-mpa-2', {'balance': 1000})
+        await state.on_connected('1:ps-mpa-2', 1)
+        await state.on_disconnected('1:ps-mpa-2')
+        assert '1:ps-mpa-1' in state._stateByInstanceIndex
+        assert '1:ps-mpa-2' in state._stateByInstanceIndex
