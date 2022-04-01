@@ -107,6 +107,7 @@ async def meta_api_synchronization():
 
         # finally, undeploy account after the test
         print('Undeploying MT4 account so that it does not consume any unwanted resources')
+        await connection.close()
         await account.undeploy()
 
     except Exception as err:

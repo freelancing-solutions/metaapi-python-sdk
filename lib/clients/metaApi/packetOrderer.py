@@ -53,7 +53,9 @@ class PacketOrderer:
             ':' + (packet['host'] if 'host' in packet else '0')
         if 'sequenceNumber' not in packet:
             return [packet]
-        if packet['type'] == 'synchronizationStarted' and 'synchronizationId' in packet:
+        if packet['type'] == 'synchronizationStarted' and 'synchronizationId' in packet and (
+                instance_id not in self._lastSessionStartTimestamp or self._lastSessionStartTimestamp[instance_id] <
+                packet['sequenceTimestamp']):
             # synchronization packet sequence just started
             self._isOutOfOrderEmitted[instance_id] = False
             self._sequenceNumberByInstance[instance_id] = packet['sequenceNumber']
@@ -76,6 +78,8 @@ class PacketOrderer:
                 packet['sequenceNumber'] == self._sequenceNumberByInstance[instance_id] + 1:
             # in-order packet was received
             self._sequenceNumberByInstance[instance_id] += 1
+            self._lastSessionStartTimestamp[instance_id] = packet['sequenceTimestamp'] if 'sequenceTimestamp' \
+                in packet else self._lastSessionStartTimestamp[instance_id]
             return [packet] + self._find_next_packets_from_wait_list(instance_id)
         else:
             # out-of-order packet was received, add it to the wait list
@@ -130,11 +134,15 @@ class PacketOrderer:
     def _find_next_packets_from_wait_list(self, instance_id) -> List:
         result = []
         wait_list = self._packetsByInstance[instance_id] if instance_id in self._packetsByInstance else []
-        while len(wait_list) and wait_list[0]['sequenceNumber'] in [self._sequenceNumberByInstance[instance_id],
-                                                                    self._sequenceNumberByInstance[instance_id] + 1]:
-            result.append(wait_list[0]['packet'])
-            if wait_list[0]['sequenceNumber'] == self._sequenceNumberByInstance[instance_id] + 1:
-                self._sequenceNumberByInstance[instance_id] += 1
+        while len(wait_list) and (wait_list[0]['sequenceNumber'] in [
+                self._sequenceNumberByInstance[instance_id], self._sequenceNumberByInstance[instance_id] + 1] or
+                wait_list[0]['packet']['sequenceTimestamp'] < self._lastSessionStartTimestamp[instance_id]):
+            if wait_list[0]['packet']['sequenceTimestamp'] >= self._lastSessionStartTimestamp[instance_id]:
+                result.append(wait_list[0]['packet'])
+                if wait_list[0]['packet']['sequenceNumber'] == self._sequenceNumberByInstance[instance_id] + 1:
+                    self._sequenceNumberByInstance[instance_id] += 1
+                    self._lastSessionStartTimestamp[instance_id] = wait_list[0]['packet']['sequenceTimestamp'] if \
+                        'sequenceTimestamp' in wait_list[0]['packet'] else self._lastSessionStartTimestamp[instance_id]
             wait_list.pop(0)
         if not len(wait_list) and instance_id in self._packetsByInstance:
             del self._packetsByInstance[instance_id]

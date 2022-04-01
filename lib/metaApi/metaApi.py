@@ -7,10 +7,11 @@ from ..clients.metaApi.metatraderAccount_client import MetatraderAccountClient
 from ..clients.metaApi.packetLogger import PacketLoggerOpts
 from ..clients.errorHandler import ValidationException
 from ..metaApi.connectionRegistry import ConnectionRegistry
-from .metatraderDemoAccountApi import MetatraderDemoAccountApi
+from .metatraderAccountGeneratorApi import MetatraderAccountGeneratorApi
 from ..clients.metaApi.synchronizationThrottler import SynchronizationThrottlerOpts
-from ..clients.metaApi.metatraderDemoAccount_client import MetatraderDemoAccountClient
+from ..clients.metaApi.metatraderAccountGenerator_client import MetatraderAccountGeneratorClient
 from ..clients.metaApi.historicalMarketData_client import HistoricalMarketDataClient
+from ..clients.metaApi.clientApi_client import ClientApiClient
 from ..clients.optionsValidator import OptionsValidator
 from .latencyMonitor import LatencyMonitor
 from ..clients.metaApi.expertAdvisor_client import ExpertAdvisorClient
@@ -58,8 +59,8 @@ class MetaApiOpts(TypedDict, total=False):
     """Packet ordering timeout in seconds."""
     historicalMarketDataRequestTimeout: Optional[float]
     """Timeout for historical market data client in seconds."""
-    demoAccountRequestTimeout: Optional[float]
-    """Timeout for demo account requests in seconds."""
+    accountGeneratorRequestTimeout: Optional[float]
+    """Timeout for account generator requests in seconds. Default is 4 minutes."""
     packetLogger: Optional[PacketLoggerOpts]
     """Packet logger options."""
     enableLatencyMonitor: Optional[bool]
@@ -110,9 +111,9 @@ class MetaApi:
         retry_opts = opts['retryOpts'] if 'retryOpts' in opts else {}
         packet_logger = opts['packetLogger'] if 'packetLogger' in opts else {}
         synchronization_throttler = opts['synchronizationThrottler'] if 'synchronizationThrottler' in opts else {}
-        demo_account_request_timeout = validator.validate_non_zero(
-            opts['demoAccountRequestTimeout'] if 'demoAccountRequestTimeout' in opts else None, 240,
-            'demoAccountRequestTimeout')
+        account_generator_request_timeout = validator.validate_non_zero(
+            opts['accountGeneratorRequestTimeout'] if 'accountGeneratorRequestTimeout' in opts else None, 240,
+            'accountGeneratorRequestTimeout')
         use_shared_client_api = opts['useSharedClientApi'] if 'useSharedClientApi' in opts else False
         enable_socketio_debugger = opts['enableSocketioDebugger'] if 'enableSocketioDebugger' in opts else False
         refresh_subscriptions_opts = opts['refreshSubscriptionsOpts'] if 'refreshSubscriptionsOpts' in opts else {}
@@ -121,7 +122,8 @@ class MetaApi:
                                       'from letters, digits and _ only')
         http_client = HttpClient(request_timeout, retry_opts)
         historical_market_data_http_client = HttpClient(historical_market_data_request_timeout, retry_opts)
-        demo_account_http_client = HttpClient(demo_account_request_timeout, retry_opts)
+        account_generator_http_client = HttpClient(account_generator_request_timeout, retry_opts)
+        client_api_client = ClientApiClient(http_client, token, domain)
         self._metaApiWebsocketClient = MetaApiWebsocketClient(
             http_client, token, {'application': application, 'domain': domain, 'requestTimeout': request_timeout,
                                  'connectTimeout': connect_timeout, 'packetLogger': packet_logger,
@@ -133,15 +135,15 @@ class MetaApi:
                                  'enableSocketioDebugger': enable_socketio_debugger,
                                  'unsubscribeThrottlingIntervalInSeconds': unsubscribe_throttling_interval_in_seconds})
         self._provisioningProfileApi = ProvisioningProfileApi(ProvisioningProfileClient(http_client, token, domain))
-        self._connectionRegistry = ConnectionRegistry(self._metaApiWebsocketClient, application,
+        self._connectionRegistry = ConnectionRegistry(self._metaApiWebsocketClient, client_api_client, application,
                                                       refresh_subscriptions_opts)
         historical_market_data_client = HistoricalMarketDataClient(historical_market_data_http_client, token, domain)
         self._metatraderAccountApi = MetatraderAccountApi(MetatraderAccountClient(http_client, token, domain),
                                                           self._metaApiWebsocketClient, self._connectionRegistry,
                                                           ExpertAdvisorClient(http_client, token, domain),
-                                                          historical_market_data_client)
-        self._metatraderDemoAccountApi = MetatraderDemoAccountApi(MetatraderDemoAccountClient(
-            demo_account_http_client, token, domain))
+                                                          historical_market_data_client, application)
+        self._metatraderAccountGeneratorApi = MetatraderAccountGeneratorApi(MetatraderAccountGeneratorClient(
+            account_generator_http_client, token, domain))
         if ('enableLatencyTracking' in opts and opts['enableLatencyTracking']) or ('enableLatencyMonitor' in opts and
                                                                                    opts['enableLatencyMonitor']):
             self._latencyMonitor = LatencyMonitor()
@@ -172,13 +174,13 @@ class MetaApi:
         return self._metatraderAccountApi
 
     @property
-    def metatrader_demo_account_api(self) -> MetatraderDemoAccountApi:
-        """Returns MetaTrader demo account API.
+    def metatrader_account_generator_api(self) -> MetatraderAccountGeneratorApi:
+        """Returns MetaTrader account generator API.
 
         Returns:
-            MetaTrader demo account API.
+            MetaTrader account generator API.
         """
-        return self._metatraderDemoAccountApi
+        return self._metatraderAccountGeneratorApi
 
     @property
     def latency_monitor(self) -> LatencyMonitor:
@@ -187,7 +189,7 @@ class MetaApi:
         Returns:
             Latency monitor.
         """
-        return self._latencyMonitor
+        return self._latencyMonitor if hasattr(self, '_latencyMonitor') else None
 
     def format_error(self, err: Exception):
         """Formats and outputs metaApi errors with additional information.

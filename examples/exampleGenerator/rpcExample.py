@@ -27,6 +27,7 @@ async def test_meta_api_synchronization():
 
         # connect to MetaApi API
         connection = account.get_rpc_connection()
+        await connection.connect()
 
         # wait until terminal state synchronized to the local state
         print('Waiting for SDK to synchronize to terminal state (may take some time depending on your history size)')
@@ -61,6 +62,7 @@ async def test_meta_api_synchronization():
         if initial_state not in deployed_states:
             # undeploy account if it was undeployed
             print('Undeploying account')
+            await connection.close()
             await account.undeploy()
 
     except Exception as err:

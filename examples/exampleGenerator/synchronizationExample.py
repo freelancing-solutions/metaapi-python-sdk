@@ -2,6 +2,7 @@ import os
 import asyncio
 from metaapi_cloud_sdk import MetaApi
 from metaapi_cloud_sdk.clients.metaApi.tradeException import TradeException
+from datetime import datetime
 
 # Note: for information on how to use this example code please read https://metaapi.cloud/docs/client/usingCodeExamples
 
@@ -47,7 +48,16 @@ async def test_meta_api_synchronization():
         # access history storage
         history_storage = connection.history_storage
         print('deals:', history_storage.deals[-5:])
+        print('deals with id=1:', history_storage.get_deals_by_ticket('1'))
+        print('deals with positionId=1:', history_storage.get_deals_by_position('1'))
+        print('deals for the last day:', history_storage.get_deals_by_time_range(
+            datetime.fromtimestamp(datetime.now().timestamp() - 24 * 60 * 60), datetime.now()))
+
         print('history orders:', history_storage.history_orders[-5:])
+        print('history orders with id=1:', history_storage.get_history_orders_by_ticket('1'))
+        print('history orders with positionId=1:', history_storage.get_history_orders_by_position('1'))
+        print('history orders for the last day:', history_storage.get_history_orders_by_time_range(
+            datetime.fromtimestamp(datetime.now().timestamp() - 24 * 60 * 60), datetime.now()))
 
         # trade
         print('Submitting pending order')

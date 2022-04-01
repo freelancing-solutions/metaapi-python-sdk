@@ -26,12 +26,15 @@ class SynchronizationThrottler:
     """Synchronization throttler used to limit the amount of concurrent synchronizations to prevent application
     from being overloaded due to excessive number of synchronisation responses being sent."""
 
-    def __init__(self, client, socket_instance_index: int, opts: SynchronizationThrottlerOpts = None):
+    def __init__(self, client, socket_instance_index: int, instance_number: int, region: str,
+                 opts: SynchronizationThrottlerOpts = None):
         """Inits the synchronization throttler.
 
         Args:
             client: Websocket client.
             socket_instance_index: Index of socket instance that uses the throttler.
+            instance_number: Instance index number.
+            region: Server region.
             opts: Synchronization throttler options.
         """
         validator = OptionsValidator()
@@ -46,12 +49,14 @@ class SynchronizationThrottler:
             opts['synchronizationTimeoutInSeconds'] if 'synchronizationTimeoutInSeconds' in opts else None, 10,
             'synchronizationThrottler.synchronizationTimeoutInSeconds')
         self._client = client
+        self._region = region
         self._socketInstanceIndex = socket_instance_index
         self._synchronizationIds = {}
         self._accountsBySynchronizationIds = {}
         self._synchronizationQueue = deque([])
         self._removeOldSyncIdsInterval = None
         self._processQueueInterval = None
+        self._instanceNumber = instance_number
         self._logger = LoggerManager.get_logger('SynchronizationThrottler')
 
     def start(self):
@@ -118,7 +123,8 @@ class SynchronizationThrottler:
     @property
     def max_concurrent_synchronizations(self) -> int:
         """Returns the amount of maximum allowed concurrent synchronizations."""
-        calculated_max = max(math.ceil(len(self._client.subscribed_account_ids(self._socketInstanceIndex)) / 10), 1)
+        calculated_max = max(math.ceil(len(self._client.subscribed_account_ids(
+            self._instanceNumber, self._socketInstanceIndex, self._region)) / 10), 1)
         return min(calculated_max, self._maxConcurrentSynchronizations)
 
     @property
@@ -128,7 +134,8 @@ class SynchronizationThrottler:
         def reducer_func(acc, socket_instance):
             return acc + len(socket_instance['synchronizationThrottler'].synchronizing_accounts)
 
-        if reduce(reducer_func, self._client.socket_instances, 0) >= self._maxConcurrentSynchronizations:
+        if reduce(reducer_func, self._client.socket_instances[self._region][self._instanceNumber],
+                  0) >= self._maxConcurrentSynchronizations:
             return False
         return len(self.synchronizing_accounts) < self.max_concurrent_synchronizations
 
@@ -206,12 +213,13 @@ class SynchronizationThrottler:
         except Exception as err:
             self._logger.error('Error processing queue job ' + string_format_error(err))
 
-    async def schedule_synchronize(self, account_id: str, request: Dict):
+    async def schedule_synchronize(self, account_id: str, request: Dict, get_hashes):
         """Schedules to send a synchronization request for account.
 
         Args:
             account_id: Account id.
             request: Request to send.
+            get_hashes: Function to get terminal state hashes.
         """
         synchronization_id = request['requestId']
         for key in list(self._accountsBySynchronizationIds.keys()):
@@ -239,5 +247,9 @@ class SynchronizationThrottler:
                 raise TimeoutException(f'Account {account_id} synchronization {synchronization_id} timed out in '
                                        f'synchronization queue')
         self.update_synchronization_id(synchronization_id)
+        hashes = await get_hashes()
+        request['specificationsMd5'] = hashes['specificationsMd5']
+        request['positionsMd5'] = hashes['positionsMd5']
+        request['ordersMd5'] = hashes['ordersMd5']
         await self._client.rpc_request(account_id, request)
         return True

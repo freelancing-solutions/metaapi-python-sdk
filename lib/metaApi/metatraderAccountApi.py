@@ -12,7 +12,8 @@ class MetatraderAccountApi:
 
     def __init__(self, metatrader_account_client: MetatraderAccountClient,
                  meta_api_websocket_client: MetaApiWebsocketClient, connection_registry: ConnectionRegistryModel,
-                 expert_advisor_client: ExpertAdvisorClient, historical_market_data_client: HistoricalMarketDataClient):
+                 expert_advisor_client: ExpertAdvisorClient, historical_market_data_client: HistoricalMarketDataClient,
+                 application: str):
         """Inits a MetaTrader account API instance.
 
         Args:
@@ -21,12 +22,14 @@ class MetatraderAccountApi:
             connection_registry: MetaTrader account connection registry.
             expert_advisor_client: Expert advisor REST API client.
             historical_market_data_client: Historical market data HTTP API client.
+            application: Application name.
         """
         self._metatraderAccountClient = metatrader_account_client
         self._metaApiWebsocketClient = meta_api_websocket_client
         self._connectionRegistry = connection_registry
         self._expertAdvisorClient = expert_advisor_client
         self._historicalMarketDataClient = historical_market_data_client
+        self._application = application
 
     async def get_accounts(self, accounts_filter: AccountsFilter = None) -> List[MetatraderAccount]:
         """Retrieves MetaTrader accounts.
@@ -42,7 +45,8 @@ class MetatraderAccountApi:
             accounts = accounts['items']
         return list(map(lambda account: MetatraderAccount(account, self._metatraderAccountClient,
                                                           self._metaApiWebsocketClient, self._connectionRegistry,
-                                                          self._expertAdvisorClient, self._historicalMarketDataClient),
+                                                          self._expertAdvisorClient, self._historicalMarketDataClient,
+                                                          self._application),
                         accounts))
 
     async def get_account(self, account_id) -> MetatraderAccount:
@@ -56,7 +60,8 @@ class MetatraderAccountApi:
         """
         account = await self._metatraderAccountClient.get_account(account_id)
         return MetatraderAccount(account, self._metatraderAccountClient, self._metaApiWebsocketClient,
-                                 self._connectionRegistry, self._expertAdvisorClient, self._historicalMarketDataClient)
+                                 self._connectionRegistry, self._expertAdvisorClient, self._historicalMarketDataClient,
+                                 self._application)
 
     async def get_account_by_token(self) -> MetatraderAccount:
         """Retrieves a MetaTrader account by token.
@@ -66,7 +71,8 @@ class MetatraderAccountApi:
         """
         account = await self._metatraderAccountClient.get_account_by_token()
         return MetatraderAccount(account, self._metatraderAccountClient, self._metaApiWebsocketClient,
-                                 self._connectionRegistry, self._expertAdvisorClient, self._historicalMarketDataClient)
+                                 self._connectionRegistry, self._expertAdvisorClient, self._historicalMarketDataClient,
+                                 self._application)
 
     async def create_account(self, account: NewMetatraderAccountDto) -> MetatraderAccount:
         """Creates a MetaTrader account.

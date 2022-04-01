@@ -1,6 +1,7 @@
 from ..clients.metaApi.synchronizationListener import SynchronizationListener
 from .models import MetatraderAccountInformation, MetatraderPosition, MetatraderOrder, \
     MetatraderSymbolSpecification, MetatraderSymbolPrice, G1Encoder, G2Encoder
+from ..clients.metaApi.clientApi_client import ClientApiClient
 import functools
 from typing import List, Dict, Optional, Union
 from typing_extensions import TypedDict
@@ -8,6 +9,8 @@ import asyncio
 from datetime import datetime
 from hashlib import md5
 from copy import copy, deepcopy
+from ..logger import LoggerManager
+from operator import itemgetter
 import json
 
 
@@ -25,6 +28,10 @@ class TerminalStateDict(TypedDict, total=False):
     ordersInitialized: bool
     positionsInitialized: bool
     lastUpdateTime: float
+    lastSyncUpdateTime: float
+    positionsHash: Union[str, None]
+    ordersHash: Union[str, None]
+    specificationsHash: Union[str, None]
 
 
 class TerminalStateHashes(TypedDict):
@@ -36,9 +43,16 @@ class TerminalStateHashes(TypedDict):
 class TerminalState(SynchronizationListener):
     """Responsible for storing a local copy of remote terminal state."""
 
-    def __init__(self):
-        """Inits the instance of terminal state class"""
+    def __init__(self, account_id: str, client_api_client: ClientApiClient):
+        """Inits the instance of terminal state class
+
+        Args:
+            account_id: Account id.
+            client_api_client: Client API client.
+        """
         super().__init__()
+        self._accountId = account_id
+        self._clientApiClient = client_api_client
         self._stateByInstanceIndex = {}
         self._waitForPriceResolves = {}
         self._combinedState = {
@@ -53,6 +67,7 @@ class TerminalState(SynchronizationListener):
             'positionsInitialized': False,
             'lastUpdateTime': 0,
         }
+        self._logger = LoggerManager.get_logger('TerminalState')
 
     @property
     def connected(self) -> bool:
@@ -108,7 +123,7 @@ class TerminalState(SynchronizationListener):
         """
         return list(self._combinedState['specificationsBySymbol'].values())
 
-    def get_hashes(self, account_type: str, instance_index: str) -> TerminalStateHashes:
+    async def get_hashes(self, account_type: str, instance_index: str) -> TerminalStateHashes:
         """Returns hashes of terminal state data for incremental synchronization.
 
         Args:
@@ -116,82 +131,108 @@ class TerminalState(SynchronizationListener):
             instance_index: Index of instance state to get hashes of.
 
         Returns:
-            Hashes of terminal state data.
+            A coroutine that resolves with hashes of terminal state data.
         """
-        state = self._get_state(instance_index)
+        requested_state = self._get_state(instance_index)
+        hash_fields = await self._clientApiClient.get_hashing_ignored_field_lists()
+        # get latest instance number state
+        instance_number = instance_index.split(':')[0]
+        instance_number_states = list(filter(
+            lambda state_instance_index: state_instance_index.startswith(f'{instance_number}:'),
+            self._stateByInstanceIndex.keys()))
+        instance_number_states = sorted(
+            instance_number_states,
+            key=lambda instance_key: itemgetter('lastSyncUpdateTime')(self._stateByInstanceIndex[instance_key]))
+        state = self._get_state(instance_number_states[0])
+
         specifications = copy(list(state['specificationsBySymbol'].values()))
         for i in range(len(specifications)):
             specifications[i] = copy(specifications[i])
         specifications = sorted(specifications, key=lambda s: s['symbol'])
-        if account_type == 'cloud-g1':
-            specification: dict
-            for specification in specifications:
-                del specification['description']
+        specification: dict
+        for specification in specifications:
+            if account_type == 'cloud-g1':
+                for field in hash_fields['g1']['specification']:
+                    if field in specification:
+                        del specification[field]
                 for key in list(specification.keys()):
                     if isinstance(specification[key], int) and not isinstance(specification[key], bool) and \
                             key != 'digits':
                         specification[key] = float(specification[key])
-        specifications_hash = self._get_hash(specifications, account_type) if len(specifications) else None
+            elif account_type == 'cloud-g2':
+                for field in hash_fields['g2']['specification']:
+                    if field in specification:
+                        del specification[field]
+
+        specifications_hash = state['specificationsHash'] or self._get_hash(specifications, account_type) if \
+            len(specifications) else None
+        state['specificationsHash'] = specifications_hash
 
         positions = copy(state['positions'])
         for i in range(len(positions)):
             positions[i] = copy(positions[i])
-        positions = sorted(positions, key=lambda p: p['id'])
+        if account_type == 'cloud-g1':
+            positions = sorted(positions, key=lambda p: int(p['id']))
+        elif account_type == 'cloud-g2':
+            positions = sorted(positions, key=lambda p: p['id'])
+
         position: dict
         for position in positions:
-            del position['profit']
-            if 'unrealizedProfit' in position:
-                del position['unrealizedProfit']
-            if 'realizedProfit' in position:
-                del position['realizedProfit']
-            if 'currentPrice' in position:
-                del position['currentPrice']
-            if 'currentTickValue' in position:
-                del position['currentTickValue']
-            if 'updateSequenceNumber' in position:
-                del position['updateSequenceNumber']
-            if 'accountCurrencyExchangeRate' in position:
-                del position['accountCurrencyExchangeRate']
-            if 'comment' in position:
-                del position['comment']
-            if 'brokerComment' in position:
-                del position['brokerComment']
-            if 'clientId' in position:
-                del position['clientId']
             if account_type == 'cloud-g1':
-                del position['time']
-                del position['updateTime']
+                for field in hash_fields['g1']['position']:
+                    if field in position:
+                        del position[field]
                 for key in list(position.keys()):
                     if isinstance(position[key], int) and not isinstance(position[key], bool) and \
                             key != 'magic':
                         position[key] = float(position[key])
-        positions_hash = self._get_hash(positions, account_type) if state['positionsInitialized'] \
-            else None
+            elif account_type == 'cloud-g2':
+                for field in hash_fields['g2']['position']:
+                    if field in position:
+                        del position[field]
+
+        positions_hash = (state['positionsHash'] or self._get_hash(positions, account_type)) if \
+            state['positionsInitialized'] else None
+        state['positionsHash'] = positions_hash
 
         orders = copy(state['orders'])
         for i in range(len(orders)):
             orders[i] = copy(orders[i])
-        orders = sorted(orders, key=lambda p: p['id'])
+        if account_type == 'cloud-g1':
+            orders = sorted(orders, key=lambda p: int(p['id']))
+        elif account_type == 'cloud-g2':
+            orders = sorted(orders, key=lambda p: p['id'])
+
         order: dict
         for order in orders:
-            del order['currentPrice']
-            if 'updateSequenceNumber' in order:
-                del order['updateSequenceNumber']
-            if 'accountCurrencyExchangeRate' in order:
-                del order['accountCurrencyExchangeRate']
-            if 'comment' in order:
-                del order['comment']
-            if 'brokerComment' in order:
-                del order['brokerComment']
-            if 'clientId' in order:
-                del order['clientId']
             if account_type == 'cloud-g1':
-                del order['time']
+                for field in hash_fields['g1']['order']:
+                    if field in order:
+                        del order[field]
                 for key in list(order.keys()):
                     if isinstance(order[key], int) and not isinstance(order[key], bool) and \
                             key != 'magic':
                         order[key] = float(order[key])
-        orders_hash = self._get_hash(orders, account_type) if state['ordersInitialized'] else None
+            elif account_type == 'cloud-g2':
+                for field in hash_fields['g2']['order']:
+                    if field in order:
+                        del order[field]
+
+        orders_hash = (state['ordersHash'] or self._get_hash(orders, account_type)) if \
+            state['ordersInitialized'] else None
+        state['ordersHash'] = orders_hash
+
+        if requested_state != state:
+            requested_state['specificationsBySymbol'] = copy(state['specificationsBySymbol'])
+            requested_state['specificationsHash'] = specifications_hash
+            requested_state['positions'] = copy(state['positions']) or []
+            for i in range(len(requested_state['positions'])):
+                requested_state['positions'][i] = copy(requested_state['positions'][i])
+            requested_state['positionsHash'] = positions_hash
+            requested_state['orders'] = copy(state['orders']) or []
+            for i in range(len(requested_state['orders'])):
+                requested_state['orders'][i] = copy(requested_state['orders'][i])
+            requested_state['ordersHash'] = orders_hash
 
         return {
             'specificationsMd5': specifications_hash,
@@ -280,7 +321,8 @@ class TerminalState(SynchronizationListener):
         self._get_state(instance_index)['connectedToBroker'] = connected
 
     async def on_synchronization_started(self, instance_index: str, specifications_updated: bool = True,
-                                         positions_updated: bool = True, orders_updated: bool = True):
+                                         positions_updated: bool = True, orders_updated: bool = True,
+                                         synchronization_id: str = None):
         """Invoked when MetaTrader terminal state synchronization is started.
 
         Args:
@@ -288,23 +330,47 @@ class TerminalState(SynchronizationListener):
             specifications_updated: Whether specifications are going to be updated during synchronization.
             positions_updated: Whether positions are going to be updated during synchronization.
             orders_updated: Whether orders are going to be updated during synchronization.
+            synchronization_id: Synchronization id.
 
         Returns:
             A coroutine which resolves when the asynchronous event is processed.
         """
+        unsynchronized_states = list(filter(
+            lambda state_index: not self._stateByInstanceIndex[state_index]['ordersInitialized'],
+            self._get_state_indices_of_same_instance_number(instance_index)))
+        unsynchronized_states = sorted(unsynchronized_states,
+                                       key=lambda key: itemgetter('lastSyncUpdateTime')(
+                                           self._stateByInstanceIndex[key]),
+                                       reverse=True)
+        for state_index in unsynchronized_states[1:]:
+            if state_index in self._stateByInstanceIndex:
+                del self._stateByInstanceIndex[state_index]
+
         state = self._get_state(instance_index)
+        state['lastSyncUpdateTime'] = datetime.now().timestamp()
         state['accountInformation'] = None
         state['pricesBySymbol'] = {}
         if positions_updated:
             state['positions'] = []
             state['removedPositions'] = {}
             state['positionsInitialized'] = False
+            state['positionsHash'] = None
         if orders_updated:
             state['orders'] = []
             state['completedOrders'] = {}
             state['ordersInitialized'] = False
+            state['ordersHash'] = None
         if specifications_updated:
+            self._logger.debug(f'{self._accountId}:{instance_index}:{synchronization_id}: cleared specifications ' +
+                               'on synchronization start')
             state['specificationsBySymbol'] = {}
+            state['specificationsHash'] = None
+        else:
+            self._logger.debug(
+                f'{self._accountId}:${instance_index}:${synchronization_id}: no need to clear ' +
+                'specifications on synchronization start, '
+                f'{len(state["specificationsBySymbol"].keys()) if state["specificationsBySymbol"] else 0} ' +
+                'specifications reused')
 
     async def on_account_information_updated(self, instance_index: str,
                                              account_information: MetatraderAccountInformation):
@@ -318,8 +384,10 @@ class TerminalState(SynchronizationListener):
             A coroutine which resolves when the asynchronous event is processed.
         """
         state = self._get_state(instance_index)
+        self._refresh_state_update_time(instance_index)
         state['accountInformation'] = account_information
-        self._combinedState['accountInformation'] = account_information
+        if account_information:
+            self._combinedState['accountInformation'] = copy(account_information)
 
     async def on_positions_replaced(self, instance_index: str, positions: List[MetatraderPosition]):
         """Invoked when the positions are replaced as a result of initial terminal state synchronization.
@@ -332,7 +400,9 @@ class TerminalState(SynchronizationListener):
             A coroutine which resolves when the asynchronous event is processed.
         """
         state = self._get_state(instance_index)
+        self._refresh_state_update_time(instance_index)
         state['positions'] = positions
+        state['positionsHash'] = None
 
     async def on_positions_synchronized(self, instance_index: str, synchronization_id: str):
         """Invoked when position synchronization finished to indicate progress of an initial terminal state
@@ -357,6 +427,8 @@ class TerminalState(SynchronizationListener):
             A coroutine which resolves when the asynchronous event is processed.
         """
         instance_state = self._get_state(instance_index)
+        self._refresh_state_update_time(instance_index)
+        instance_state['positionsHash'] = None
 
         def update_position(state):
             is_exists = False
@@ -381,6 +453,8 @@ class TerminalState(SynchronizationListener):
             A coroutine which resolves when the asynchronous event is processed.
         """
         instance_state = self._get_state(instance_index)
+        self._refresh_state_update_time(instance_index)
+        instance_state['positionsHash'] = None
 
         def remove_position(state):
             position = next((p for p in state['positions'] if p['id'] == position_id), None)
@@ -407,6 +481,8 @@ class TerminalState(SynchronizationListener):
             A coroutine which resolves when the asynchronous event is processed.
         """
         state = self._get_state(instance_index)
+        self._refresh_state_update_time(instance_index)
+        state['ordersHash'] = None
         state['orders'] = orders
 
     async def on_pending_orders_synchronized(self, instance_index: str, synchronization_id: str):
@@ -424,15 +500,31 @@ class TerminalState(SynchronizationListener):
         state['completedOrders'] = {}
         state['positionsInitialized'] = True
         state['ordersInitialized'] = True
-        self._combinedState['accountInformation'] = state['accountInformation']
-        self._combinedState['positions'] = state['positions']
-        self._combinedState['orders'] = state['orders']
-        self._combinedState['specificationsBySymbol'] = state['specificationsBySymbol']
+        self._combinedState['accountInformation'] = copy(state['accountInformation']) if state['accountInformation'] \
+            else None
+
+        self._combinedState['positions'] = state['positions'] or []
+        for i in range(len(self._combinedState['positions'])):
+            self._combinedState['positions'][i] = copy(self._combinedState['positions'][i])
+
+        self._combinedState['orders'] = state['orders'] or []
+        for i in range(len(self._combinedState['orders'])):
+            self._combinedState['orders'][i] = copy(self._combinedState['orders'][i])
+
+        self._combinedState['specificationsBySymbol'] = copy(state['specificationsBySymbol'])
+
+        self._logger.debug(f'{self._accountId}:${instance_index}:${synchronization_id}: assigned specifications to ' +
+                           f'combined state from {instance_index}, ' +
+                           f'{len(state["specificationsBySymbol"].keys()) if state["specificationsBySymbol"] else 0}' +
+                           'specifications assigned')
         self._combinedState['pricesBySymbol'] = state['pricesBySymbol']
         self._combinedState['positionsInitialized'] = True
         self._combinedState['ordersInitialized'] = True
         self._combinedState['completedOrders'] = {}
         self._combinedState['removedPositions'] = {}
+        for state_index in self._get_state_indices_of_same_instance_number(instance_index):
+            if not self._stateByInstanceIndex[state_index]['connected']:
+                del self._stateByInstanceIndex[state_index]
 
     async def on_pending_order_updated(self, instance_index: str, order: MetatraderOrder):
         """Invoked when MetaTrader pending order is updated.
@@ -445,6 +537,8 @@ class TerminalState(SynchronizationListener):
             A coroutine which resolves when the asynchronous event is processed.
         """
         instance_state = self._get_state(instance_index)
+        self._refresh_state_update_time(instance_index)
+        instance_state['ordersHash'] = None
 
         def update_pending_order(state):
             is_exists = False
@@ -470,6 +564,8 @@ class TerminalState(SynchronizationListener):
             A coroutine which resolves when the asynchronous event is processed.
         """
         instance_state = self._get_state(instance_index)
+        self._refresh_state_update_time(instance_index)
+        instance_state['ordersHash'] = None
 
         def complete_order(state):
             order = next((p for p in state['orders'] if p['id'] == order_id), None)
@@ -498,6 +594,8 @@ class TerminalState(SynchronizationListener):
             A coroutine which resolves when the asynchronous event is processed.
         """
         instance_state = self._get_state(instance_index)
+        self._refresh_state_update_time(instance_index)
+        instance_state['specificationsHash'] = None
 
         def update_specifications(state):
             for specification in specifications:
@@ -508,6 +606,11 @@ class TerminalState(SynchronizationListener):
 
         update_specifications(instance_state)
         update_specifications(self._combinedState)
+        self._logger.debug(
+            f'{self._accountId}:{instance_index}: updated {len(specifications)} specifications, ' +
+            f'removed {len(removed_symbols)} specifications. There are ' +
+            f'{len(instance_state["specificationsBySymbol"]) if instance_state["specificationsBySymbol"] else 0} ' +
+            'specifications after update')
 
     async def on_symbol_prices_updated(self, instance_index: str, prices: List[MetatraderSymbolPrice],
                                        equity: float = None, margin: float = None, free_margin: float = None,
@@ -527,12 +630,23 @@ class TerminalState(SynchronizationListener):
             A coroutine which resolves when the asynchronous event is processed.
         """
         instance_state = self._get_state(instance_index)
+        self._refresh_state_update_time(instance_index)
 
         def update_symbol_prices(state):
             state['lastUpdateTime'] = max(map(lambda p: p['time'].timestamp(), prices)) if len(prices) else 0
             prices_initialized = False
+            price_updated = False
             if prices:
                 for price in prices:
+                    if price['symbol'] in state['pricesBySymbol']:
+                        current_price = state['pricesBySymbol'][price['symbol']]
+                        if current_price['time'].timestamp() > price['time'].timestamp():
+                            continue
+                        else:
+                            price_updated = True
+                    else:
+                        price_updated = True
+
                     state['pricesBySymbol'][price['symbol']] = price
                     positions = list(filter(lambda p: p['symbol'] == price['symbol'], state['positions']))
                     other_positions = list(filter(lambda p: p['symbol'] != price['symbol'], state['positions']))
@@ -561,7 +675,7 @@ class TerminalState(SynchronizationListener):
                             if not resolve.done():
                                 resolve.set_result(True)
                         del self._waitForPriceResolves[price['symbol']]
-            if state['accountInformation']:
+            if price_updated and state['accountInformation']:
                 if state['positionsInitialized'] and prices_initialized:
                     if state['accountInformation']['platform'] == 'mt5':
                         state['accountInformation']['equity'] = equity if equity is not None else \
@@ -606,7 +720,28 @@ class TerminalState(SynchronizationListener):
             A coroutine which resolves when the asynchronous event is processed.
         """
         if instance_index in self._stateByInstanceIndex:
-            del self._stateByInstanceIndex[instance_index]
+            for state_index in self._get_state_indices_of_same_instance_number(instance_index):
+                instance_state = self._stateByInstanceIndex[state_index]
+                if not self._stateByInstanceIndex[instance_index]['ordersInitialized'] and \
+                        self._stateByInstanceIndex[instance_index]['lastSyncUpdateTime'] <= \
+                        instance_state['lastSyncUpdateTime']:
+                    del self._stateByInstanceIndex[instance_index]
+                    break
+
+                if instance_state['connected'] and instance_state['ordersInitialized']:
+                    del self._stateByInstanceIndex[instance_index]
+                    break
+
+    def _refresh_state_update_time(self, instance_index: str):
+        if instance_index in self._stateByInstanceIndex:
+            state = self._stateByInstanceIndex[instance_index]
+            if state['ordersInitialized']:
+                state['lastSyncUpdateTime'] = datetime.now().timestamp()
+
+    def _get_state_indices_of_same_instance_number(self, instance_index: str):
+        instance_number = instance_index.split(':')[0]
+        return list(filter(lambda state_instance_index: state_instance_index.startswith(f'{instance_number}:') and
+                           instance_index != state_instance_index, self._stateByInstanceIndex.keys()))
 
     def _update_position_profits(self, position: Dict, price: Dict):
         specification = self.specification(position['symbol'])
@@ -637,6 +772,7 @@ class TerminalState(SynchronizationListener):
 
     def _get_state(self, instance_index: str) -> TerminalStateDict:
         if str(instance_index) not in self._stateByInstanceIndex:
+            self._logger.debug(f'{self._accountId}:{instance_index}: constructed new state')
             self._stateByInstanceIndex[str(instance_index)] = self._construct_terminal_state(instance_index)
         return self._stateByInstanceIndex[str(instance_index)]
 
@@ -655,6 +791,10 @@ class TerminalState(SynchronizationListener):
             'ordersInitialized': False,
             'positionsInitialized': False,
             'lastUpdateTime': 0,
+            'lastSyncUpdateTime': 0,
+            'positionsHash': None,
+            'ordersHash': None,
+            'specificationsHash': None
         }
 
     def _get_hash(self, obj, account_type: str):
