@@ -1,7 +1,8 @@
 from ..clients.metaApi.metaApiWebsocket_client import MetaApiWebsocketClient
 from .metatraderAccountModel import MetatraderAccountModel
 from .models import MetatraderSymbolSpecification, MetatraderAccountInformation, MetatraderPosition, MetatraderOrder, \
-    MetatraderHistoryOrders, MetatraderDeals, MetatraderSymbolPrice, MetatraderCandle, MetatraderTick, MetatraderBook
+    MetatraderHistoryOrders, MetatraderDeals, MetatraderSymbolPrice, MetatraderCandle, MetatraderTick, MetatraderBook,\
+    ServerTime
 from datetime import datetime
 from typing import Coroutine, List
 import asyncio
@@ -272,6 +273,16 @@ class RpcMetaApiConnection(MetaApiConnection):
         """
         self._check_is_connection_active()
         return self._websocketClient.get_book(self._account.id, symbol, keep_subscription)
+
+    def get_server_time(self) -> 'Coroutine[asyncio.Future[ServerTime]]':
+        """Returns server time for a specified MetaTrader account (see
+        https://metaapi.cloud/docs/client/websocket/api/readTradingTerminalState/readServerTime/).
+
+        Returns:
+            A coroutine resolving with server time.
+        """
+        self._check_is_connection_active()
+        return self._websocketClient.get_server_time(self._account.id)
 
     async def wait_synchronized(self, timeout_in_seconds: float = 300):
         """Waits until synchronization to RPC application is completed.

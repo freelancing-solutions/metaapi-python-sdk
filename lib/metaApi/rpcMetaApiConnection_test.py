@@ -870,3 +870,16 @@ class TestRpcMetaApiConnection:
         book['time'] = date(book['time'])
         assert actual == book
         client.get_book.assert_called_with('accountId', 'AUDNZD', True)
+
+    @pytest.mark.asyncio
+    async def test_retrieve_latest_server_time(self):
+        """Should retrieve latest server time."""
+        await api.connect()
+        server_time = {
+            'time': date('2022-01-01T00:00:00.000Z'),
+            'brokerTime': '2022-01-01 02:00:00.000Z'
+        }
+        client.get_server_time = AsyncMock(return_value=server_time)
+        actual = await api.get_server_time()
+        assert actual == server_time
+        client.get_server_time.assert_called_with('accountId')

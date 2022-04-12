@@ -1,3 +1,10 @@
+19.2.0
+  - added userId field to metatrader account
+  - added connections field to MetatraderAccount model to track CopyFactory / risk management API connection status in addition to MetaApi connection status
+  - added RPC method to retrieve current server time and a terminal state method to retrieve latest quote time
+  - added riskManagementApiEnabled field to MetatraderAccount model
+  - improved connection logging
+
 19.0.0
   - breaking change: refactored demo account generator API to allow creating demo accounts without need to specify a provisioning profile, using server name only
   - improved stability of subscribeToMarketData, unsubscribeFromMarketData, trade requests

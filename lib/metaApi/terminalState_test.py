@@ -153,23 +153,28 @@ class TestTerminalState:
     async def test_return_price(self):
         """Should return price."""
         assert not state.price('EURUSD')
-        await state.on_symbol_prices_updated('1:ps-mpa-1', [{'time': datetime.fromtimestamp(1000000),
-                                             'symbol': 'EURUSD', 'bid': 1, 'ask': 1.1}])
-        await state.on_symbol_prices_updated('1:ps-mpa-1', [{'time': datetime.fromtimestamp(1000000),
-                                                             'symbol': 'GBPUSD'}])
-        await state.on_symbol_prices_updated('1:ps-mpa-1', [{'time': datetime.fromtimestamp(1000000),
-                                             'symbol': 'EURUSD', 'bid': 1, 'ask': 1.2}])
-        assert state.price('EURUSD') == {'time': datetime.fromtimestamp(1000000),
-                                         'symbol': 'EURUSD', 'bid': 1, 'ask': 1.2}
+        await state.on_symbol_prices_updated('1:ps-mpa-1', [{
+            'time': date('2022-01-01T00:00:00.000Z'), 'brokerTime': '2022-01-01 02:00:00.000',
+            'symbol': 'EURUSD', 'bid': 1, 'ask': 1.1}])
+        await state.on_symbol_prices_updated('1:ps-mpa-1', [{
+            'time': date('2022-01-01T00:00:01.000Z'), 'brokerTime': '2022-01-01 02:00:01.000', 'symbol': 'GBPUSD'}])
+        await state.on_symbol_prices_updated('1:ps-mpa-1', [{
+            'time': date('2022-01-01T00:00:02.000Z'), 'brokerTime': '2022-01-01 02:00:02.000',
+            'symbol': 'EURUSD', 'bid': 1, 'ask': 1.2}])
+        assert state.price('EURUSD') == {'time': date('2022-01-01T00:00:02.000Z'), 'symbol': 'EURUSD',
+                                         'brokerTime': '2022-01-01 02:00:02.000', 'bid': 1, 'ask': 1.2}
+        assert state.last_quote_time == {'time': date('2022-01-01T00:00:02.000Z'),
+                                         'brokerTime': '2022-01-01 02:00:02.000'}
 
     @pytest.mark.asyncio
     async def test_wait_for_price(self):
         """Should wait for price."""
         assert state.price('EURUSD') is None
         promise = asyncio.create_task(state.wait_for_price('EURUSD'))
-        await state.on_symbol_prices_updated('1:ps-mpa-1', [{'time': datetime.fromtimestamp(1000000),
+        await state.on_symbol_prices_updated('1:ps-mpa-1', [{'time': date('2022-01-01 02:00:00.000'),
+                                                             'brokerTime': '2022-01-01 02:00:00.000',
                                              'symbol': 'EURUSD', 'bid': 1, 'ask': 1.1}])
-        assert (await promise) == {'time': datetime.fromtimestamp(1000000),
+        assert (await promise) == {'time': date('2022-01-01 02:00:00.000'), 'brokerTime': '2022-01-01 02:00:00.000',
                                    'symbol': 'EURUSD', 'bid': 1, 'ask': 1.1}
 
     @pytest.mark.asyncio
@@ -204,6 +209,7 @@ class TestTerminalState:
         await state.on_symbol_prices_updated('1:ps-mpa-1', [
           {
             'time': datetime.now(),
+            'brokerTime': '2022-01-01 02:00:00.000',
             'symbol': 'EURUSD',
             'profitTickValue': 0.5,
             'lossTickValue': 0.5,
@@ -212,6 +218,7 @@ class TestTerminalState:
           },
           {
             'time': datetime.now(),
+            'brokerTime': '2022-01-01 02:00:00.000',
             'symbol': 'AUDUSD',
             'profitTickValue': 0.5,
             'lossTickValue': 0.5,
@@ -229,7 +236,8 @@ class TestTerminalState:
         """Should update margin fields on price update."""
         await state.on_account_information_updated('1:ps-mpa-1', {'equity': 1000, 'balance': 800})
         await state.on_symbol_prices_updated(
-            '1:ps-mpa-1', [{'time': datetime.now(), 'symbol': 'EURUSD', 'bid': 1, 'ask': 1.1}], 100, 200, 400, 40000)
+            '1:ps-mpa-1', [{'time': datetime.now(), 'brokerTime': '2022-01-01 02:00:00.000',
+                            'symbol': 'EURUSD', 'bid': 1, 'ask': 1.1}], 100, 200, 400, 40000)
         assert state.account_information['equity'] == 100
         assert state.account_information['margin'] == 200
         assert state.account_information['freeMargin'] == 400
@@ -254,6 +262,7 @@ class TestTerminalState:
         await state.on_symbol_specifications_updated('1:ps-mpa-1', [{'symbol': 'EURUSD', 'tickSize': 0.01}], [])
         await state.on_symbol_prices_updated('1:ps-mpa-1', [{
           'time': datetime.now(),
+          'brokerTime': '2022-01-01 02:00:00.000',
           'symbol': 'EURUSD',
           'profitTickValue': 0.5,
           'lossTickValue': 0.5,
@@ -267,8 +276,10 @@ class TestTerminalState:
         """Should remove state on closed stream."""
         assert not state.price('EURUSD')
         await state.on_symbol_prices_updated('1:ps-mpa-1', [{'time': datetime.fromtimestamp(1000000),
+                                                             'brokerTime': '2022-01-01 02:00:00.000',
                                                              'symbol': 'EURUSD', 'bid': 1, 'ask': 1.1}])
         assert state.price('EURUSD') == {'time': datetime.fromtimestamp(1000000),
+                                         'brokerTime': '2022-01-01 02:00:00.000',
                                          'symbol': 'EURUSD', 'bid': 1, 'ask': 1.1}
         await state.on_disconnected('1:ps-mpa-1')
 

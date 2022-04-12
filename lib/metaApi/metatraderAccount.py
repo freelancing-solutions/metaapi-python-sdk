@@ -1,5 +1,5 @@
 from ..clients.metaApi.metatraderAccount_client import MetatraderAccountClient, MetatraderAccountDto, \
-    MetatraderAccountUpdateDto, Extension
+    MetatraderAccountUpdateDto, AccountConnection
 from ..clients.metaApi.metaApiWebsocket_client import MetaApiWebsocketClient
 from ..clients.timeoutException import TimeoutException
 from .streamingMetaApiConnection import StreamingMetaApiConnection
@@ -243,6 +243,33 @@ class MetatraderAccount(MetatraderAccountModel):
             Account region value.
         """
         return self._data['region']
+
+    @property
+    def connections(self) -> List[AccountConnection]:
+        """Returns active account connections.
+
+        Returns:
+            Active account connections.
+        """
+        return self._data['connections']
+
+    @property
+    def risk_management_api_enabled(self) -> bool:
+        """Returns flag indicating that risk management API is enabled on account. Default is false.
+
+        Returns:
+            Flag indicating that risk management API is enabled on account.
+        """
+        return self._data['riskManagementApiEnabled']
+
+    @property
+    def user_id(self) -> str:
+        """Returns user id.
+
+        Returns:
+            User id.
+        """
+        return self._data['userId']
 
     async def reload(self):
         """Reloads MetaTrader account from API.

@@ -171,7 +171,6 @@ class FakeServer:
         async def connect(sid, environ):
             self.client_ids.append(environ['aiohttp.request'].headers['Client-Id'])
             connections.append(sid)
-            await sio.emit('response', {'type': 'response'})
 
         self.enable_sync()
         sio.attach(self.app, socketio_path='ws')

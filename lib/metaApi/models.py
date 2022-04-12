@@ -924,3 +924,23 @@ class StopOptions(TypedDict):
     RELATIVE_* means that the value field value contains relative stop expressed either in price, points, pips, account
     currency or balance percentage. Default is ABSOLUTE_PRICE. Allowed values are ABSOLUTE_PRICE, RELATIVE_PRICE,
     RELATIVE_POINTS, RELATIVE_PIPS, RELATIVE_CURRENCY, RELATIVE_BALANCE_PERCENTAGE."""
+
+
+class ServerTime(TypedDict):
+    """Current server time (see https://metaapi.cloud/docs/client/models/serverTime/)."""
+    time: datetime
+    """Current server time."""
+    brokerTime: str
+    """Current broker time, in broker timezone, YYYY-MM-DD HH:mm:ss.SSS format."""
+    lastQuoteTime: Optional[datetime]
+    """Last quote time."""
+    lastQuoteBrokerTime: Optional[str]
+    """Last quote time, in broker timezone, YYYY-MM-DD HH:mm:ss.SSS format."""
+
+
+class QuoteTime(TypedDict):
+    """Quote time."""
+    time: datetime
+    """Quote time."""
+    brokerTime: str
+    """Quote time in broker timezone, YYYY-MM-DD HH:mm:ss.SSS format."""
