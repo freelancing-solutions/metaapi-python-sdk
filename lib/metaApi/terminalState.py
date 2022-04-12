@@ -1,6 +1,6 @@
 from ..clients.metaApi.synchronizationListener import SynchronizationListener
 from .models import MetatraderAccountInformation, MetatraderPosition, MetatraderOrder, \
-    MetatraderSymbolSpecification, MetatraderSymbolPrice, G1Encoder, G2Encoder
+    MetatraderSymbolSpecification, MetatraderSymbolPrice, G1Encoder, G2Encoder, QuoteTime
 from ..clients.metaApi.clientApi_client import ClientApiClient
 import functools
 from typing import List, Dict, Optional, Union
@@ -32,6 +32,8 @@ class TerminalStateDict(TypedDict, total=False):
     positionsHash: Union[str, None]
     ordersHash: Union[str, None]
     specificationsHash: Union[str, None]
+    lastQuoteTime: Union[datetime, None]
+    lastQuoteBrokerTime: Union[str, None]
 
 
 class TerminalStateHashes(TypedDict):
@@ -66,6 +68,8 @@ class TerminalState(SynchronizationListener):
             'ordersInitialized': False,
             'positionsInitialized': False,
             'lastUpdateTime': 0,
+            'lastQuoteTime': None,
+            'lastQuoteBrokerTime': None
         }
         self._logger = LoggerManager.get_logger('TerminalState')
 
@@ -263,6 +267,21 @@ class TerminalState(SynchronizationListener):
         """
         return self._combinedState['pricesBySymbol'][symbol] if \
             (symbol in self._combinedState['pricesBySymbol']) else None
+
+    @property
+    def last_quote_time(self):
+        """Returns time of the last received quote.
+
+        Returns:
+            Time of the last received quote.
+        """
+        if self._combinedState['lastQuoteTime']:
+            return {
+                'time': self._combinedState['lastQuoteTime'],
+                'brokerTime': self._combinedState['lastQuoteBrokerTime']
+            }
+        else:
+            return None
 
     async def wait_for_price(self, symbol: str, timeout_in_seconds: float = 30):
         """Waits for price to be received.
@@ -647,6 +666,10 @@ class TerminalState(SynchronizationListener):
                     else:
                         price_updated = True
 
+                    if not state['lastQuoteTime'] or state['lastQuoteTime'].timestamp() < price['time'].timestamp():
+                        state['lastQuoteTime'] = price['time']
+                        state['lastQuoteBrokerTime'] = price['brokerTime']
+
                     state['pricesBySymbol'][price['symbol']] = price
                     positions = list(filter(lambda p: p['symbol'] == price['symbol'], state['positions']))
                     other_positions = list(filter(lambda p: p['symbol'] != price['symbol'], state['positions']))
@@ -794,7 +817,9 @@ class TerminalState(SynchronizationListener):
             'lastSyncUpdateTime': 0,
             'positionsHash': None,
             'ordersHash': None,
-            'specificationsHash': None
+            'specificationsHash': None,
+            'lastQuoteTime': None,
+            'lastQuoteBrokerTime': None
         }
 
     def _get_hash(self, obj, account_type: str):

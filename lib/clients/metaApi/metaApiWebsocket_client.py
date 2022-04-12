@@ -10,7 +10,7 @@ from .reconnectListener import ReconnectListener
 from ...metaApi.models import MetatraderHistoryOrders, MetatraderDeals, date, random_id, \
     MetatraderSymbolSpecification, MetatraderTradeResponse, MetatraderSymbolPrice, MetatraderAccountInformation, \
     MetatraderPosition, MetatraderOrder, format_date, MarketDataSubscription, MarketDataUnsubscription, \
-    MetatraderCandle, MetatraderTick, MetatraderBook, string_format_error, format_error, promise_any
+    MetatraderCandle, MetatraderTick, MetatraderBook, ServerTime, string_format_error, format_error, promise_any
 from .latencyListener import LatencyListener
 from .packetOrderer import PacketOrderer
 from .packetLogger import PacketLogger
@@ -403,7 +403,9 @@ class MetaApiWebsocketClient:
                 }
             self._logger.debug(
                 f"{data['accountId']}:{data['instanceIndex'] if 'instanceIndex' in data else 0}: "
-                f"Sync packet received: " + json.dumps(packet_info))
+                f"Sync packet received: " + json.dumps(packet_info) + ', active listeners: ' +
+                str(len(self._synchronizationListeners[data['accountId']]) if data['accountId'] in
+                    self._synchronizationListeners else 0))
             active_synchronization_ids = instance['synchronizationThrottler'].active_synchronization_ids
             if ('synchronizationId' not in data) or (data['synchronizationId'] in active_synchronization_ids):
                 if self._packetLogger:
@@ -411,6 +413,8 @@ class MetaApiWebsocketClient:
                 self._convert_iso_time_to_date(data)
                 if not self._subscriptionManager.is_subscription_active(data['accountId']) and \
                         data['type'] != 'disconnected':
+                    self._logger.debug(f'{data["accountId"]}: Packet arrived to inactive connection, attempting '
+                                       f'unsubscribe')
                     if self._throttle_request('unsubscribe', data['accountId'], instance_number,
                                               self._unsubscribeThrottlingInterval):
                         async def unsubscribe():
@@ -965,6 +969,19 @@ class MetaApiWebsocketClient:
         except (NotFoundException, TimeoutException):
             pass
 
+    async def get_server_time(self, account_id: str) -> ServerTime:
+        """Returns server time for a specified MetaTrader account (see
+        https://metaapi.cloud/docs/client/websocket/api/readTradingTerminalState/readServerTime/).
+
+        Args:
+            account_id: Id of the MetaTrader account to return server time for.
+
+        Returns:
+            A coroutine resolving with server time.
+        """
+        response = await self.rpc_request(account_id, {'application': 'RPC', 'type': 'getServerTime'})
+        return response['serverTime']
+
     def add_synchronization_listener(self, account_id: str, listener: SynchronizationListener):
         """Adds synchronization listener for specific account.
 
@@ -972,6 +989,7 @@ class MetaApiWebsocketClient:
             account_id: Account id.
             listener: Synchronization listener to add.
         """
+        self._logger.debug(f'{account_id}: Added synchronization listener')
         if account_id in self._synchronizationListeners:
             listeners = self._synchronizationListeners[account_id]
         else:
@@ -986,6 +1004,7 @@ class MetaApiWebsocketClient:
             account_id: Account id.
             listener: Synchronization listener to remove.
         """
+        self._logger.debug(f'{account_id}: Removed synchronization listener')
         listeners = self._synchronizationListeners[account_id]
 
         if not listeners:

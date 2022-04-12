@@ -104,6 +104,7 @@ class StreamingMetaApiConnection(MetaApiConnection):
             A coroutine resolving when the connection is opened
         """
         if not self._opened:
+            self._logger.debug(f'{self._account.id}: Opening connection')
             self._opened = True
             try:
                 await self.initialize()
@@ -601,6 +602,7 @@ class StreamingMetaApiConnection(MetaApiConnection):
             self._refreshMarketDataSubscriptionTimeouts = {}
             self._websocketClient.remove_account_region(self.account.id)
             self._closed = True
+            self._logger.debug(f'{self._account.id}: Closed connection')
 
     @property
     def synchronized(self) -> bool:

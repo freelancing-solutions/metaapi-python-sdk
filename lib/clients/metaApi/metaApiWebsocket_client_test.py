@@ -2070,6 +2070,25 @@ class TestTerminalStateSynchronization:
         listener.on_history_order_added.assert_called_with('0:ps-mpa-1', update['historyOrders'][0])
         listener.on_deal_added.assert_called_with('0:ps-mpa-1', update['deals'][0])
 
+    @pytest.mark.asyncio
+    async def test_retrieve_server_time(self):
+        """Should retrieve server time from API."""
+        server_time = {
+            'time': '2022-01-01T00:00:00.000Z',
+            'brokerTime': '2022-01-01 02:00:00.000Z'
+        }
+
+        @sio.on('request')
+        async def on_request(sid, data):
+            if data['type'] == 'getServerTime' and data['accountId'] == 'accountId' and data['application'] == 'RPC':
+                await sio.emit('response', {'type': 'response', 'accountId': data['accountId'],
+                                            'requestId': data['requestId'], 'serverTime': server_time})
+
+        actual = await client.get_server_time('accountId')
+        server_time = deepcopy(server_time)
+        server_time['time'] = date(server_time['time'])
+        assert actual == server_time
+
 
 class TestMarketDataSynchronization:
 

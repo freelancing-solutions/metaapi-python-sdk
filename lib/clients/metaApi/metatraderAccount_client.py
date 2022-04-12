@@ -128,6 +128,17 @@ class MetatraderAccountReplica(TypedDict, total=False):
     will be used which we believe is reasonable for most cases."""
 
 
+class AccountConnection(TypedDict, total=False):
+    """Account connection."""
+    region: str
+    """Region the account is connected at."""
+    zone: str
+    """Availability zone the account is connected at."""
+    application: str
+    """Application the account is connected to, one of `MetaApi`, `CopyFactory subscriber`,
+    `CopyFactory provider`, `CopyFactory history import`, `Risk management`."""
+
+
 class MetatraderAccountDto(TypedDict, total=False):
     """MetaTrader account model"""
 
@@ -197,10 +208,12 @@ class MetatraderAccountDto(TypedDict, total=False):
     will be used which we believe is reasonable for most cases."""
     primaryReplica: Optional[bool]
     """Flag indicating that account is primary."""
-    enableEquityTracking: Optional[bool]
-    """Flag indicating that equity tracking API should be enabled on account."""
+    riskManagementApiEnabled: Optional[bool]
+    """Flag indicating that risk management API should be enabled on account. Default is false"""
     accountReplicas: Optional[List[MetatraderAccountReplica]]
     """MetaTrader account replicas."""
+    connections: List[AccountConnection]
+    """Active account connections."""
 
 
 class NewMetatraderAccountDto(TypedDict, total=False):
