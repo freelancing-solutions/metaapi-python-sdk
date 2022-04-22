@@ -1,4 +1,4 @@
-19.4.0
+19.5.0
   - handle errors for queued events and warn if they are executing too long
   - added method to queue an event executed among other synchronization events 
   - added method to calculate margin requirements for a future order
