@@ -13,7 +13,7 @@ from .models import random_id, string_format_error, MarketDataSubscription, Mark
 from ..clients.errorHandler import ValidationException
 from ..clients.optionsValidator import OptionsValidator
 from datetime import datetime, timedelta
-from typing import Coroutine, List, Optional, Dict, Union
+from typing import Coroutine, List, Optional, Dict, Union, Callable
 from typing_extensions import TypedDict
 from functools import reduce
 import pytz
@@ -579,6 +579,15 @@ class StreamingMetaApiConnection(MetaApiConnection):
         time_left_in_seconds = max(0, timeout_in_seconds - (datetime.now() - start_time).total_seconds())
         await self._websocketClient.wait_synchronized(self._account.id, self.get_instance_number(instance_index),
                                                       application_pattern, time_left_in_seconds)
+
+    def queue_event(self, name: str, callable: Callable):
+        """Queues an event for processing among other synchronization events within same account.
+
+        Args:
+            name: Event label name.
+            callable: Async or regular function to execute.
+        """
+        self._websocketClient.queue_event(self._account.id, name, callable)
 
     async def close(self):
         """Closes the connection. The instance of the class should no longer be used after this method is invoked."""

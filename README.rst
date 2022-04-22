@@ -84,7 +84,7 @@ Provisioning profile id must not be included in the request for automatic broker
           'name': 'Trading account #1',
           'type': 'cloud',
           'login': '1234567',
-          'plattform': 'mt4',
+          'platform': 'mt4',
           # password can be investor password for read-only access
           'password': 'qwerty',
           'server': 'ICMarketsSC-Demo',
@@ -818,3 +818,19 @@ applications.
 
 You can find MetaStats Python SDK documentation here:
 `https://github.com/agiliumtrade-ai/metastats-python-sdk <https://github.com/agiliumtrade-ai/metastats-python-sdk>`_
+
+MetaApi MT manager API
+======================
+
+MetaApi MT manager API is a cloud REST API which can be used to access and manage MT4 and MT5 servers.
+
+You can find MT manager API documentation here: `https://metaapi.cloud/docs/manager/ <https://metaapi.cloud/docs/manager/>`_
+
+MetaApi risk management API
+===========================
+
+MetaApi risk management API is a cloud API for executing trading challenges and competitions.
+You can use this API for e.g. if you want to launch a proprietary trading company like FTMO.
+The API is also useful for trading firms/teams which have to enforce trading risk restrictions.
+
+You can find MetaApi risk management Python SDK documentation here: `https://github.com/agiliumtrade-ai/risk-management-python-sdk <https://github.com/agiliumtrade-ai/risk-management-python-sdk>`_

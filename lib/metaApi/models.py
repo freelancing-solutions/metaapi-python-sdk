@@ -926,7 +926,7 @@ class StopOptions(TypedDict):
     RELATIVE_POINTS, RELATIVE_PIPS, RELATIVE_CURRENCY, RELATIVE_BALANCE_PERCENTAGE."""
 
 
-class ServerTime(TypedDict):
+class ServerTime(TypedDict, total=False):
     """Current server time (see https://metaapi.cloud/docs/client/models/serverTime/)."""
     time: datetime
     """Current server time."""
@@ -944,3 +944,21 @@ class QuoteTime(TypedDict):
     """Quote time."""
     brokerTime: str
     """Quote time in broker timezone, YYYY-MM-DD HH:mm:ss.SSS format."""
+
+
+class Margin(TypedDict, total=False):
+    """Margin required to open a trade (see https://metaapi.cloud/docs/client/models/margin/)."""
+    margin: Optional[float]
+    """Margin required to open a trade. If margin can not be calculated, then this field is not defined."""
+
+
+class MarginOrder(TypedDict, total=False):
+    """Contains order to calculate margin for (see https://metaapi.cloud/docs/client/models/marginOrder/)."""
+    symbol: str
+    """Order symbol."""
+    type: str
+    """Order type, one of ORDER_TYPE_BUY or ORDER_TYPE_SELL."""
+    volume: float
+    """Order volume, must be greater than 0."""
+    openPrice: float
+    """Order open price, must be greater than 0."""

@@ -1,3 +1,11 @@
+19.4.0
+  - handle errors for queued events and warn if they are executing too long
+  - added method to queue an event executed among other synchronization events 
+  - added method to calculate margin requirements for a future order
+  - added risk management api
+  - fixed compatibility with Python 3.7
+  - added references to MT manager api and risk management api
+
 19.2.0
   - added userId field to metatrader account
   - added connections field to MetatraderAccount model to track CopyFactory / risk management API connection status in addition to MetaApi connection status
