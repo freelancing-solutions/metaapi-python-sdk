@@ -759,6 +759,24 @@ class TestRpcMetaApiConnection:
                                         'RPC', 'regular')
 
     @pytest.mark.asyncio
+    async def test_calculate_margin(self):
+        """Should calculate margin."""
+        await api.connect()
+        margin = {
+            'margin': 110
+        }
+        order = {
+            'symbol': 'EURUSD',
+            'type': 'ORDER_TYPE_BUY',
+            'volume': 0.1,
+            'openPrice': 1.1
+        }
+        client.calculate_margin = AsyncMock(return_value=margin)
+        actual = await api.calculate_margin(order)
+        assert actual == margin
+        client.calculate_margin.assert_called_with('accountId', 'RPC', 'regular', order)
+
+    @pytest.mark.asyncio
     async def test_retrieve_symbols(self):
         """Should retrieve symbols."""
         await api.connect()

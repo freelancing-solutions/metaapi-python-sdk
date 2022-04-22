@@ -147,4 +147,4 @@ class FilesystemHistoryDatabase:
         return arr
 
 
-instance: FilesystemHistoryDatabase or None = None
+instance = None

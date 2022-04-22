@@ -14,6 +14,7 @@ from datetime import datetime, timedelta
 from freezegun import freeze_time
 from ..timeoutException import TimeoutException
 from asyncio import sleep
+import json
 sio = None
 http_client = HttpClient()
 client: MetaApiWebsocketClient = None
@@ -1442,9 +1443,9 @@ class TestConnectionStatusSynchronization:
         listener.on_broker_connection_status_changed = FinalMock()
         client.add_synchronization_listener('accountId', listener)
         await sio.emit('synchronization', {'type': 'authenticated', 'accountId': 'accountId', 'host': 'ps-mpa-1',
-                                           'instanceIndex': 0, 'replicas': 1})
+                                           'instanceIndex': 0, 'replicas': 1}, connections[2])
         await sio.emit('synchronization', {'type': 'status', 'accountId': 'accountId', 'host': 'ps-mpa-1',
-                                           'connected': True, 'instanceIndex': 0})
+                                           'connected': True, 'instanceIndex': 0}, connections[2])
         await future_close
         listener.on_broker_connection_status_changed.assert_called_with('0:ps-mpa-1', True)
 
@@ -1455,19 +1456,20 @@ class TestConnectionStatusSynchronization:
             listener = MagicMock()
             listener.on_connected = AsyncMock()
             listener.on_broker_connection_status_changed = AsyncMock()
+            listener.on_stream_closed = AsyncMock()
             listener.on_disconnected = FinalMock()
             client.add_synchronization_listener('accountId', listener)
             await sio.emit('synchronization', {'type': 'authenticated', 'accountId': 'accountId', 'host': 'ps-mpa-1',
-                                               'instanceIndex': 0, 'replicas': 2})
+                                               'instanceIndex': 0, 'replicas': 2}, connections[2])
             await sio.emit('synchronization', {'type': 'status', 'accountId': 'accountId', 'host': 'ps-mpa-1',
-                                               'connected': True, 'instanceIndex': 0})
+                                               'connected': True, 'instanceIndex': 0}, connections[2])
             await sleep(0.2)
             await sio.emit('synchronization', {'type': 'status', 'accountId': 'accountId', 'host': 'ps-mpa-1',
-                                               'connected': True, 'instanceIndex': 0})
+                                               'connected': True, 'instanceIndex': 0}, connections[2])
             await sleep(1.1)
             listener.on_disconnected.assert_not_called()
             await sio.emit('synchronization', {'type': 'authenticated', 'accountId': 'accountId', 'host': 'ps-mpa-1',
-                                               'instanceIndex': 0, 'replicas': 2})
+                                               'instanceIndex': 0, 'replicas': 2}, connections[2])
             await sleep(0.2)
             listener.on_disconnected.assert_not_called()
             await sleep(1.1)
@@ -2088,6 +2090,29 @@ class TestTerminalStateSynchronization:
         server_time = deepcopy(server_time)
         server_time['time'] = date(server_time['time'])
         assert actual == server_time
+
+    @pytest.mark.asyncio
+    async def test_calculate_margin(self):
+        """Should calculate margin."""
+        margin = {
+            'margin': 110
+        }
+        order = {
+            'symbol': 'EURUSD',
+            'type': 'ORDER_TYPE_BUY',
+            'volume': 0.1,
+            'openPrice': 1.1
+        }
+
+        @sio.on('request')
+        async def on_request(sid, data):
+            if data['type'] == 'calculateMargin' and data['accountId'] == 'accountId' and \
+                    data['application'] == 'MetaApi' and json.dumps(data['order'] == json.dumps(order)):
+                await sio.emit('response', {'type': 'response', 'accountId': data['accountId'],
+                                            'requestId': data['requestId'], 'margin': margin})
+
+        actual = await client.calculate_margin('accountId', 'MetaApi', 'high', order)
+        assert actual == margin
 
 
 class TestMarketDataSynchronization:
@@ -2896,6 +2921,7 @@ async def test_not_process_old_sync_packet_without_gaps_in_sn():
     listener = MagicMock()
     listener.on_synchronization_started = AsyncMock()
     listener.on_pending_orders_replaced = AsyncMock()
+    listener.on_pending_orders_synchronized = AsyncMock()
 
     client.add_synchronization_listener('accountId', listener)
     client._subscriptionManager.is_subscription_active = MagicMock(return_value=True)
@@ -2925,3 +2951,64 @@ async def test_not_process_old_sync_packet_without_gaps_in_sn():
     await asyncio.sleep(0.05)
     assert listener.on_synchronization_started.call_count == 2
     assert listener.on_pending_orders_replaced.call_count == 2
+
+
+@pytest.mark.asyncio
+async def test_process_queued_events_sequentially():
+    """Should process queued events sequentially."""
+    async def event_1():
+        await asyncio.sleep(0.1)
+    event1 = AsyncMock(side_effect=event_1)
+
+    async def event_2():
+        await asyncio.sleep(0.03)
+    event2 = AsyncMock(side_effect=event_2)
+
+    client.queue_event('accountId', 'test', event1)
+    client.queue_event('accountId', 'test', event2)
+
+    await asyncio.sleep(0.08)
+    assert event1.call_count == 1
+    assert event2.call_count == 0
+
+    await asyncio.sleep(0.05)
+    assert event2.call_count == 1
+
+
+@pytest.mark.asyncio
+async def test_process_queued_events_among_synchronization_packets():
+    """Should process queued events among synchronization packets."""
+    listener = MagicMock()
+
+    async def listener_event(arg1, specifications_updated=True, positions_updated=True, orders_updated=True,
+                             synchronization_id=''):
+        await asyncio.sleep(0.1)
+
+    listener.on_synchronization_started = AsyncMock(side_effect=listener_event)
+
+    async def event_():
+        await asyncio.sleep(0.025)
+    event = AsyncMock(side_effect=event_)
+
+    client.add_synchronization_listener('accountId', listener)
+    client.queue_packet({
+        'type': 'synchronizationStarted', 'accountId': 'accountId', 'instanceIndex': 0, 'sequenceNumber': 1,
+        'sequenceTimestamp': 1, 'synchronizationId': 'synchronizationId', 'host': 'ps-mpa-1'
+    })
+
+    client.queue_event('accountId', 'test', event)
+    await asyncio.sleep(0.075)
+    assert listener.on_synchronization_started.call_count == 1
+    assert event.call_count == 0
+
+    await asyncio.sleep(0.05)
+    assert event.call_count == 1
+
+
+@pytest.mark.asyncio
+async def test_not_throw_errors_from_queued_events():
+    """Should not throw errors from queued events."""
+    event = AsyncMock(side_effect=Exception('test'))
+    client.queue_event('accountId', 'test', event)
+    await asyncio.sleep(0.05)
+    assert event.call_count == 1

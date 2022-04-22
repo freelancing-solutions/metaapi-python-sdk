@@ -479,6 +479,24 @@ class TestStreamingMetaApiConnection:
                                         'regular')
 
     @pytest.mark.asyncio
+    async def test_calculate_margin(self):
+        """Should calculate margin."""
+        await api.connect()
+        margin = {
+            'margin': 110
+        }
+        order = {
+            'symbol': 'EURUSD',
+            'type': 'ORDER_TYPE_BUY',
+            'volume': 0.1,
+            'openPrice': 1.1
+        }
+        client.calculate_margin = AsyncMock(return_value=margin)
+        actual = await api.calculate_margin(order)
+        assert actual == margin
+        client.calculate_margin.assert_called_with('accountId', None, 'regular', order)
+
+    @pytest.mark.asyncio
     async def test_subscribe_to_terminal(self):
         """Should subscribe to terminal."""
         await api.connect()
@@ -823,3 +841,14 @@ class TestStreamingMetaApiConnection:
                 await api.close()
                 await sleep(0.11)
                 assert client.refresh_market_data_subscriptions.call_count == 3
+
+    @pytest.mark.asyncio
+    async def test_queue_events(self):
+        """Should queue events."""
+        client.queue_event = MagicMock()
+
+        def event_callable():
+            pass
+
+        api.queue_event('test', event_callable)
+        client.queue_event.assert_called_with('accountId', 'test', event_callable)

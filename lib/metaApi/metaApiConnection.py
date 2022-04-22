@@ -2,7 +2,7 @@ from ..clients.metaApi.synchronizationListener import SynchronizationListener
 from ..clients.metaApi.reconnectListener import ReconnectListener
 from ..clients.metaApi.metaApiWebsocket_client import MetaApiWebsocketClient
 from .metatraderAccountModel import MetatraderAccountModel
-from .models import MetatraderTradeResponse, MarketTradeOptions, StopOptions, TrailingStopLoss, \
+from .models import MetatraderTradeResponse, MarketTradeOptions, StopOptions, MarginOrder, \
     PendingTradeOptions, ModifyOrderOptions, StopLimitPendingTradeOptions, CreateMarketTradeOptions
 from typing import Coroutine
 from abc import abstractmethod
@@ -404,6 +404,20 @@ class MetaApiConnection(SynchronizationListener, ReconnectListener):
 
     def on_reconnected(self):
         pass
+
+    def calculate_margin(self, order: MarginOrder):
+        """Calculates margin required to open a trade on the specified trading account (see
+        https://metaapi.cloud/docs/client/websocket/api/calculateMargin/).
+
+        Args:
+            order: Order to calculate margin for.
+
+        Returns:
+            A coroutine resolving with margin calculation result.
+        """
+        self._check_is_connection_active()
+        return self._websocketClient.calculate_margin(self._account.id, self._application, self._account.reliability,
+                                                      order)
 
     @property
     def account(self) -> MetatraderAccountModel:
