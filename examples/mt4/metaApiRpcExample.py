@@ -68,6 +68,16 @@ async def meta_api_synchronization():
         print('history deals (~last 3 months):',
               await connection.get_deals_by_time_range(datetime.utcnow() - timedelta(days=90), datetime.utcnow()))
 
+        print('server time', await connection.get_server_time())
+
+        # calculate margin required for trade
+        print('margin required for trade', await connection.calculate_margin({
+            'symbol': 'GBPUSD',
+            'type': 'ORDER_TYPE_BUY',
+            'volume': 0.1,
+            'openPrice': 1.1
+        }))
+
         # trade
         print('Submitting pending order')
         try:
