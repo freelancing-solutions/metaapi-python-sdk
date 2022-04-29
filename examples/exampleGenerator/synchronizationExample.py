@@ -59,6 +59,14 @@ async def test_meta_api_synchronization():
         print('history orders for the last day:', history_storage.get_history_orders_by_time_range(
             datetime.fromtimestamp(datetime.now().timestamp() - 24 * 60 * 60), datetime.now()))
 
+        # calculate margin required for trade
+        print('margin required for trade', await connection.calculate_margin({
+            'symbol': 'GBPUSD',
+            'type': 'ORDER_TYPE_BUY',
+            'volume': 0.1,
+            'openPrice': 1.1
+        }))
+
         # trade
         print('Submitting pending order')
         try:

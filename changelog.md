@@ -1,3 +1,7 @@
+19.5.1
+  - added margin calculation code examples
+  - added get server time code examples
+
 19.5.0
   - handle errors for queued events and warn if they are executing too long
   - added method to queue an event executed among other synchronization events 
