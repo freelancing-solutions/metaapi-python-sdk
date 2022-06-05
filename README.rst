@@ -14,6 +14,8 @@ maintenance costs and time thanks to high-quality API, open-source SDKs and conv
 
 Official REST and websocket API documentation: https://metaapi.cloud/docs/client/
 
+This SDK requires a 3.8+ version of Python to run.
+
 Please note that this SDK provides an abstraction over REST and websocket API to simplify your application logic.
 
 For more information about SDK APIs please check docstring documentation in source codes located inside lib folder of this package.

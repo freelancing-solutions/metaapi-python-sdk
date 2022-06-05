@@ -1,3 +1,6 @@
+19.5.2
+  - fixed dependency vulnerabilities
+
 19.5.1
   - added margin calculation code examples
   - added get server time code examples
