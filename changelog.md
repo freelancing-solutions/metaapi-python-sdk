@@ -1,5 +1,6 @@
 19.5.2
   - fixed dependency vulnerabilities
+  - fixed readme for RPC connections
 
 19.5.1
   - added margin calculation code examples
