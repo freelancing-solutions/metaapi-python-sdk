@@ -6,7 +6,8 @@ with open("README.rst", "r") as fh:
 install_requires = [
    'aiohttp==3.7.4', 'python-engineio==3.14.2', 'typing-extensions~=3.10.0.0', 'iso8601', 'pytz',
    'python-socketio[asyncio_client]==4.6.0', 'requests==2.24.0', 'websockets==9.1', 'httpx==0.23.0',
-   'metaapi-cloud-copyfactory-sdk>=5.1', 'metaapi-cloud-metastats-sdk>=3.1', 'metaapi-cloud-risk-management-sdk>=1.0'
+   'metaapi-cloud-copyfactory-sdk>=5.5.2', 'metaapi-cloud-metastats-sdk>=3.1.2',
+   'metaapi-cloud-risk-management-sdk>=1.2.1'
 ]
 
 tests_require = [

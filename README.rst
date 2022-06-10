@@ -348,6 +348,7 @@ Query account information, positions, orders and history via RPC API
 
     connection = account.get_rpc_connection()
 
+    await connection.connect()
     await connection.wait_synchronized()
 
     # retrieve balance and equity
@@ -379,6 +380,7 @@ Query contract specifications and quotes via RPC API
 
     connection = account.get_rpc_connection()
 
+    await connection.connect()
     await connection.wait_synchronized()
 
     # first, subscribe to market data
@@ -543,8 +545,8 @@ Execute trades (both RPC and streaming APIs)
     connection = account.get_rpc_connection()
     # or
     connection = account.get_streaming_connection()
-    await connection.connect()
 
+    await connection.connect()
     await connection.wait_synchronized()
 
     # trade
