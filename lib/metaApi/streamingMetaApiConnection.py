@@ -90,6 +90,8 @@ class StreamingMetaApiConnection(MetaApiConnection):
         self._websocketClient.add_synchronization_listener(account.id, self._historyStorage)
         self._websocketClient.add_synchronization_listener(account.id, self._healthMonitor)
         self._websocketClient.add_reconnect_listener(self, account.id)
+        for replica_id in account.account_regions.values():
+            self._websocketClient.add_reconnect_listener(self, replica_id)
         self._subscriptions = {}
         self._stateByInstanceIndex = {}
         self._refreshMarketDataSubscriptionSessions = {}
@@ -135,6 +137,7 @@ class StreamingMetaApiConnection(MetaApiConnection):
             A coroutine which resolves when synchronization started.
         """
         self._check_is_connection_active()
+        region = self.get_region(instance_index)
         instance = self.get_instance_number(instance_index)
         host = self.get_host_name(instance_index)
         starting_history_order_time = \
@@ -147,20 +150,21 @@ class StreamingMetaApiConnection(MetaApiConnection):
             .replace(tzinfo=pytz.UTC)
         synchronization_id = random_id()
         self._get_state(instance_index)['lastSynchronizationId'] = synchronization_id
+        account_id = self._account.account_regions[region]
         self._logger.debug(f'{self._account.id}:{instance_index}: initiating synchronization {synchronization_id}')
 
         async def get_hashes():
             return await self.terminal_state.get_hashes(self._account.type, instance_index)
 
         return await self._websocketClient.synchronize(
-            self._account.id, instance, host, synchronization_id, starting_history_order_time, starting_deal_time,
+            account_id, instance, host, synchronization_id, starting_history_order_time, starting_deal_time,
             get_hashes)
 
     async def initialize(self):
         """Initializes meta api connection"""
         self._check_is_connection_active()
         await self._historyStorage.initialize(self._account.id, self._connection_registry.application)
-        self._websocketClient.add_account_region(self._account.id, self._account.region)
+        self._websocketClient.add_account_cache(self._account.id, self._account.account_regions)
 
     async def subscribe(self):
         """Initiates subscription to MetaTrader terminal.
@@ -169,8 +173,10 @@ class StreamingMetaApiConnection(MetaApiConnection):
             A coroutine which resolves when subscription is initiated.
         """
         self._check_is_connection_active()
-        self._websocketClient.ensure_subscribe(self._account.id, 0)
-        self._websocketClient.ensure_subscribe(self._account.id, 1)
+        account_regions = self._account.account_regions
+        for replica_id in account_regions.values():
+            self._websocketClient.ensure_subscribe(replica_id, 0)
+            self._websocketClient.ensure_subscribe(replica_id, 1)
 
     async def subscribe_to_market_data(self, symbol: str, subscriptions: List[MarketDataSubscription] = None,
                                        timeout_in_seconds: float = None) -> Coroutine:
@@ -381,7 +387,9 @@ class StreamingMetaApiConnection(MetaApiConnection):
         state['shouldSynchronize'] = None
         state['synchronized'] = False
         state['disconnected'] = True
-        instance = self.get_instance_number(instance_index)
+        instance_number = self.get_instance_number(instance_index)
+        region = self.get_region(instance_index)
+        instance = f'{region}:{instance_number}'
         if instance in self._refreshMarketDataSubscriptionSessions:
             del self._refreshMarketDataSubscriptionSessions[instance]
         if instance in self._refreshMarketDataSubscriptionTimeouts:
@@ -501,7 +509,10 @@ class StreamingMetaApiConnection(MetaApiConnection):
             A coroutine which resolves when the asynchronous event is processed.
         """
         self._logger.debug(f'{self._account.id}:{instance_index}: starting synchronization ${synchronization_id}')
-        instance = self.get_instance_number(instance_index)
+        instance_number = self.get_instance_number(instance_index)
+        region = self.get_region(instance_index)
+        instance = f'{region}:{instance_number}'
+        account_id = self._account.account_regions[region]
         if instance in self._refreshMarketDataSubscriptionSessions:
             del self._refreshMarketDataSubscriptionSessions[instance]
         session_id = random_id(32)
@@ -509,11 +520,29 @@ class StreamingMetaApiConnection(MetaApiConnection):
         if instance in self._refreshMarketDataSubscriptionTimeouts:
             self._refreshMarketDataSubscriptionTimeouts[instance].cancel()
             del self._refreshMarketDataSubscriptionTimeouts[instance]
-        await self._refresh_market_data_subscriptions(instance, session_id)
+        await self._refresh_market_data_subscriptions(account_id, instance_number, session_id)
         self._schedule_synchronization_timeout(instance_index)
         state = self._get_state(instance_index)
         if state and not self._closed:
             state['lastSynchronizationId'] = synchronization_id
+
+    async def on_unsubscribe_region(self, region: str):
+        """Invoked when account region has been unsubscribed.
+
+        Args:
+            region: Account region unsubscribed.
+
+        Returns:
+            A coroutine which resolves when the asynchronous event is processed.
+        """
+        for instance in list(filter(lambda instance: instance.startswith(f'{region}:'),
+                                    self._refreshMarketDataSubscriptionTimeouts.keys())):
+            self._refreshMarketDataSubscriptionTimeouts[instance].cancel()
+            del self._refreshMarketDataSubscriptionTimeouts[instance]
+            del self._refreshMarketDataSubscriptionSessions[instance]
+        for instance in list(filter(lambda instance: instance.startswith(f'{region}:'),
+                                    self._stateByInstanceIndex.keys())):
+            del self._stateByInstanceIndex[instance]
 
     async def is_synchronized(self, instance_index: str, synchronization_id: str = None) -> bool:
         """Returns flag indicating status of state synchronization with MetaTrader terminal.
@@ -528,12 +557,11 @@ class StreamingMetaApiConnection(MetaApiConnection):
         def reducer_func(acc, s: MetaApiConnectionDict):
             if instance_index is not None and s['instanceIndex'] != instance_index:
                 return acc
-            nonlocal synchronization_id
-            synchronization_id = synchronization_id or s['lastSynchronizationId']
-            synchronized = synchronization_id in s['ordersSynchronized'] and \
-                bool(s['ordersSynchronized'][synchronization_id]) and \
-                synchronization_id in s['dealsSynchronized'] and \
-                bool(s['dealsSynchronized'][synchronization_id])
+            check_synchronization_id = synchronization_id or s['lastSynchronizationId']
+            synchronized = check_synchronization_id in s['ordersSynchronized'] and \
+                bool(s['ordersSynchronized'][check_synchronization_id]) and \
+                check_synchronization_id in s['dealsSynchronized'] and \
+                bool(s['dealsSynchronized'][check_synchronization_id])
             return acc or synchronized
         return reduce(reducer_func, self._stateByInstanceIndex.values(), False) if \
             len(self._stateByInstanceIndex.values()) else False
@@ -577,7 +605,9 @@ class StreamingMetaApiConnection(MetaApiConnection):
                                    (synchronization_id or (bool(state) and state['lastSynchronizationId']) or
                                     (bool(state) and state['lastDisconnectedSynchronizationId']) or 'None'))
         time_left_in_seconds = max(0, timeout_in_seconds - (datetime.now() - start_time).total_seconds())
-        await self._websocketClient.wait_synchronized(self._account.id, self.get_instance_number(instance_index),
+        region = self.get_region(state['instanceIndex'])
+        account_id = self._account.account_regions[region]
+        await self._websocketClient.wait_synchronized(account_id, self.get_instance_number(instance_index),
                                                       application_pattern, time_left_in_seconds)
 
     def queue_event(self, name: str, callable: Callable):
@@ -595,7 +625,9 @@ class StreamingMetaApiConnection(MetaApiConnection):
             self._logger.debug(f'{self._account.id}: Closing connection')
             self._stateByInstanceIndex = {}
             self._connection_registry.remove(self._account.id)
-            await self._websocketClient.unsubscribe(self._account.id)
+            account_regions = self._account.account_regions
+            await asyncio.gather(*list(map(lambda replica_id: asyncio.create_task(
+                self._websocketClient.unsubscribe(replica_id)), account_regions.values())))
             self._websocketClient.remove_synchronization_listener(self._account.id, self)
             self._websocketClient.remove_synchronization_listener(self._account.id, self._terminalState)
             self._websocketClient.remove_synchronization_listener(self._account.id, self._historyStorage)
@@ -609,7 +641,8 @@ class StreamingMetaApiConnection(MetaApiConnection):
             for instance in list(self._refreshMarketDataSubscriptionTimeouts.keys()):
                 self._refreshMarketDataSubscriptionTimeouts[instance].cancel()
             self._refreshMarketDataSubscriptionTimeouts = {}
-            self._websocketClient.remove_account_region(self.account.id)
+            for replica_id in account_regions.values():
+                self._websocketClient.remove_account_cache(replica_id)
             self._closed = True
             self._logger.debug(f'{self._account.id}: Closed connection')
 
@@ -631,10 +664,12 @@ class StreamingMetaApiConnection(MetaApiConnection):
         """
         return self._healthMonitor
 
-    async def _refresh_market_data_subscriptions(self, instance_number: int, session: str):
+    async def _refresh_market_data_subscriptions(self, account_id: str, instance_number: int, session: str):
+        region = self._websocketClient.get_account_region(account_id)
+        instance = f'{region}:{instance_number}'
         try:
-            if instance_number in self._refreshMarketDataSubscriptionSessions and \
-                    self._refreshMarketDataSubscriptionSessions[instance_number] == session:
+            if instance in self._refreshMarketDataSubscriptionSessions and \
+                    self._refreshMarketDataSubscriptionSessions[instance] == session:
                 subscriptions_list = []
                 for key in self._subscriptions.keys():
                     subscriptions = self.subscriptions(key)
@@ -643,19 +678,19 @@ class StreamingMetaApiConnection(MetaApiConnection):
                         subscriptions_item['subscriptions'] = subscriptions
                     subscriptions_list.append(subscriptions_item)
                 await self._websocketClient.refresh_market_data_subscriptions(
-                    self._account.id, instance_number, subscriptions_list)
+                    account_id, instance_number, subscriptions_list)
         except Exception as err:
             self._logger.error(f'Error refreshing market data subscriptions job for account {self._account.id} '
-                               f'{instance_number} ' + string_format_error(err))
+                               f'{instance} ' + string_format_error(err))
         finally:
             async def refresh_market_data_subscriptions_job():
                 await asyncio.sleep(uniform(self._minSubscriptionRefreshInterval,
                                             self._maxSubscriptionRefreshInterval))
-                await self._refresh_market_data_subscriptions(instance_number, session)
+                await self._refresh_market_data_subscriptions(account_id, instance_number, session)
 
-            if instance_number in self._refreshMarketDataSubscriptionSessions and \
-                    self._refreshMarketDataSubscriptionSessions[instance_number] == session:
-                self._refreshMarketDataSubscriptionTimeouts[instance_number] = \
+            if instance in self._refreshMarketDataSubscriptionSessions and \
+                    self._refreshMarketDataSubscriptionSessions[instance] == session:
+                self._refreshMarketDataSubscriptionTimeouts[instance] = \
                     asyncio.create_task(refresh_market_data_subscriptions_job())
 
     async def _ensure_synchronized(self, instance_index: str, key):
@@ -701,7 +736,7 @@ class StreamingMetaApiConnection(MetaApiConnection):
 
     def _schedule_synchronization_timeout(self, instance_index: str):
         state = self._get_state(instance_index)
-        if state and not self._closed:
+        if state and state['shouldSynchronize'] and not self._closed:
             if state['synchronizationTimeout']:
                 state['synchronizationTimeout'].cancel()
             synchronization_timeout = 2 * 60

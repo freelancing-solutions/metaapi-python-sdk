@@ -21,6 +21,7 @@ from ..metaApi.models import format_error
 from typing_extensions import TypedDict
 import asyncio
 from ..logger import LoggerManager
+from ..clients.domain_client import DomainClient
 
 
 class RetryOpts(TypedDict, total=False):
@@ -121,9 +122,10 @@ class MetaApi:
             raise ValidationException('Application name must be non-empty string consisting ' +
                                       'from letters, digits and _ only')
         http_client = HttpClient(request_timeout, retry_opts)
+        domain_client = DomainClient(http_client, token, domain)
         historical_market_data_http_client = HttpClient(historical_market_data_request_timeout, retry_opts)
         account_generator_http_client = HttpClient(account_generator_request_timeout, retry_opts)
-        client_api_client = ClientApiClient(http_client, token, domain)
+        client_api_client = ClientApiClient(http_client, domain_client)
         self._metaApiWebsocketClient = MetaApiWebsocketClient(
             http_client, token, {'application': application, 'domain': domain, 'requestTimeout': request_timeout,
                                  'connectTimeout': connect_timeout, 'packetLogger': packet_logger,
@@ -134,16 +136,16 @@ class MetaApi:
                                  'useSharedClientApi': use_shared_client_api,
                                  'enableSocketioDebugger': enable_socketio_debugger,
                                  'unsubscribeThrottlingIntervalInSeconds': unsubscribe_throttling_interval_in_seconds})
-        self._provisioningProfileApi = ProvisioningProfileApi(ProvisioningProfileClient(http_client, token, domain))
+        self._provisioningProfileApi = ProvisioningProfileApi(ProvisioningProfileClient(http_client, domain_client))
         self._connectionRegistry = ConnectionRegistry(self._metaApiWebsocketClient, client_api_client, application,
                                                       refresh_subscriptions_opts)
-        historical_market_data_client = HistoricalMarketDataClient(historical_market_data_http_client, token, domain)
-        self._metatraderAccountApi = MetatraderAccountApi(MetatraderAccountClient(http_client, token, domain),
+        historical_market_data_client = HistoricalMarketDataClient(historical_market_data_http_client, domain_client)
+        self._metatraderAccountApi = MetatraderAccountApi(MetatraderAccountClient(http_client, domain_client),
                                                           self._metaApiWebsocketClient, self._connectionRegistry,
-                                                          ExpertAdvisorClient(http_client, token, domain),
+                                                          ExpertAdvisorClient(http_client, domain_client),
                                                           historical_market_data_client, application)
         self._metatraderAccountGeneratorApi = MetatraderAccountGeneratorApi(MetatraderAccountGeneratorClient(
-            account_generator_http_client, token, domain))
+            account_generator_http_client, domain_client))
         if ('enableLatencyTracking' in opts and opts['enableLatencyTracking']) or ('enableLatencyMonitor' in opts and
                                                                                    opts['enableLatencyMonitor']):
             self._latencyMonitor = LatencyMonitor()

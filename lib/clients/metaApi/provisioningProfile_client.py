@@ -77,7 +77,7 @@ class ProvisioningProfileClient(MetaApiClient):
                 'auth-token': self._token
             }
         }
-        return await self._httpClient.request(opts)
+        return await self._httpClient.request(opts, 'get_provisioning_profiles')
 
     async def get_provisioning_profile(self, id: str) -> 'Response[ProvisioningProfileDto]':
         """Retrieves a provisioning profile by id (see
@@ -99,7 +99,7 @@ class ProvisioningProfileClient(MetaApiClient):
                 'auth-token': self._token
             }
         }
-        return await self._httpClient.request(opts)
+        return await self._httpClient.request(opts, 'get_provisioning_profile')
 
     async def create_provisioning_profile(self, provisioning_profile: NewProvisioningProfileDto) -> Response:
         """Creates a new provisioning profile (see
@@ -122,7 +122,7 @@ class ProvisioningProfileClient(MetaApiClient):
             },
             'body': provisioning_profile
         }
-        return await self._httpClient.request(opts)
+        return await self._httpClient.request(opts, 'create_provisioning_profile')
 
     async def upload_provisioning_profile_file(self, provisioning_profile_id: str,
                                                file_name: str, file: str or memoryview) -> Response:
@@ -152,7 +152,7 @@ class ProvisioningProfileClient(MetaApiClient):
                 'auth-token': self._token
             }
         }
-        return await self._httpClient.request(opts)
+        return await self._httpClient.request(opts, 'upload_provisioning_profile_file')
 
     async def delete_provisioning_profile(self, id: str) -> Response:
         """ Deletes a provisioning profile (see
@@ -174,7 +174,7 @@ class ProvisioningProfileClient(MetaApiClient):
                 'auth-token': self._token
             }
         }
-        return await self._httpClient.request(opts)
+        return await self._httpClient.request(opts, 'delete_provisioning_profile')
 
     async def update_provisioning_profile(self, id: str, provisioning_profile: ProvisioningProfileUpdateDto):
         """Updates existing provisioning profile data (see
@@ -197,4 +197,4 @@ class ProvisioningProfileClient(MetaApiClient):
             },
             'body': provisioning_profile
         }
-        return await self._httpClient.request(opts)
+        return await self._httpClient.request(opts, 'update_provisioning_profile')

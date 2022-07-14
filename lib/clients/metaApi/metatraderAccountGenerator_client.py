@@ -133,7 +133,7 @@ class MetatraderAccountGeneratorClient(MetaApiClient):
             },
             'body': account
         }
-        return await self._httpClient.request(opts)
+        return await self._httpClient.request(opts, 'create_mt4_demo_account')
 
     async def create_mt4_live_account(self, account: NewMT4LiveAccount, profile_id: str = None) \
             -> MetatraderAccountCredentialsDto:
@@ -158,7 +158,7 @@ class MetatraderAccountGeneratorClient(MetaApiClient):
             },
             'body': account
         }
-        return await self._httpClient.request(opts)
+        return await self._httpClient.request(opts, 'create_mt4_live_account')
 
     async def create_mt5_demo_account(self, account: NewMT5DemoAccount, profile_id: str = None) \
             -> MetatraderAccountCredentialsDto:
@@ -183,7 +183,7 @@ class MetatraderAccountGeneratorClient(MetaApiClient):
             },
             'body': account
         }
-        return await self._httpClient.request(opts)
+        return await self._httpClient.request(opts, 'create_mt5_demo_account')
 
     async def create_mt5_live_account(self, account: NewMT5LiveAccount, profile_id: str = None) \
             -> MetatraderAccountCredentialsDto:
@@ -208,4 +208,4 @@ class MetatraderAccountGeneratorClient(MetaApiClient):
             },
             'body': account
         }
-        return await self._httpClient.request(opts)
+        return await self._httpClient.request(opts, 'create_mt5_live_account')

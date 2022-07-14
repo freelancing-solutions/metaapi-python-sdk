@@ -5,6 +5,7 @@ from .expertAdvisor import ExpertAdvisor, NewExpertAdvisorDto
 from .models import MetatraderCandle, MetatraderTick
 from abc import ABC, abstractmethod
 from datetime import datetime
+from .metatraderAccountReplicaModel import MetatraderAccountReplicaModel
 
 
 class MetatraderAccountModel(ABC):
@@ -160,6 +161,19 @@ class MetatraderAccountModel(ABC):
 
     @property
     @abstractmethod
+    def copyfactory_resource_slots(self) -> int:
+        """Returns the number of CopyFactory 2 resource slots to allocate to account. Allocating extra resource slots
+        results in lower trade copying latency. Please note that allocating extra resource slots is a paid option.
+        Please also note that CopyFactory 2 uses redundant infrastructure so that each CopyFactory resource slot is
+        billed as 2 standard resource slots. You will be billed for CopyFactory 2 resource slots only if you have
+        added your account to CopyFactory 2 by specifying copyFactoryRoles field. Default is 1.
+
+        Returns:
+            Number of CopyFactory 2 resource slots to allocate to account.
+        """
+
+    @property
+    @abstractmethod
     def base_currency(self) -> str:
         """Returns 3-character ISO currency code of the account base currency. Default value is USD. The setting is to
         be used for copy trading accounts which use national currencies only, such as some Brazilian brokers. You
@@ -194,6 +208,51 @@ class MetatraderAccountModel(ABC):
 
         Returns:
             Account region value.
+        """
+
+    @property
+    @abstractmethod
+    def connections(self) -> str:
+        """Returns active account connections.
+
+        Returns:
+            Active account connections.
+        """
+
+    @property
+    @abstractmethod
+    def risk_management_api_enabled(self) -> bool:
+        """Returns flag indicating that risk management API is enabled on account. Default is false.
+
+        Returns:
+            Flag indicating that risk management API is enabled on account.
+        """
+
+    @property
+    @abstractmethod
+    def user_id(self) -> str:
+        """Returns user id.
+
+        Returns:
+            User id.
+        """
+
+    @property
+    @abstractmethod
+    def replicas(self) -> List[MetatraderAccountReplicaModel]:
+        """Returns account replica instances.
+
+        Returns:
+            Account replica instances.
+        """
+
+    @property
+    @abstractmethod
+    def account_regions(self) -> dict:
+        """Returns a dictionary with account's available regions and replicas.
+
+        Returns:
+            A dictionary with account's available regions and replicas.
         """
 
     @abstractmethod

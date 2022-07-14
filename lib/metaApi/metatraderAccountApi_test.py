@@ -76,12 +76,35 @@ registry: MockRegistry = None
 api: MetatraderAccountApi = None
 ea_client: ExpertAdvisorClient = None
 history_client: HistoricalMarketDataClient = None
+start_account = {}
 
 
 @pytest.fixture(autouse=True)
 async def run_around_tests():
     global client
     client = MockClient(MagicMock(), MagicMock())
+    client.get_account = AsyncMock(return_value={
+        '_id': 'id',
+        'login': '50194988',
+        'name': 'mt5a',
+        'server': 'ICMarketsSC-Demo',
+        'provisioningProfileId': 'f9ce1f12-e720-4b9a-9477-c2d4cb25f076',
+        'magic': 123456,
+        'application': 'MetaApi',
+        'connectionStatus': 'CONNECTED',
+        'state': 'DEPLOYED',
+        'region': 'vint-hill',
+        'type': 'cloud',
+        'accountReplicas': [{
+          '_id': 'idReplica',
+          'state': 'CREATED',
+          'magic': 0,
+          'connectionStatus': 'CONNECTED',
+          'symbol': 'EURUSD',
+          'reliability': 'regular',
+          'region': 'london'
+        }]
+      })
     global websocket_client
     websocket_client = MockWebsocketClient(MagicMock(), 'token')
     global registry
@@ -90,9 +113,9 @@ async def run_around_tests():
     registry.connect = AsyncMock()
     registry.remove = MagicMock()
     global ea_client
-    ea_client = ExpertAdvisorClient(MagicMock(), 'token')
+    ea_client = ExpertAdvisorClient(MagicMock(), MagicMock())
     global history_client
-    history_client = HistoricalMarketDataClient(MagicMock(), 'token')
+    history_client = HistoricalMarketDataClient(MagicMock(), MagicMock())
     api = MetatraderAccountApi(client, websocket_client, registry, ea_client, history_client, 'MetaApi')
     yield
 
@@ -121,6 +144,7 @@ class TestMetatraderAccountApi:
             'application': 'MetaApi',
             'connectionStatus': 'DISCONNECTED',
             'state': 'DEPLOYED',
+            'region': 'vint-hill',
             'type': 'cloud',
             'accessToken': '2RUnoH1ldGbnEneCoqRTgI4QO1XOmVzbH5EVoQsA'
         })
@@ -152,6 +176,7 @@ class TestMetatraderAccountApi:
             'application': 'MetaApi',
             'connectionStatus': 'DISCONNECTED',
             'state': 'DEPLOYED',
+            'region': 'vint-hill',
             'type': 'cloud',
             'accessToken': '2RUnoH1ldGbnEneCoqRTgI4QO1XOmVzbH5EVoQsA'
         })
@@ -175,17 +200,18 @@ class TestMetatraderAccountApi:
         """Should create MT account."""
         client.create_account = AsyncMock(return_value={'id': 'id'})
         client.get_account = AsyncMock(return_value={
-          '_id': 'id',
-          'login': '50194988',
-          'name': 'mt5a',
-          'server': 'ICMarketsSC-Demo',
-          'provisioningProfileId': 'f9ce1f12-e720-4b9a-9477-c2d4cb25f076',
-          'magic': 123456,
-          'application': 'MetaApi',
-          'connectionStatus': 'DISCONNECTED',
-          'state': 'DEPLOYED',
-          'type': 'cloud',
-          'accessToken': '2RUnoH1ldGbnEneCoqRTgI4QO1XOmVzbH5EVoQsA'
+            '_id': 'id',
+            'login': '50194988',
+            'name': 'mt5a',
+            'server': 'ICMarketsSC-Demo',
+            'provisioningProfileId': 'f9ce1f12-e720-4b9a-9477-c2d4cb25f076',
+            'magic': 123456,
+            'application': 'MetaApi',
+            'connectionStatus': 'DISCONNECTED',
+            'state': 'DEPLOYED',
+            'region': 'vint-hill',
+            'type': 'cloud',
+            'accessToken': '2RUnoH1ldGbnEneCoqRTgI4QO1XOmVzbH5EVoQsA'
         })
         new_account_data = {
             'login': '50194988',
@@ -195,6 +221,7 @@ class TestMetatraderAccountApi:
             'provisioningProfileId': 'f9ce1f12-e720-4b9a-9477-c2d4cb25f076',
             'magic': 123456,
             'application': 'MetaApi',
+            'region': 'vint-hill',
             'type': 'cloud',
             'accessToken': 'NyV5no9TMffJyUts2FjI80wly0so3rVCz4xOqiDx'
         }
@@ -227,20 +254,21 @@ class TestMetatraderAccountApi:
             'application': 'MetaApi',
             'connectionStatus': 'DISCONNECTED',
             'state': 'DEPLOYING',
+            'region': 'vint-hill',
             'type': 'cloud'
-          },
-            {
-                '_id': 'id',
-                'login': '50194988',
-                'name': 'mt5a',
-                'server': 'ICMarketsSC-Demo',
-                'provisioningProfileId': 'f9ce1f12-e720-4b9a-9477-c2d4cb25f076',
-                'magic': 123456,
-                'application': 'MetaApi',
-                'connectionStatus': 'CONNECTED',
-                'state': 'DEPLOYED',
-                'type': 'cloud'
-            }])
+        }, {
+            '_id': 'id',
+            'login': '50194988',
+            'name': 'mt5a',
+            'server': 'ICMarketsSC-Demo',
+            'provisioningProfileId': 'f9ce1f12-e720-4b9a-9477-c2d4cb25f076',
+            'magic': 123456,
+            'application': 'MetaApi',
+            'connectionStatus': 'CONNECTED',
+            'state': 'DEPLOYED',
+            'region': 'vint-hill',
+            'type': 'cloud'
+        }])
         account = await api.get_account('id')
         await account.reload()
         assert account.connection_status == 'CONNECTED'
@@ -263,20 +291,21 @@ class TestMetatraderAccountApi:
                 'application': 'MetaApi',
                 'connectionStatus': 'CONNECTED',
                 'state': 'DEPLOYED',
+                'region': 'vint-hill',
                 'type': 'cloud'
-              },
-                {
-                    '_id': 'id',
-                    'login': '50194988',
-                    'name': 'mt5a',
-                    'server': 'ICMarketsSC-Demo',
-                    'provisioningProfileId': 'f9ce1f12-e720-4b9a-9477-c2d4cb25f076',
-                    'magic': 123456,
-                    'application': 'MetaApi',
-                    'connectionStatus': 'CONNECTED',
-                    'state': 'DELETING',
-                    'type': 'cloud'
-                }
+            }, {
+                '_id': 'id',
+                'login': '50194988',
+                'name': 'mt5a',
+                'server': 'ICMarketsSC-Demo',
+                'provisioningProfileId': 'f9ce1f12-e720-4b9a-9477-c2d4cb25f076',
+                'magic': 123456,
+                'application': 'MetaApi',
+                'connectionStatus': 'CONNECTED',
+                'state': 'DELETING',
+                'region': 'vint-hill',
+                'type': 'cloud'
+            }
             ])
             client.delete_account = AsyncMock()
             account = await api.get_account('id')
@@ -301,18 +330,20 @@ class TestMetatraderAccountApi:
             'application': 'MetaApi',
             'connectionStatus': 'DISCONNECTED',
             'state': 'UNDEPLOYED',
+            'region': 'vint-hill',
             'type': 'cloud'
-          }, {
-                '_id': 'id',
-                'login': '50194988',
-                'name': 'mt5a',
-                'server': 'ICMarketsSC-Demo',
-                'provisioningProfileId': 'f9ce1f12-e720-4b9a-9477-c2d4cb25f076',
-                'magic': 123456,
-                'application': 'MetaApi',
-                'connectionStatus': 'CONNECTED',
-                'state': 'DEPLOYING',
-                'type': 'cloud'
+        }, {
+            '_id': 'id',
+            'login': '50194988',
+            'name': 'mt5a',
+            'server': 'ICMarketsSC-Demo',
+            'provisioningProfileId': 'f9ce1f12-e720-4b9a-9477-c2d4cb25f076',
+            'magic': 123456,
+            'application': 'MetaApi',
+            'connectionStatus': 'CONNECTED',
+            'state': 'DEPLOYING',
+            'region': 'vint-hill',
+            'type': 'cloud'
         }])
         client.deploy_account = AsyncMock()
         account = await api.get_account('id')
@@ -335,8 +366,9 @@ class TestMetatraderAccountApi:
             'application': 'MetaApi',
             'connectionStatus': 'DISCONNECTED',
             'state': 'DEPLOYED',
+            'region': 'vint-hill',
             'type': 'cloud'
-          }, {
+        }, {
             '_id': 'id',
             'login': '50194988',
             'name': 'mt5a',
@@ -346,6 +378,7 @@ class TestMetatraderAccountApi:
             'application': 'MetaApi',
             'connectionStatus': 'CONNECTED',
             'state': 'UNDEPLOYING',
+            'region': 'vint-hill',
             'type': 'cloud'
         }])
         client.undeploy_account = AsyncMock()
@@ -370,8 +403,9 @@ class TestMetatraderAccountApi:
             'application': 'MetaApi',
             'connectionStatus': 'DISCONNECTED',
             'state': 'DEPLOYED',
+            'region': 'vint-hill',
             'type': 'cloud'
-          }, {
+        }, {
             '_id': 'id',
             'login': '50194988',
             'name': 'mt5a',
@@ -381,8 +415,9 @@ class TestMetatraderAccountApi:
             'application': 'MetaApi',
             'connectionStatus': 'CONNECTED',
             'state': 'UNDEPLOYING',
+            'region': 'vint-hill',
             'type': 'cloud'
-          }])
+        }])
         client.redeploy_account = AsyncMock()
         account = await api.get_account('id')
         await account.redeploy()
@@ -404,6 +439,7 @@ class TestMetatraderAccountApi:
             'application': 'MetaApi',
             'connectionStatus': 'DISCONNECTED',
             'state': 'DEPLOYED',
+            'region': 'vint-hill',
             'type': 'cloud'
         }, {
             '_id': 'id',
@@ -415,6 +451,7 @@ class TestMetatraderAccountApi:
             'application': 'MetaApi',
             'connectionStatus': 'CONNECTED',
             'state': 'UNDEPLOYING',
+            'region': 'vint-hill',
             'type': 'cloud',
             'reliability': 'high'
         }])
@@ -439,6 +476,7 @@ class TestMetatraderAccountApi:
             'application': 'MetaApi',
             'connectionStatus': 'DISCONNECTED',
             'state': 'DEPLOYING',
+            'region': 'vint-hill',
             'type': 'cloud'
         }
         client.get_account = AsyncMock(side_effect=[deploying_account, deploying_account,
@@ -452,6 +490,7 @@ class TestMetatraderAccountApi:
                                                         'application': 'MetaApi',
                                                         'connectionStatus': 'CONNECTED',
                                                         'state': 'DEPLOYED',
+                                                        'region': 'vint-hill',
                                                         'type': 'cloud'
                                                     }
                                                     ])
@@ -474,6 +513,7 @@ class TestMetatraderAccountApi:
             'application': 'MetaApi',
             'connectionStatus': 'DISCONNECTED',
             'state': 'DEPLOYING',
+            'region': 'vint-hill',
             'type': 'cloud'
         }
         client.get_account = AsyncMock(return_value=deploying_account)
@@ -499,6 +539,7 @@ class TestMetatraderAccountApi:
             'application': 'MetaApi',
             'connectionStatus': 'DISCONNECTED',
             'state': 'UNDEPLOYING',
+            'region': 'vint-hill',
             'type': 'cloud'
         }
         client.get_account = AsyncMock(side_effect=[undeploying_account, undeploying_account,
@@ -512,6 +553,7 @@ class TestMetatraderAccountApi:
                                                         'application': 'MetaApi',
                                                         'connectionStatus': 'CONNECTED',
                                                         'state': 'UNDEPLOYED',
+                                                        'region': 'vint-hill',
                                                         'type': 'cloud'
                                                     }
                                                     ])
@@ -534,6 +576,7 @@ class TestMetatraderAccountApi:
             'application': 'MetaApi',
             'connectionStatus': 'DISCONNECTED',
             'state': 'UNDEPLOYING',
+            'region': 'vint-hill',
             'type': 'cloud'
         }
         client.get_account = AsyncMock(return_value=undeploying_account)
@@ -559,6 +602,7 @@ class TestMetatraderAccountApi:
             'application': 'MetaApi',
             'connectionStatus': 'DISCONNECTED',
             'state': 'DELETING',
+            'region': 'vint-hill',
             'type': 'cloud'
           }
         client.get_account = AsyncMock(side_effect=[deleting_account, deleting_account, NotFoundException('')])
@@ -580,6 +624,7 @@ class TestMetatraderAccountApi:
             'application': 'MetaApi',
             'connectionStatus': 'DISCONNECTED',
             'state': 'DELETING',
+            'region': 'vint-hill',
             'type': 'cloud'
         }
         client.get_account = AsyncMock(return_value=deleting_account)
@@ -604,6 +649,7 @@ class TestMetatraderAccountApi:
             'application': 'MetaApi',
             'connectionStatus': 'DISCONNECTED',
             'state': 'DEPLOYED',
+            'region': 'vint-hill',
             'type': 'cloud'
         }
         client.get_account = AsyncMock(side_effect=[disconnected_account, disconnected_account,
@@ -617,6 +663,7 @@ class TestMetatraderAccountApi:
                                                         'application': 'MetaApi',
                                                         'connectionStatus': 'CONNECTED',
                                                         'state': 'DEPLOYED',
+                                                        'region': 'vint-hill',
                                                         'type': 'cloud'
                                                     }])
         account = await api.get_account('id')
@@ -638,6 +685,7 @@ class TestMetatraderAccountApi:
             'application': 'MetaApi',
             'connectionStatus': 'DISCONNECTED',
             'state': 'DEPLOYED',
+            'region': 'vint-hill',
             'type': 'cloud'
         }
         client.get_account = AsyncMock(return_value=disconnected_account)
@@ -649,6 +697,60 @@ class TestMetatraderAccountApi:
             assert err.__class__.__name__ == 'TimeoutException'
             assert account.connection_status == 'DISCONNECTED'
         client.get_account.assert_called_with('id')
+
+    @pytest.mark.asyncio
+    async def test_pass_connected_for_primary_account_if_replica_connected(self):
+        """Should pass for primary account if replica is connected."""
+        disconnected_account = {
+            '_id': 'id',
+            'login': '50194988',
+            'name': 'mt5a',
+            'server': 'ICMarketsSC-Demo',
+            'provisioningProfileId': 'f9ce1f12-e720-4b9a-9477-c2d4cb25f076',
+            'magic': 123456,
+            'application': 'MetaApi',
+            'connectionStatus': 'DISCONNECTED',
+            'state': 'UNDEPLOYED',
+            'region': 'vint-hill',
+            'type': 'cloud',
+            'accountReplicas': [{
+                '_id': 'idReplica',
+                'state': 'DEPLOYED',
+                'magic': 0,
+                'connectionStatus': 'DISCONNECTED',
+                'symbol': 'EURUSD',
+                'reliability': 'regular',
+                'region': 'london'
+            }]
+        }
+        client.get_account = AsyncMock(side_effect=[disconnected_account, disconnected_account, {
+            '_id': 'id',
+            'login': '50194988',
+            'name': 'mt5a',
+            'server': 'ICMarketsSC-Demo',
+            'provisioningProfileId': 'f9ce1f12-e720-4b9a-9477-c2d4cb25f076',
+            'magic': 123456,
+            'application': 'MetaApi',
+            'connectionStatus': 'DISCONNECTED',
+            'state': 'UNDEPLOYED',
+            'region': 'vint-hill',
+            'type': 'cloud',
+            'accountReplicas': [{
+                '_id': 'idReplica',
+                'state': 'DEPLOYED',
+                'magic': 0,
+                'connectionStatus': 'CONNECTED',
+                'symbol': 'EURUSD',
+                'reliability': 'regular',
+                'region': 'london'
+            }]
+        }])
+        account = await api.get_account('id')
+        await account.wait_connected(1, 50)
+        replica = account.replicas[0]
+        assert replica.connection_status == 'CONNECTED'
+        client.get_account.assert_called_with('id')
+        assert client.get_account.call_count == 3
 
     @pytest.mark.asyncio
     async def test_connect_to_mt_terminal(self):
@@ -738,6 +840,7 @@ class TestMetatraderAccountApi:
             'application': 'MetaApi',
             'connectionStatus': 'CONNECTED',
             'state': 'DEPLOYED',
+            'region': 'vint-hill',
             'type': 'cloud'
           }, {
             '_id': 'id',
@@ -749,6 +852,7 @@ class TestMetatraderAccountApi:
             'application': 'MetaApi',
             'connectionStatus': 'CONNECTED',
             'state': 'DEPLOYED',
+            'region': 'vint-hill',
             'type': 'cloud'
           }])
         client.update_account = AsyncMock()
@@ -1029,3 +1133,556 @@ class TestMetatraderAccountApi:
         expert = await account.get_expert_advisor('ea')
         await expert.remove()
         ea_client.delete_expert_advisor.assert_called_with('id', 'ea')
+
+    @pytest.mark.asyncio
+    async def test_create_replica(self):
+        """Should create MT account replica."""
+        client.get_account = AsyncMock(side_effect=[{
+            '_id': 'id',
+            'login': '50194988',
+            'name': 'mt5a',
+            'server': 'ICMarketsSC-Demo',
+            'provisioningProfileId': 'f9ce1f12-e720-4b9a-9477-c2d4cb25f076',
+            'magic': 123456,
+            'application': 'MetaApi',
+            'connectionStatus': 'CONNECTED',
+            'state': 'DEPLOYED',
+            'type': 'cloud'
+        }, {
+            '_id': 'id',
+            'login': '50194988',
+            'name': 'mt5a',
+            'server': 'ICMarketsSC-Demo',
+            'provisioningProfileId': 'f9ce1f12-e720-4b9a-9477-c2d4cb25f076',
+            'magic': 123456,
+            'application': 'MetaApi',
+            'connectionStatus': 'CONNECTED',
+            'state': 'DEPLOYED',
+            'type': 'cloud',
+            'accountReplicas': [{
+                '_id': 'idReplica',
+                'state': 'CREATED',
+                'magic': 0,
+                'connectionStatus': 'CONNECTED',
+                'symbol': 'EURUSD',
+                'reliability': 'regular',
+                'region': 'london'
+            }]
+        }])
+        client.create_account_replica = AsyncMock()
+        account = await api.get_account('id')
+        replica = await account.create_replica({
+            'magic': 0,
+            'symbol': 'EURUSD',
+            'reliability': 'regular',
+            'region': 'london'
+        })
+
+        assert replica.id == 'idReplica'
+        assert replica.state == 'CREATED'
+        assert replica.magic == 0
+        assert replica.connection_status == 'CONNECTED'
+        assert replica.reliability == 'regular'
+        assert replica.region == 'london'
+        client.create_account_replica.assert_called_with('id', {
+            'magic': 0,
+            'symbol': 'EURUSD',
+            'reliability': 'regular',
+            'region': 'london'
+        })
+        client.get_account.assert_called_with('id')
+        assert client.get_account.call_count == 2
+
+    @pytest.mark.asyncio
+    async def test_remove_replica(self):
+        """Should remove MT account replica."""
+        account = await api.get_account('id')
+        client.get_account = AsyncMock(return_value={
+            '_id': 'id',
+            'login': '50194988',
+            'name': 'mt5a',
+            'server': 'ICMarketsSC-Demo',
+            'provisioningProfileId': 'f9ce1f12-e720-4b9a-9477-c2d4cb25f076',
+            'magic': 123456,
+            'application': 'MetaApi',
+            'connectionStatus': 'CONNECTED',
+            'state': 'DEPLOYED',
+            'region': 'vint-hill',
+            'type': 'cloud',
+            'accountReplicas': [{
+                '_id': 'idReplica',
+                'state': 'DELETING',
+                'magic': 0,
+                'connectionStatus': 'CONNECTED',
+                'symbol': 'EURUSD',
+                'reliability': 'regular',
+                'region': 'london'
+            }]
+        })
+        client.delete_account_replica = AsyncMock()
+        replica = account.replicas[0]
+        await replica.remove()
+        assert replica.state == 'DELETING'
+        client.delete_account_replica.assert_called_with('id', 'idReplica')
+        client.get_account.assert_called_with('id')
+        assert client.get_account.call_count == 1
+
+    @pytest.mark.asyncio
+    async def test_deploy_replica(self):
+        """Should deploy MT account replica."""
+        account = await api.get_account('id')
+        client.get_account = AsyncMock(return_value={
+            '_id': 'id',
+            'login': '50194988',
+            'name': 'mt5a',
+            'server': 'ICMarketsSC-Demo',
+            'provisioningProfileId': 'f9ce1f12-e720-4b9a-9477-c2d4cb25f076',
+            'magic': 123456,
+            'application': 'MetaApi',
+            'connectionStatus': 'CONNECTED',
+            'state': 'DEPLOYED',
+            'region': 'vint-hill',
+            'type': 'cloud',
+            'accountReplicas': [{
+                '_id': 'idReplica',
+                'state': 'DEPLOYING',
+                'magic': 0,
+                'connectionStatus': 'CONNECTED',
+                'symbol': 'EURUSD',
+                'reliability': 'regular',
+                'region': 'london'
+            }]
+        })
+        client.deploy_account_replica = AsyncMock()
+        replica = account.replicas[0]
+        await replica.deploy()
+        assert replica.state == 'DEPLOYING'
+        client.deploy_account_replica.assert_called_with('id', 'idReplica')
+        client.get_account.assert_called_with('id')
+        assert client.get_account.call_count == 1
+
+    @pytest.mark.asyncio
+    async def test_undeploy_replica(self):
+        """Should undeploy MT account replica."""
+        account = await api.get_account('id')
+        client.get_account = AsyncMock(return_value={
+            '_id': 'id',
+            'login': '50194988',
+            'name': 'mt5a',
+            'server': 'ICMarketsSC-Demo',
+            'provisioningProfileId': 'f9ce1f12-e720-4b9a-9477-c2d4cb25f076',
+            'magic': 123456,
+            'application': 'MetaApi',
+            'connectionStatus': 'CONNECTED',
+            'state': 'DEPLOYED',
+            'region': 'vint-hill',
+            'type': 'cloud',
+            'accountReplicas': [{
+                '_id': 'idReplica',
+                'state': 'UNDEPLOYING',
+                'magic': 0,
+                'connectionStatus': 'CONNECTED',
+                'symbol': 'EURUSD',
+                'reliability': 'regular',
+                'region': 'london'
+            }]
+        })
+        client.undeploy_account_replica = AsyncMock()
+        replica = account.replicas[0]
+        await replica.undeploy()
+        assert replica.state == 'UNDEPLOYING'
+        client.undeploy_account_replica.assert_called_with('id', 'idReplica')
+        client.get_account.assert_called_with('id')
+        assert client.get_account.call_count == 1
+
+    @pytest.mark.asyncio
+    async def test_redeploy_replica(self):
+        """Should redeploy MT account replica."""
+        account = await api.get_account('id')
+        client.get_account = AsyncMock(return_value={
+            '_id': 'id',
+            'login': '50194988',
+            'name': 'mt5a',
+            'server': 'ICMarketsSC-Demo',
+            'provisioningProfileId': 'f9ce1f12-e720-4b9a-9477-c2d4cb25f076',
+            'magic': 123456,
+            'application': 'MetaApi',
+            'connectionStatus': 'CONNECTED',
+            'state': 'DEPLOYED',
+            'region': 'vint-hill',
+            'type': 'cloud',
+            'accountReplicas': [{
+                '_id': 'idReplica',
+                'state': 'UNDEPLOYING',
+                'magic': 0,
+                'connectionStatus': 'CONNECTED',
+                'symbol': 'EURUSD',
+                'reliability': 'regular',
+                'region': 'london'
+            }]
+        })
+        client.redeploy_account_replica = AsyncMock()
+        replica = account.replicas[0]
+        await replica.redeploy()
+        assert replica.state == 'UNDEPLOYING'
+        client.redeploy_account_replica.assert_called_with('id', 'idReplica')
+        client.get_account.assert_called_with('id')
+        assert client.get_account.call_count == 1
+
+    @pytest.mark.asyncio
+    async def test_update_replica(self):
+        """Should update MT account replica."""
+        account = await api.get_account('id')
+        client.get_account = AsyncMock(return_value={
+            '_id': 'id',
+            'login': '50194988',
+            'name': 'mt5a',
+            'server': 'ICMarketsSC-Demo',
+            'provisioningProfileId': 'f9ce1f12-e720-4b9a-9477-c2d4cb25f076',
+            'magic': 123456,
+            'application': 'MetaApi',
+            'connectionStatus': 'CONNECTED',
+            'state': 'DEPLOYED',
+            'region': 'vint-hill',
+            'type': 'cloud',
+            'accountReplicas': [{
+                '_id': 'idReplica',
+                'state': 'DEPLOYED',
+                'magic': 12345,
+                'connectionStatus': 'CONNECTED',
+                'symbol': 'EURUSD',
+                'reliability': 'regular',
+                'region': 'london'
+            }]
+        })
+        client.update_account_replica = AsyncMock()
+        replica = account.replicas[0]
+        await replica.update({
+            'magic': 12345
+        })
+        assert replica.magic == 12345
+        client.update_account_replica.assert_called_with('id', 'idReplica', {
+            'magic': 12345
+        })
+        client.get_account.assert_called_with('id')
+        assert client.get_account.call_count == 1
+
+    @pytest.mark.asyncio
+    async def test_increase_replica_reliability(self):
+        """Should increase MT account replica reliability."""
+        account = await api.get_account('id')
+        client.get_account = AsyncMock(return_value={
+            '_id': 'id',
+            'login': '50194988',
+            'name': 'mt5a',
+            'server': 'ICMarketsSC-Demo',
+            'provisioningProfileId': 'f9ce1f12-e720-4b9a-9477-c2d4cb25f076',
+            'magic': 123456,
+            'application': 'MetaApi',
+            'connectionStatus': 'CONNECTED',
+            'state': 'DEPLOYED',
+            'region': 'vint-hill',
+            'type': 'cloud',
+            'accountReplicas': [{
+                '_id': 'idReplica',
+                'state': 'DEPLOYING',
+                'magic': 0,
+                'connectionStatus': 'DISCONNECTED',
+                'symbol': 'EURUSD',
+                'reliability': 'high',
+                'region': 'london'
+            }]
+        })
+        client.increase_reliability = AsyncMock()
+        replica = account.replicas[0]
+        await replica.increase_reliability()
+        assert replica.reliability == 'high'
+        client.increase_reliability.assert_called_with('idReplica')
+        client.get_account.assert_called_with('id')
+        assert client.get_account.call_count == 1
+
+    @pytest.fixture()
+    async def wait_deploy(self):
+        global start_account
+        start_account = {
+            '_id': 'id',
+            'login': '50194988',
+            'name': 'mt5a',
+            'server': 'ICMarketsSC-Demo',
+            'provisioningProfileId': 'f9ce1f12-e720-4b9a-9477-c2d4cb25f076',
+            'magic': 123456,
+            'application': 'MetaApi',
+            'connectionStatus': 'CONNECTED',
+            'state': 'DEPLOYED',
+            'region': 'vint-hill',
+            'type': 'cloud',
+            'accountReplicas': [{
+                '_id': 'idReplica',
+                'state': 'DEPLOYING',
+                'magic': 0,
+                'connectionStatus': 'CONNECTED',
+                'symbol': 'EURUSD',
+                'reliability': 'regular',
+                'region': 'london'
+            }]
+        }
+        yield
+
+    @pytest.mark.asyncio
+    async def test_wait_deploy_replica(self, wait_deploy):
+        """Should wait for deployment."""
+        account = await api.get_account('id')
+        updated_account = {
+            '_id': 'id',
+            'login': '50194988',
+            'name': 'mt5a',
+            'server': 'ICMarketsSC-Demo',
+            'provisioningProfileId': 'f9ce1f12-e720-4b9a-9477-c2d4cb25f076',
+            'magic': 123456,
+            'application': 'MetaApi',
+            'connectionStatus': 'CONNECTED',
+            'state': 'DEPLOYED',
+            'region': 'vint-hill',
+            'type': 'cloud',
+            'accountReplicas': [{
+                '_id': 'idReplica',
+                'state': 'DEPLOYED',
+                'magic': 0,
+                'connectionStatus': 'CONNECTED',
+                'symbol': 'EURUSD',
+                'reliability': 'regular',
+                'region': 'london'
+            }]
+        }
+        client.get_account = AsyncMock(side_effect=[start_account, start_account, updated_account])
+        replica = account.replicas[0]
+        await replica.wait_deployed(1, 50)
+        assert replica.state == 'DEPLOYED'
+        client.get_account.assert_called_with('id')
+        assert client.get_account.call_count == 3
+
+    @pytest.mark.asyncio
+    async def test_time_out_deploy_replica(self, wait_deploy):
+        """Should time out waiting for deployment."""
+        client.get_account = AsyncMock(return_value=start_account)
+        account = await api.get_account('id')
+        replica = account.replicas[0]
+        try:
+            await replica.wait_deployed(1, 50)
+            pytest.fail()
+        except Exception as err:
+            assert err.__class__.__name__ == 'TimeoutException'
+            assert replica.state == 'DEPLOYING'
+        client.get_account.assert_called_with('id')
+
+    @pytest.fixture()
+    async def wait_undeploy(self):
+        global start_account
+        start_account = {
+            '_id': 'id',
+            'login': '50194988',
+            'name': 'mt5a',
+            'server': 'ICMarketsSC-Demo',
+            'provisioningProfileId': 'f9ce1f12-e720-4b9a-9477-c2d4cb25f076',
+            'magic': 123456,
+            'application': 'MetaApi',
+            'connectionStatus': 'CONNECTED',
+            'state': 'DEPLOYED',
+            'region': 'vint-hill',
+            'type': 'cloud',
+            'accountReplicas': [{
+                '_id': 'idReplica',
+                'state': 'UNDEPLOYING',
+                'magic': 0,
+                'connectionStatus': 'CONNECTED',
+                'symbol': 'EURUSD',
+                'reliability': 'regular',
+                'region': 'london'
+            }]
+        }
+        yield
+
+    @pytest.mark.asyncio
+    async def test_wait_undeploy_replica(self, wait_undeploy):
+        """Should wait for undeployment."""
+        account = await api.get_account('id')
+        updated_account = {
+            '_id': 'id',
+            'login': '50194988',
+            'name': 'mt5a',
+            'server': 'ICMarketsSC-Demo',
+            'provisioningProfileId': 'f9ce1f12-e720-4b9a-9477-c2d4cb25f076',
+            'magic': 123456,
+            'application': 'MetaApi',
+            'connectionStatus': 'CONNECTED',
+            'state': 'DEPLOYED',
+            'region': 'vint-hill',
+            'type': 'cloud',
+            'accountReplicas': [{
+                '_id': 'idReplica',
+                'state': 'UNDEPLOYED',
+                'magic': 0,
+                'connectionStatus': 'DISCONNECTED',
+                'symbol': 'EURUSD',
+                'reliability': 'regular',
+                'region': 'london'
+            }]
+        }
+        client.get_account = AsyncMock(side_effect=[start_account, start_account, updated_account])
+        replica = account.replicas[0]
+        await replica.wait_undeployed(1, 50)
+        assert replica.state == 'UNDEPLOYED'
+        client.get_account.assert_called_with('id')
+        assert client.get_account.call_count == 3
+
+    @pytest.mark.asyncio
+    async def test_time_out_undeploy_replica(self, wait_undeploy):
+        """Should time out waiting for undeployment."""
+        client.get_account = AsyncMock(return_value=start_account)
+        account = await api.get_account('id')
+        replica = account.replicas[0]
+        try:
+            await replica.wait_undeployed(1, 50)
+            pytest.fail()
+        except Exception as err:
+            assert err.__class__.__name__ == 'TimeoutException'
+            assert replica.state == 'UNDEPLOYING'
+        client.get_account.assert_called_with('id')
+
+    @pytest.fixture()
+    async def wait_remove(self):
+        global start_account
+        start_account = {
+            '_id': 'id',
+            'login': '50194988',
+            'name': 'mt5a',
+            'server': 'ICMarketsSC-Demo',
+            'provisioningProfileId': 'f9ce1f12-e720-4b9a-9477-c2d4cb25f076',
+            'magic': 123456,
+            'application': 'MetaApi',
+            'connectionStatus': 'CONNECTED',
+            'state': 'DEPLOYED',
+            'region': 'vint-hill',
+            'type': 'cloud',
+            'accountReplicas': [{
+                '_id': 'idReplica',
+                'state': 'DELETING',
+                'magic': 0,
+                'connectionStatus': 'CONNECTED',
+                'symbol': 'EURUSD',
+                'reliability': 'regular',
+                'region': 'london'
+            }]
+        }
+        yield
+
+    @pytest.mark.asyncio
+    async def test_wait_remove_replica(self, wait_remove):
+        """Should wait until removed."""
+        updated_account = {
+            '_id': 'id',
+            'login': '50194988',
+            'name': 'mt5a',
+            'server': 'ICMarketsSC-Demo',
+            'provisioningProfileId': 'f9ce1f12-e720-4b9a-9477-c2d4cb25f076',
+            'magic': 123456,
+            'application': 'MetaApi',
+            'connectionStatus': 'CONNECTED',
+            'state': 'DEPLOYED',
+            'region': 'vint-hill',
+            'type': 'cloud',
+            'accountReplicas': []
+        }
+        client.get_account = AsyncMock(side_effect=[start_account, start_account, updated_account])
+        account = await api.get_account('id')
+        replica = account.replicas[0]
+        await replica.wait_removed(1, 50)
+        client.get_account.assert_called_with('id')
+        assert client.get_account.call_count == 3
+
+    @pytest.mark.asyncio
+    async def test_time_out_remove_replica(self, wait_remove):
+        """Should time out waiting until removed."""
+        client.get_account = AsyncMock(return_value=start_account)
+        account = await api.get_account('id')
+        replica = account.replicas[0]
+        try:
+            await replica.wait_removed(1, 50)
+            pytest.fail()
+        except Exception as err:
+            assert err.__class__.__name__ == 'TimeoutException'
+            assert replica.state == 'DELETING'
+        client.get_account.assert_called_with('id')
+
+    @pytest.fixture()
+    async def wait_connected(self):
+        global start_account
+        start_account = {
+            '_id': 'id',
+            'login': '50194988',
+            'name': 'mt5a',
+            'server': 'ICMarketsSC-Demo',
+            'provisioningProfileId': 'f9ce1f12-e720-4b9a-9477-c2d4cb25f076',
+            'magic': 123456,
+            'application': 'MetaApi',
+            'connectionStatus': 'CONNECTED',
+            'state': 'DEPLOYED',
+            'region': 'vint-hill',
+            'type': 'cloud',
+            'accountReplicas': [{
+                '_id': 'idReplica',
+                'state': 'DEPLOYED',
+                'magic': 0,
+                'connectionStatus': 'DISCONNECTED',
+                'symbol': 'EURUSD',
+                'reliability': 'regular',
+                'region': 'london'
+            }]
+        }
+        yield
+
+    @pytest.mark.asyncio
+    async def test_wait_connected_replica(self, wait_connected):
+        """Should wait until broker connection."""
+        updated_account = {
+            '_id': 'id',
+            'login': '50194988',
+            'name': 'mt5a',
+            'server': 'ICMarketsSC-Demo',
+            'provisioningProfileId': 'f9ce1f12-e720-4b9a-9477-c2d4cb25f076',
+            'magic': 123456,
+            'application': 'MetaApi',
+            'connectionStatus': 'CONNECTED',
+            'state': 'DEPLOYED',
+            'type': 'cloud',
+            'accountReplicas': [{
+                '_id': 'idReplica',
+                'state': 'DEPLOYED',
+                'magic': 0,
+                'connectionStatus': 'CONNECTED',
+                'symbol': 'EURUSD',
+                'reliability': 'regular',
+                'region': 'london'
+            }]
+        }
+        client.get_account = AsyncMock(side_effect=[start_account, start_account, updated_account])
+        account = await api.get_account('id')
+        replica = account.replicas[0]
+        await replica.wait_connected(1, 50)
+        assert replica.connection_status == 'CONNECTED'
+        client.get_account.assert_called_with('id')
+        assert client.get_account.call_count == 3
+
+    @pytest.mark.asyncio
+    async def test_time_out_connected_replica(self, wait_connected):
+        """Should time out waiting for broker connection."""
+        client.get_account = AsyncMock(return_value=start_account)
+        account = await api.get_account('id')
+        replica = account.replicas[0]
+        try:
+            await replica.wait_connected(1, 50)
+            pytest.fail()
+        except Exception as err:
+            assert err.__class__.__name__ == 'TimeoutException'
+            assert replica.connection_status == 'DISCONNECTED'
+        client.get_account.assert_called_with('id')
