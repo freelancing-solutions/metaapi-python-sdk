@@ -3,11 +3,19 @@ from .metatraderAccountModel import MetatraderAccountModel
 from .models import MetatraderSymbolSpecification, MetatraderAccountInformation, MetatraderPosition, MetatraderOrder, \
     MetatraderHistoryOrders, MetatraderDeals, MetatraderSymbolPrice, MetatraderCandle, MetatraderTick, MetatraderBook,\
     ServerTime
-from datetime import datetime
-from typing import Coroutine, List
+from datetime import datetime, timedelta
+from typing import Coroutine, List, TypedDict
 import asyncio
+from functools import reduce
 from ..logger import LoggerManager
 from .metaApiConnection import MetaApiConnection
+from ..clients.timeoutException import TimeoutException
+
+
+class RpcMetaApiConnectionDict(TypedDict, total=False):
+    instanceIndex: int
+    synchronized: bool
+    disconnected: bool
 
 
 class RpcMetaApiConnection(MetaApiConnection):
@@ -22,6 +30,8 @@ class RpcMetaApiConnection(MetaApiConnection):
         """
         super().__init__(websocket_client, account, 'RPC')
         self._logger = LoggerManager.get_logger('RpcMetaApiConnection')
+        self._websocketClient.add_synchronization_listener(account.id, self)
+        self._stateByInstanceIndex = {}
 
     async def connect(self):
         """Opens the connection. Can only be called the first time, next calls will be ignored.
@@ -31,12 +41,16 @@ class RpcMetaApiConnection(MetaApiConnection):
         """
         if not self._opened:
             self._opened = True
-            self._websocketClient.add_account_region(self.account.id, self.account.region)
+            account_regions = self._account.account_regions
+            self._websocketClient.add_account_cache(self.account.id, account_regions)
+            for region in account_regions.keys():
+                self._websocketClient.ensure_subscribe(account_regions[region], 0)
+                self._websocketClient.ensure_subscribe(account_regions[region], 1)
 
     async def close(self):
         """Closes the connection. The instance of the class should no longer be used after this method is invoked."""
         if not self._closed:
-            self._websocketClient.remove_account_region(self.account.id)
+            self._websocketClient.remove_account_cache(self.account.id)
             self._closed = True
 
     def get_account_information(self) -> 'Coroutine[asyncio.Future[MetatraderAccountInformation]]':
@@ -284,6 +298,52 @@ class RpcMetaApiConnection(MetaApiConnection):
         self._check_is_connection_active()
         return self._websocketClient.get_server_time(self._account.id)
 
+    async def on_connected(self, instance_index: str, replicas: int):
+        """Invoked when connection to MetaTrader terminal established.
+
+        Args:
+            instance_index: Index of an account instance connected.
+            replicas: Number of account replicas launched.
+
+        Returns:
+            A coroutine which resolves when the asynchronous event is processed.
+        """
+        state = self._get_state(instance_index)
+        state['synchronized'] = True
+
+    async def on_disconnected(self, instance_index: str):
+        """Invoked when connection to MetaTrader terminal terminated.
+
+        Args:
+            instance_index: Index of an account instance connected.
+
+        Returns:
+             A coroutine which resolves when the asynchronous event is processed.
+        """
+        state = self._get_state(instance_index)
+        state['synchronized'] = False
+        self._logger.debug(f'{self._account.id}:{instance_index}: disconnected from broker')
+
+    async def on_stream_closed(self, instance_index: str):
+        """Invoked when a stream for an instance index is closed.
+
+        Args:
+            instance_index: Index of an account instance connected.
+
+        Returns:
+            A coroutine which resolves when the asynchronous event is processed.
+        """
+        if instance_index in self._stateByInstanceIndex:
+            del self._stateByInstanceIndex[instance_index]
+
+    def is_synchronized(self) -> bool:
+        """Returns flag indicating status of state synchronization with MetaTrader terminal.
+
+        Returns:
+            A coroutine resolving with a flag indicating status of state synchronization with MetaTrader terminal.
+        """
+        return True in list(map(lambda instance: instance['synchronized'], self._stateByInstanceIndex.values()))
+
     async def wait_synchronized(self, timeout_in_seconds: float = 300):
         """Waits until synchronization to RPC application is completed.
 
@@ -298,6 +358,14 @@ class RpcMetaApiConnection(MetaApiConnection):
         """
         self._check_is_connection_active()
         start_time = datetime.now().timestamp()
+        synchronized = self.is_synchronized()
+        while not synchronized and (start_time + timeout_in_seconds > datetime.now().timestamp()):
+            await asyncio.sleep(1)
+            synchronized = self.is_synchronized()
+        if not synchronized:
+            raise TimeoutException('Timed out waiting for MetaApi to synchronize to MetaTrader account ' +
+                                   self._account.id)
+
         while True:
             try:
                 await self._websocketClient.wait_synchronized(self._account.id, None, 'RPC', 5, 'RPC')
@@ -305,3 +373,11 @@ class RpcMetaApiConnection(MetaApiConnection):
             except Exception as err:
                 if datetime.now().timestamp() > start_time + timeout_in_seconds:
                     raise err
+
+    def _get_state(self, instance_index: str) -> RpcMetaApiConnectionDict:
+        if instance_index not in self._stateByInstanceIndex:
+            self._stateByInstanceIndex[instance_index] = {
+                'instanceIndex': instance_index,
+                'synchronized': False,
+            }
+        return self._stateByInstanceIndex[instance_index]

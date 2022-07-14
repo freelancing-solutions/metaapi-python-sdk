@@ -6,9 +6,8 @@ from ..httpClient import HttpClient
 import pytest
 import asyncio
 import copy
-from mock import patch
 from urllib.parse import parse_qs
-from mock import MagicMock, AsyncMock
+from mock import AsyncMock, MagicMock, patch
 from copy import deepcopy
 from datetime import datetime, timedelta
 from freezegun import freeze_time
@@ -86,13 +85,28 @@ async def run_around_tests():
     client.set_url('http://localhost:8080')
     client._socketInstances = {'vint-hill': {0: [], 1: []}, 'new-york': {0: []}}
     client._regionsByAccounts['accountId'] = {'region': 'vint-hill', 'connections': 1}
-    client._socketInstancesByAccounts = {0: {'accountId': 0}, 1: {'accountId': 0}}
-    client._connectedHosts = {'accountId:0:ps-mpa-1': 'ps-mpa-1'}
+    client._regionsByAccounts['accountIdReplica'] = {'region': 'new-york', 'connections': 1}
+    client._socketInstancesByAccounts = {0: {'accountId': 0, 'accountIdReplica': 0}, 1: {'accountId': 0}}
+    client._accountsByReplicaId['accountId'] = 'accountId'
+    client._accountsByReplicaId['accountIdReplica'] = 'accountId'
+    client._accountReplicas['accountId'] = {
+        'vint-hill': 'accountId',
+        'new-york': 'accountIdReplica'
+    }
+    client._connectedHosts = {
+        'accountId:vint-hill:0:ps-mpa-1': 'ps-mpa-1',
+        'accountId:new-york:0:ps-mpa-2': 'ps-mpa-2'
+    }
     await client.connect(0, 'new-york')
     await client.connect(1, 'vint-hill')
     await client.connect(0, 'vint-hill')
     client._socketInstances['vint-hill'][0][0]['synchronizationThrottler']._accountsBySynchronizationIds = {}
     client._socketInstances['vint-hill'][1][0]['synchronizationThrottler']._accountsBySynchronizationIds = {}
+    client._latencyService.on_connected = AsyncMock()
+    client._latencyService.on_disconnected = MagicMock()
+    client._latencyService.on_unsubscribe = MagicMock()
+    client._latencyService.on_deals_synchronized = AsyncMock()
+    client._latencyService.get_active_account_instances = MagicMock(return_value=[])
     global session_id
     session_id = client.socket_instances['vint-hill'][0][0]['sessionId']
     client._resolved = True
@@ -183,6 +197,7 @@ async def test_retry_connection_if_timed_out():
         'domain': 'project-stock.agiliumlabs.cloud', 'requestTimeout': 1.5, 'useSharedClientApi': False,
         'connectTimeout': 0.1,
         'retryOpts': {'retries': 3, 'minDelayInSeconds': 0.1, 'maxDelayInSeconds': 0.5}})
+    client._accountsByReplicaId['accountId'] = 'accountId'
     client.set_url('http://localhost:6785')
 
     async def delayed_start():
@@ -207,7 +222,7 @@ async def test_retry_connection_if_timed_out():
 @pytest.mark.asyncio
 async def test_connect_to_shared_server():
     """Should connect to shared server."""
-    async def fake_request(arg):
+    async def fake_request(arg, func_name):
         if arg['url'] == 'https://mt-provisioning-api-v1.project-stock.agiliumlabs.cloud/' + \
                 'users/current/servers/mt-client-api':
             return {
@@ -231,7 +246,7 @@ async def test_connect_to_shared_server():
 @pytest.mark.asyncio
 async def test_connect_to_dedicated_server():
     """Should connect to dedicated server."""
-    async def fake_request(arg):
+    async def fake_request(arg, func_name):
         if arg['url'] == 'https://mt-provisioning-api-v1.project-stock.agiliumlabs.cloud/' + \
                 'users/current/servers/mt-client-api':
             return {
@@ -255,24 +270,26 @@ async def test_connect_to_dedicated_server():
 
 
 @pytest.mark.asyncio
-async def test_add_account_region():
-    """Should add account region."""
+async def test_add_account_cache():
+    """Should add account cache."""
     with freeze_time() as frozen_datetime:
         with patch('lib.clients.metaApi.metaApiWebsocket_client.asyncio.sleep', new=lambda x: sleep(x / 7200)):
             client = MetaApiWebsocketClient(http_client, 'token', {
                 'application': 'application', 'domain': 'project-stock.agiliumlabs.cloud',
                 'requestTimeout': 3})
-            client.add_account_region('accountId2', 'vint-hill')
+            client.add_account_cache('accountId2', {'vint-hill': 'accountId2'})
             assert client.get_account_region('accountId2') == 'vint-hill'
-            client.add_account_region('accountId2', 'vint-hill')
+            client.add_account_cache('accountId2', {'vint-hill': 'accountId2'})
             assert client.get_account_region('accountId2') == 'vint-hill'
-            client.remove_account_region('accountId2')
+            client.remove_account_cache('accountId2')
             assert client.get_account_region('accountId2') == 'vint-hill'
-            client.remove_account_region('accountId2')
+            client.remove_account_cache('accountId2')
             assert client.get_account_region('accountId2') == 'vint-hill'
             frozen_datetime.tick(7201)
             await sleep(0.27)
             assert client.get_account_region('accountId2') is None
+            assert 'accountId2' not in client.account_replicas
+            assert 'accountId2' not in client.accounts_by_replica_id
 
 
 @pytest.mark.asyncio
@@ -305,7 +322,7 @@ async def test_delay_region_deletion():
             client._socketInstances['vint-hill'][0][0]['synchronizationThrottler']._accountsBySynchronizationIds = {}
             client._socketInstances['vint-hill'][1][0]['synchronizationThrottler']._accountsBySynchronizationIds = {}
 
-            client.add_account_region('accountId2', 'vint-hill')
+            client.add_account_cache('accountId2', {'vint-hill': 'accountId2'})
             assert client.get_account_region('accountId2') == 'vint-hill'
             await client.get_account_information('accountId2')
             assert client.get_account_region('accountId2') == 'vint-hill'
@@ -314,7 +331,7 @@ async def test_delay_region_deletion():
             frozen_datetime.move_to('2020-10-10 01:00:00.000')
             assert client.get_account_region('accountId2') == 'vint-hill'
             await client.get_account_information('accountId2')
-            client.remove_account_region('accountId2')
+            client.remove_account_cache('accountId2')
             frozen_datetime.move_to('2020-10-10 02:35:05.000')
             await sleep(0.27)
             frozen_datetime.move_to('2020-10-10 01:00:00.000')
@@ -325,6 +342,7 @@ async def test_delay_region_deletion():
             await sleep(0.27)
             frozen_datetime.move_to('2020-10-10 01:00:00.000')
             assert client.get_account_region('accountId2') is None
+            await client.close()
 
 
 @pytest.mark.asyncio
@@ -741,8 +759,8 @@ async def test_execute_trade():
         'orderId': '46870472'
     }
     client._subscriptionManager.is_subscription_active = MagicMock(return_value=True)
-    await sio.emit('response', {'type': 'authenticated', 'accountId': 'accountId', 'host': 'ps-mpa-1',
-                                'instanceIndex': 0, 'replicas': 1})
+    await sio.emit('synchronization', {'type': 'authenticated', 'accountId': 'accountId', 'host': 'ps-mpa-1',
+                                       'instanceIndex': 0, 'replicas': 1})
 
     await asyncio.sleep(0.1)
 
@@ -751,6 +769,43 @@ async def test_execute_trade():
         assert data['trade'] == trade
         if data['type'] == 'trade' and data['accountId'] == 'accountId' and data['application'] == 'application' \
                 and data['instanceIndex'] == 0:
+            await sio.emit('response', {'type': 'response', 'accountId': data['accountId'],
+                                        'requestId': data['requestId'], 'response': response})
+
+    actual = await client.trade('accountId', trade)
+    assert actual == response
+
+
+@pytest.mark.asyncio
+async def test_execute_trade_replica():
+    """Should execute a trade via a replica account."""
+    client._latencyService.get_active_account_instances = MagicMock(return_value=['accountId:new-york:0:ps-mpa-2'])
+    trade = {
+        'actionType': 'ORDER_TYPE_SELL',
+        'symbol': 'AUDNZD',
+        'volume': 0.07,
+        'expiration': {
+            'type': 'ORDER_TIME_SPECIFIED',
+            'time': date('2020-04-15T02:45:00.000Z')
+        }
+    }
+    response = {
+        'numericCode': 10009,
+        'stringCode': 'TRADE_RETCODE_DONE',
+        'message': 'Request completed',
+        'orderId': '46870472'
+    }
+    client._subscriptionManager.is_subscription_active = MagicMock(return_value=True)
+    await sio.emit('synchronization', {'type': 'authenticated', 'accountId': 'accountIdReplica', 'host': 'ps-mpa-2',
+                                       'instanceIndex': 0, 'replicas': 1}, connections[0])
+
+    await asyncio.sleep(0.1)
+
+    @sio.on('request')
+    async def on_request(sid, data):
+        assert data['trade'] == trade
+        if data['type'] == 'trade' and data['accountId'] == 'accountIdReplica' and \
+                data['application'] == 'application' and data['instanceIndex'] == 0:
             await sio.emit('response', {'type': 'response', 'accountId': data['accountId'],
                                         'requestId': data['requestId'], 'response': response})
 
@@ -846,12 +901,32 @@ async def test_connect_to_terminal():
 
 
 @pytest.mark.asyncio
+async def test_connect_to_terminal_replica():
+    """Should connect to MetaTrader terminal via a replica even if synced main."""
+    client._latencyService.get_active_account_instances = MagicMock(return_value=['accountId:vint-hill:0:ps-mpa-1'])
+    request_received = False
+
+    @sio.on('request')
+    async def on_request(sid, data):
+        if data['type'] == 'subscribe' and data['accountId'] == 'accountIdReplica' \
+                and data['application'] == 'application' and data['instanceIndex'] == 1:
+            nonlocal request_received
+            request_received = True
+            await sio.emit('response', {'type': 'response', 'accountId': data['accountId'],
+                                        'requestId': data['requestId']})
+
+    await client.subscribe('accountIdReplica', 1)
+    assert request_received
+
+
+@pytest.mark.asyncio
 async def test_create_new_instance():
     """Should create new instance when account limit is reached."""
     assert len(client.socket_instances['vint-hill'][0]) == 1
     for i in range(100):
         client._socketInstancesByAccounts[0]['accountId' + str(i)] = 0
         client._regionsByAccounts['accountId' + str(i)] = {'region': 'vint-hill', 'connections': 1}
+        client._accountsByReplicaId['accountId' + str(i)] = 'accountId' + str(i)
 
     @sio.on('request')
     async def on_request(sid, data):
@@ -861,6 +936,7 @@ async def test_create_new_instance():
                                         'requestId': data['requestId']})
 
     client._regionsByAccounts['accountId101'] = {'region': 'vint-hill', 'connections': 1}
+    client._accountsByReplicaId['accountId101'] = 'accountId101'
     await client.subscribe('accountId101', 0)
     assert len(client.socket_instances['vint-hill'][0]) == 2
 
@@ -1074,6 +1150,7 @@ class TestUnsubscribe:
         await client.unsubscribe('accountId')
         assert request_received
         assert len(client.socket_instances_by_accounts.keys()) == 0
+        client._latencyService.on_unsubscribe.assert_called_with('accountId')
 
     @pytest.mark.asyncio
     async def test_ignore_not_found_unsubscribe(self):
@@ -1109,6 +1186,13 @@ class TestUnsubscribe:
         """Should repeat unsubscription on synchronization packets if account must be unsubscribed."""
         with freeze_time() as frozen_datetime:
             frozen_datetime.move_to('2020-10-10 01:00:01.000')
+            prices = [{
+                'symbol': 'AUDNZD',
+                'bid': 1.05916,
+                'ask': 1.05927,
+                'profitTickValue': 0.602,
+                'lossTickValue': 0.60203
+            }]
             subscribe_server_handler = MagicMock()
             unsubscribe_server_handler = MagicMock()
 
@@ -1134,7 +1218,8 @@ class TestUnsubscribe:
             assert unsubscribe_server_handler.call_count == 2
             # Sending a packet, should throttle first repeat unsubscribe request
             await sio.emit('synchronization', {
-                'type': 'status', 'accountId': 'accountId', 'host': 'ps-mpa-1', 'connected': True, 'instanceIndex': 0
+                'type': 'prices', 'accountId': 'accountId', 'host': 'ps-mpa-1', 'connected': True, 'instanceIndex': 0,
+                'prices': prices
             })
             await asyncio.sleep(0.05)
             assert unsubscribe_server_handler.call_count == 2
@@ -1142,20 +1227,23 @@ class TestUnsubscribe:
             frozen_datetime.tick(11)
             await asyncio.sleep(0.05)
             await sio.emit('synchronization', {
-                'type': 'status', 'accountId': 'accountId', 'host': 'ps-mpa-1', 'connected': True, 'instanceIndex': 0
+                'type': 'prices', 'accountId': 'accountId', 'host': 'ps-mpa-1', 'connected': True, 'instanceIndex': 0,
+                'prices': prices
             })
             await asyncio.sleep(0.05)
             assert unsubscribe_server_handler.call_count == 4
             # Repeat a packet, should throttle unsubscribe request
             await sio.emit('synchronization', {
-                'type': 'status', 'accountId': 'accountId', 'host': 'ps-mpa-1', 'connected': True, 'instanceIndex': 0
+                'type': 'prices', 'accountId': 'accountId', 'host': 'ps-mpa-1', 'connected': True, 'instanceIndex': 0,
+                'prices': prices
             })
             await asyncio.sleep(0.05)
             assert unsubscribe_server_handler.call_count == 4
             # Repeat a packet after a while, should not throttle unsubscribe request
             frozen_datetime.tick(11)
             await sio.emit('synchronization', {
-                'type': 'status', 'accountId': 'accountId', 'host': 'ps-mpa-1', 'connected': True, 'instanceIndex': 0
+                'type': 'prices', 'accountId': 'accountId', 'host': 'ps-mpa-1', 'connected': True, 'instanceIndex': 0,
+                'prices': prices
             })
             await asyncio.sleep(0.05)
             assert unsubscribe_server_handler.call_count == 6
@@ -1261,7 +1349,8 @@ class TestConnectionStatusSynchronization:
         await sio.emit('synchronization', {'type': 'authenticated', 'accountId': 'accountId', 'host': 'ps-mpa-1',
                                            'instanceIndex': 1, 'replicas': 2})
         await future_close
-        listener.on_connected.assert_called_with('1:ps-mpa-1', 2)
+        listener.on_connected.assert_called_with('vint-hill:1:ps-mpa-1', 2)
+        client._latencyService.on_connected.assert_called_with('accountId:vint-hill:1:ps-mpa-1')
 
     @pytest.mark.asyncio
     async def test_send_trade_to_both_instances(self, sub_active):
@@ -1352,8 +1441,8 @@ class TestConnectionStatusSynchronization:
         assert not request_received_authenticated1
 
         request_received_authenticated0 = False
-
-        client._connectedHosts = {'accountId:1:ps-mpa-1': 'ps-mpa-1'}
+        client._latencyService.get_active_account_instances = \
+            MagicMock(return_value=['accountId:vint-hill:1:ps-mpa-1'])
 
         await client.remove_application('accountId')
         assert not request_received_authenticated0
@@ -1389,13 +1478,15 @@ class TestConnectionStatusSynchronization:
                     await sio.emit('response', {'type': 'response', 'accountId': data['accountId'],
                                                 'requestId': data['requestId'], 'response': response})
 
-        client._connectedHosts = {'accountId:0:ps-mpa-1': 'ps-mpa-1'}
+        client._latencyService.get_active_account_instances = \
+            MagicMock(return_value=['accountId:vint-hill:0:ps-mpa-1'])
         await client.trade('accountId', trade, None, 'regular')
         assert instance_called_trade0
         assert not instance_called_trade1
 
         instance_called_trade0 = False
-        client._connectedHosts = {'accountId:1:ps-mpa-1': 'ps-mpa-1'}
+        client._latencyService.get_active_account_instances = \
+            MagicMock(return_value=['accountId:vint-hill:1:ps-mpa-1'])
 
         await client.trade('accountId', trade, None, 'regular')
         assert not instance_called_trade0
@@ -1415,7 +1506,7 @@ class TestConnectionStatusSynchronization:
                        connections[2])
         await future_close
         assert listener.on_connected.call_count == 1
-        listener.on_connected.assert_called_with('0:ps-mpa-1', 2)
+        listener.on_connected.assert_called_with('vint-hill:0:ps-mpa-1', 2)
 
     @pytest.mark.asyncio
     async def test_cancel_subscribe_on_authenticated_event(self, sub_active):
@@ -1427,6 +1518,7 @@ class TestConnectionStatusSynchronization:
         client._socketInstancesByAccounts[0]['accountId2'] = 0
         client._socketInstancesByAccounts[1]['accountId2'] = 0
         client._regionsByAccounts['accountId2'] = {'region': 'vint-hill', 'connections': 1}
+        client._accountsByReplicaId['accountId2'] = 'accountId2'
         await sio.emit('synchronization', {'type': 'authenticated', 'accountId': 'accountId', 'host': 'ps-mpa-1',
                                            'instanceIndex': 0, 'replicas': 2, 'sessionId': session_id})
         await sio.emit('synchronization', {'type': 'authenticated', 'accountId': 'accountId2', 'host': 'ps-mpa-2',
@@ -1447,7 +1539,7 @@ class TestConnectionStatusSynchronization:
         await sio.emit('synchronization', {'type': 'status', 'accountId': 'accountId', 'host': 'ps-mpa-1',
                                            'connected': True, 'instanceIndex': 0}, connections[2])
         await future_close
-        listener.on_broker_connection_status_changed.assert_called_with('0:ps-mpa-1', True)
+        listener.on_broker_connection_status_changed.assert_called_with('vint-hill:0:ps-mpa-1', True)
 
     @pytest.mark.asyncio
     async def test_call_disconnect(self, sub_active):
@@ -1473,7 +1565,8 @@ class TestConnectionStatusSynchronization:
             await sleep(0.2)
             listener.on_disconnected.assert_not_called()
             await sleep(1.1)
-            listener.on_disconnected.assert_called_with('0:ps-mpa-1')
+            listener.on_disconnected.assert_called_with('vint-hill:0:ps-mpa-1')
+            client._latencyService.on_disconnected.assert_called_with('accountId:vint-hill:0:ps-mpa-1')
 
     @pytest.mark.asyncio
     async def test_close_stream_on_timeout(self, sub_active):
@@ -1512,11 +1605,11 @@ class TestConnectionStatusSynchronization:
                                                'connected': True, 'instanceIndex': 0})
             listener.on_disconnected.assert_not_called()
             await sleep(1.1)
-            listener.on_stream_closed.assert_called_with('0:ps-mpa-1')
+            listener.on_stream_closed.assert_called_with('vint-hill:0:ps-mpa-1')
             listener.on_disconnected.assert_not_called()
             client._subscriptionManager.on_timeout.assert_not_called()
             await sleep(0.3)
-            listener.on_disconnected.assert_called_with('0:ps-mpa-2')
+            listener.on_disconnected.assert_called_with('vint-hill:0:ps-mpa-2')
             client._subscriptionManager.on_disconnected.assert_not_called()
             client._subscriptionManager.on_timeout.assert_called_with('accountId', 0)
 
@@ -1534,7 +1627,7 @@ class TestConnectionStatusSynchronization:
                                            'connected': True, 'healthStatus': {'restApiHealthy': True},
                                            'instanceIndex': 1})
         await future_close
-        listener.on_health_status.assert_called_with('1:ps-mpa-1', {'restApiHealthy': True})
+        listener.on_health_status.assert_called_with('vint-hill:1:ps-mpa-1', {'restApiHealthy': True})
 
     @pytest.mark.asyncio
     async def test_process_disconnected_synchronization_event(self, sub_active):
@@ -1552,8 +1645,8 @@ class TestConnectionStatusSynchronization:
                                            'instanceIndex': 0})
         await future_close
         client._subscriptionManager.on_disconnected.assert_called_with('accountId', 0)
-        listener.on_disconnected.assert_called_with('0:ps-mpa-1')
-        listener.on_stream_closed.assert_called_with('0:ps-mpa-1')
+        listener.on_disconnected.assert_called_with('vint-hill:0:ps-mpa-1')
+        listener.on_stream_closed.assert_called_with('vint-hill:0:ps-mpa-1')
 
     @pytest.mark.asyncio
     async def test_on_stream_closed(self, sub_active):
@@ -1572,7 +1665,7 @@ class TestConnectionStatusSynchronization:
         await sio.emit('synchronization', {'type': 'disconnected', 'accountId': 'accountId', 'host': 'ps-mpa-1',
                                            'instanceIndex': 0})
         await asyncio.sleep(0.1)
-        listener.on_stream_closed.assert_called_with('0:ps-mpa-1')
+        listener.on_stream_closed.assert_called_with('vint-hill:0:ps-mpa-1')
         listener.on_disconnected.assert_not_called()
         client._subscriptionManager.on_disconnected.assert_not_called()
         await sio.emit('synchronization', {'type': 'disconnected', 'accountId': 'accountId', 'host': 'ps-mpa-2',
@@ -1670,7 +1763,7 @@ class TestTerminalStateSynchronization:
                                            'accountInformation': account_information, 'instanceIndex': 0})
         await asyncio.sleep(0.05)
         listener.on_synchronization_started.assert_called_with(
-            '0:ps-mpa-1', specifications_updated=True, positions_updated=True, orders_updated=True,
+            'vint-hill:0:ps-mpa-1', specifications_updated=True, positions_updated=True, orders_updated=True,
             synchronization_id='synchronizationId')
         listener.on_positions_synchronized.assert_not_called()
         listener.on_pending_orders_synchronized.assert_not_called()
@@ -1698,10 +1791,10 @@ class TestTerminalStateSynchronization:
                                            'accountInformation': account_information, 'instanceIndex': 0})
         await asyncio.sleep(0.05)
         listener.on_synchronization_started.assert_called_with(
-            '0:ps-mpa-1', specifications_updated=False, positions_updated=False, orders_updated=False,
+            'vint-hill:0:ps-mpa-1', specifications_updated=False, positions_updated=False, orders_updated=False,
             synchronization_id='synchronizationId')
-        listener.on_positions_synchronized.assert_called_with('0:ps-mpa-1', 'synchronizationId')
-        listener.on_pending_orders_synchronized.assert_called_with('0:ps-mpa-1', 'synchronizationId')
+        listener.on_positions_synchronized.assert_called_with('vint-hill:0:ps-mpa-1', 'synchronizationId')
+        listener.on_pending_orders_synchronized.assert_called_with('vint-hill:0:ps-mpa-1', 'synchronizationId')
 
     @pytest.mark.asyncio
     async def test_process_sync_started_without_updating_positions(self, sub_active):
@@ -1740,15 +1833,15 @@ class TestTerminalStateSynchronization:
                                            'synchronizationId': 'synchronizationId'})
         await asyncio.sleep(0.05)
         listener.on_synchronization_started.assert_called_with(
-            '0:ps-mpa-1', specifications_updated=True, positions_updated=False, orders_updated=True,
+            'vint-hill:0:ps-mpa-1', specifications_updated=True, positions_updated=False, orders_updated=True,
             synchronization_id='synchronizationId')
-        listener.on_positions_synchronized.assert_called_with('0:ps-mpa-1', 'synchronizationId')
+        listener.on_positions_synchronized.assert_called_with('vint-hill:0:ps-mpa-1', 'synchronizationId')
         listener.on_pending_orders_synchronized.assert_not_called()
         await sio.emit('synchronization', {'type': 'orders', 'accountId': 'accountId', 'orders': orders,
                                            'synchronizationId': 'synchronizationId',
                                            'instanceIndex': 0, 'host': 'ps-mpa-1'})
         await asyncio.sleep(0.05)
-        listener.on_pending_orders_synchronized.assert_called_with('0:ps-mpa-1', 'synchronizationId')
+        listener.on_pending_orders_synchronized.assert_called_with('vint-hill:0:ps-mpa-1', 'synchronizationId')
 
     @pytest.mark.asyncio
     async def test_process_sync_started_without_updating_orders(self, sub_active):
@@ -1792,7 +1885,7 @@ class TestTerminalStateSynchronization:
                                            'synchronizationId': 'synchronizationId'})
         await asyncio.sleep(0.05)
         listener.on_synchronization_started.assert_called_with(
-            '0:ps-mpa-1', specifications_updated=True, positions_updated=True, orders_updated=False,
+            'vint-hill:0:ps-mpa-1', specifications_updated=True, positions_updated=True, orders_updated=False,
             synchronization_id='synchronizationId')
         listener.on_positions_synchronized.assert_not_called()
         listener.on_pending_orders_synchronized.assert_not_called()
@@ -1800,8 +1893,8 @@ class TestTerminalStateSynchronization:
                                            'synchronizationId': 'synchronizationId',
                                            'instanceIndex': 0, 'host': 'ps-mpa-1'})
         await asyncio.sleep(0.05)
-        listener.on_positions_synchronized.assert_called_with('0:ps-mpa-1', 'synchronizationId')
-        listener.on_pending_orders_synchronized.assert_called_with('0:ps-mpa-1', 'synchronizationId')
+        listener.on_positions_synchronized.assert_called_with('vint-hill:0:ps-mpa-1', 'synchronizationId')
+        listener.on_pending_orders_synchronized.assert_called_with('vint-hill:0:ps-mpa-1', 'synchronizationId')
 
     @pytest.mark.asyncio
     async def test_synchronize_account_information(self, sub_active):
@@ -1813,7 +1906,7 @@ class TestTerminalStateSynchronization:
         await sio.emit('synchronization', {'type': 'accountInformation', 'accountId': 'accountId', 'host': 'ps-mpa-1',
                                            'accountInformation': account_information, 'instanceIndex': 0})
         await future_close
-        listener.on_account_information_updated.assert_called_with('0:ps-mpa-1', account_information)
+        listener.on_account_information_updated.assert_called_with('vint-hill:0:ps-mpa-1', account_information)
 
     @pytest.mark.asyncio
     async def test_synchronize_positions(self, sub_active):
@@ -1857,8 +1950,8 @@ class TestTerminalStateSynchronization:
         await future_close
         positions[0]['time'] = date(positions[0]['time'])
         positions[0]['updateTime'] = date(positions[0]['updateTime'])
-        listener.on_positions_replaced.assert_called_with('0:ps-mpa-1', positions)
-        listener.on_positions_synchronized.assert_called_with('0:ps-mpa-1', 'synchronizationId')
+        listener.on_positions_replaced.assert_called_with('vint-hill:0:ps-mpa-1', positions)
+        listener.on_positions_synchronized.assert_called_with('vint-hill:0:ps-mpa-1', 'synchronizationId')
 
     @pytest.mark.asyncio
     async def test_synchronize_orders(self, sub_active):
@@ -1896,8 +1989,8 @@ class TestTerminalStateSynchronization:
                                            'instanceIndex': 0, 'host': 'ps-mpa-1'})
         await future_close
         orders[0]['time'] = date(orders[0]['time'])
-        listener.on_pending_orders_replaced.assert_called_with('0:ps-mpa-1', orders)
-        listener.on_pending_orders_synchronized.assert_called_with('0:ps-mpa-1', 'synchronizationId')
+        listener.on_pending_orders_replaced.assert_called_with('vint-hill:0:ps-mpa-1', orders)
+        listener.on_pending_orders_synchronized.assert_called_with('vint-hill:0:ps-mpa-1', 'synchronizationId')
 
     @pytest.mark.asyncio
     async def test_synchronize_history_orders(self, sub_active):
@@ -1926,7 +2019,7 @@ class TestTerminalStateSynchronization:
         await future_close
         history_orders[0]['time'] = date(history_orders[0]['time'])
         history_orders[0]['doneTime'] = date(history_orders[0]['doneTime'])
-        listener.on_history_order_added.assert_called_with('0:ps-mpa-1', history_orders[0])
+        listener.on_history_order_added.assert_called_with('vint-hill:0:ps-mpa-1', history_orders[0])
 
     @pytest.mark.asyncio
     async def test_synchronize_deals(self, sub_active):
@@ -1956,7 +2049,7 @@ class TestTerminalStateSynchronization:
                                            'instanceIndex': 0, 'host': 'ps-mpa-1'})
         await future_close
         deals[0]['time'] = date(deals[0]['time'])
-        listener.on_deal_added.assert_called_with('0:ps-mpa-1', deals[0])
+        listener.on_deal_added.assert_called_with('vint-hill:0:ps-mpa-1', deals[0])
 
     @pytest.mark.asyncio
     async def test_process_synchronization_updates(self, sub_active):
@@ -2064,13 +2157,13 @@ class TestTerminalStateSynchronization:
         update['historyOrders'][0]['time'] = date(update['historyOrders'][0]['time'])
         update['historyOrders'][0]['doneTime'] = date(update['historyOrders'][0]['doneTime'])
         update['deals'][0]['time'] = date(update['deals'][0]['time'])
-        listener.on_account_information_updated.assert_called_with('0:ps-mpa-1', update['accountInformation'])
-        listener.on_position_updated.assert_called_with('0:ps-mpa-1', update['updatedPositions'][0])
-        listener.on_position_removed.assert_called_with('0:ps-mpa-1', update['removedPositionIds'][0])
-        listener.on_pending_order_updated.assert_called_with('0:ps-mpa-1', update['updatedOrders'][0])
-        listener.on_pending_order_completed.assert_called_with('0:ps-mpa-1', update['completedOrderIds'][0])
-        listener.on_history_order_added.assert_called_with('0:ps-mpa-1', update['historyOrders'][0])
-        listener.on_deal_added.assert_called_with('0:ps-mpa-1', update['deals'][0])
+        listener.on_account_information_updated.assert_called_with('vint-hill:0:ps-mpa-1', update['accountInformation'])
+        listener.on_position_updated.assert_called_with('vint-hill:0:ps-mpa-1', update['updatedPositions'][0])
+        listener.on_position_removed.assert_called_with('vint-hill:0:ps-mpa-1', update['removedPositionIds'][0])
+        listener.on_pending_order_updated.assert_called_with('vint-hill:0:ps-mpa-1', update['updatedOrders'][0])
+        listener.on_pending_order_completed.assert_called_with('vint-hill:0:ps-mpa-1', update['completedOrderIds'][0])
+        listener.on_history_order_added.assert_called_with('vint-hill:0:ps-mpa-1', update['historyOrders'][0])
+        listener.on_deal_added.assert_called_with('vint-hill:0:ps-mpa-1', update['deals'][0])
 
     @pytest.mark.asyncio
     async def test_retrieve_server_time(self):
@@ -2418,6 +2511,63 @@ class TestMarketDataSynchronization:
         assert request_received
 
     @pytest.mark.asyncio
+    async def test_finish_syncing_deals(self, sub_active):
+        """Should finish synchronizing deals."""
+        mock_throttler = MagicMock()
+        mock_throttler.remove_synchronization_id = MagicMock()
+        mock_throttler.active_synchronization_ids = ['ABC']
+        client._socketInstances['vint-hill'][0][0]['synchronizationThrottler'] = mock_throttler
+        listener = MagicMock()
+        listener.on_synchronization_started = AsyncMock()
+        listener.on_deals_synchronized = FinalMock()
+        client.add_synchronization_listener('accountId', listener)
+        await sio.emit('synchronization', {'type': 'synchronizationStarted', 'accountId': 'accountId',
+                                           'sequenceTimestamp': 1603124267178,
+                                           'instanceIndex': 0, 'host': 'ps-mpa-1',
+                                           'synchronizationId': 'ABC'})
+        await asyncio.sleep(0.05)
+        await sio.emit('synchronization', {'type': 'dealSynchronizationFinished', 'accountId': 'accountId',
+                                           'synchronizationId': 'ABC',
+                                           'instanceIndex': 0, 'host': 'ps-mpa-1'})
+        await future_close
+        listener.on_deals_synchronized.assert_called_with('vint-hill:0:ps-mpa-1', 'ABC')
+        client._latencyService.on_deals_synchronized.assert_called_with('accountId:vint-hill:0:ps-mpa-1')
+        mock_throttler.remove_synchronization_id.assert_called_with('ABC')
+
+    @pytest.mark.asyncio
+    async def test_finish_syncing_orders(self, sub_active):
+        """Should finish synchronizing orders."""
+        mock_throttler = MagicMock()
+        mock_throttler.active_synchronization_ids = ['ABC']
+        client._socketInstances['vint-hill'][0][0]['synchronizationThrottler'] = mock_throttler
+        listener = MagicMock()
+        listener.on_synchronization_started = AsyncMock()
+        listener.on_history_orders_synchronized = FinalMock()
+        client.add_synchronization_listener('accountId', listener)
+        await sio.emit('synchronization', {'type': 'synchronizationStarted', 'accountId': 'accountId',
+                                           'sequenceTimestamp': 1603124267178, 'instanceIndex': 0, 'host': 'ps-mpa-1',
+                                           'synchronizationId': 'ABC'})
+        await asyncio.sleep(0.05)
+        await sio.emit('synchronization', {'type': 'orderSynchronizationFinished', 'accountId': 'accountId',
+                                           'synchronizationId': 'ABC', 'instanceIndex': 0, 'host': 'ps-mpa-1'})
+        await future_close
+        listener.on_history_orders_synchronized.assert_called_with('vint-hill:0:ps-mpa-1', 'ABC')
+
+    @pytest.mark.asyncio
+    async def test_downgrade_subscription(self, sub_active):
+        """Should downgrade subscription."""
+        listener = MagicMock()
+        listener.on_synchronization_started = AsyncMock()
+        listener.on_subscription_downgraded = FinalMock()
+        client.add_synchronization_listener('accountId', listener)
+        await sio.emit('synchronization', {'type': 'downgradeSubscription', 'accountId': 'accountId',
+                                           'instanceIndex': 0, 'host': 'ps-mpa-1', 'symbol': 'EURUSD',
+                                           'unsubscriptions': [{'type': 'ticks'}, {'type': 'books'}]})
+        await future_close
+        listener.on_subscription_downgraded.assert_called_with('vint-hill:0:ps-mpa-1', 'EURUSD', None,
+                                                               [{'type': 'ticks'}, {'type': 'books'}])
+
+    @pytest.mark.asyncio
     async def test_synchronize_symbol_specifications(self, sub_active):
         """Should synchronize symbol specifications."""
 
@@ -2437,9 +2587,9 @@ class TestMarketDataSynchronization:
                                            'specifications': specifications, 'instanceIndex': 1,
                                            'removedSymbols': ['AUDNZD'], 'host': 'ps-mpa-1'})
         await future_close
-        listener.on_symbol_specifications_updated.assert_called_with('1:ps-mpa-1', specifications, ['AUDNZD'])
-        listener.on_symbol_specification_updated.assert_called_with('1:ps-mpa-1', specifications[0])
-        listener.on_symbol_specification_removed.assert_called_with('1:ps-mpa-1', 'AUDNZD')
+        listener.on_symbol_specifications_updated.assert_called_with('vint-hill:1:ps-mpa-1', specifications, ['AUDNZD'])
+        listener.on_symbol_specification_updated.assert_called_with('vint-hill:1:ps-mpa-1', specifications[0])
+        listener.on_symbol_specification_removed.assert_called_with('vint-hill:1:ps-mpa-1', 'AUDNZD')
 
     @pytest.mark.asyncio
     async def test_synchronize_symbol_prices(self, sub_active):
@@ -2507,11 +2657,11 @@ class TestMarketDataSynchronization:
         ticks[0]['time'] = date(ticks[0]['time'])
         candles[0]['time'] = date(candles[0]['time'])
         books[0]['time'] = date(books[0]['time'])
-        listener.on_symbol_prices_updated.assert_called_with('1:ps-mpa-1', prices, 100, 200, 400, 40000, None)
-        listener.on_candles_updated.assert_called_with('1:ps-mpa-1', candles, 100, 200, 400, 40000, None)
-        listener.on_ticks_updated.assert_called_with('1:ps-mpa-1', ticks, 100, 200, 400, 40000, None)
-        listener.on_books_updated.assert_called_with('1:ps-mpa-1', books, 100, 200, 400, 40000, None)
-        listener.on_symbol_price_updated.assert_called_with('1:ps-mpa-1', prices[0])
+        listener.on_symbol_prices_updated.assert_called_with('vint-hill:1:ps-mpa-1', prices, 100, 200, 400, 40000, None)
+        listener.on_candles_updated.assert_called_with('vint-hill:1:ps-mpa-1', candles, 100, 200, 400, 40000, None)
+        listener.on_ticks_updated.assert_called_with('vint-hill:1:ps-mpa-1', ticks, 100, 200, 400, 40000, None)
+        listener.on_books_updated.assert_called_with('vint-hill:1:ps-mpa-1', books, 100, 200, 400, 40000, None)
+        listener.on_symbol_price_updated.assert_called_with('vint-hill:1:ps-mpa-1', prices[0])
 
 
 class TestServerSideSynchronization:
@@ -2768,9 +2918,9 @@ async def test_cancel_sync_on_disconnect():
         client._socketInstancesByAccounts[0]['accountId2'] = 1
         client._socketInstancesByAccounts[0]['accountId3'] = 0
         client._socketInstancesByAccounts[1]['accountId4'] = 0
-        client.add_account_region('accountId2', 'vint-hill')
-        client.add_account_region('accountId3', 'new-york')
-        client.add_account_region('accountId4', 'vint-hill')
+        client.add_account_cache('accountId2', {'vint-hill': 'accountId2'})
+        client.add_account_cache('accountId3', {'new-york': 'accountId3'})
+        client.add_account_cache('accountId4', {'vint-hill': 'accountId4'})
         await sio.emit('synchronization', {'type': 'synchronizationStarted', 'accountId': 'accountId',
                                            'sequenceTimestamp': 1603124267178, 'instanceIndex': 0, 'host': 'ps-mpa-1',
                                            'synchronizationId': 'synchronizationId'}, connections[2])
@@ -2838,6 +2988,7 @@ async def test_remove_reconnect_listener():
 
 @pytest.mark.asyncio
 async def test_process_packet_in_order():
+    """Should process packets in order."""
     with patch('lib.clients.metaApi.metaApiWebsocket_client.asyncio.sleep', new=lambda x: sleep(x / 60)):
         orders_call_time = 0
         positions_call_time = 0

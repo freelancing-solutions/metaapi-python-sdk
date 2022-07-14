@@ -52,7 +52,7 @@ class ExpertAdvisorClient(MetaApiClient):
                 'auth-token': self._token
             }
         }
-        return await self._httpClient.request(opts)
+        return await self._httpClient.request(opts, 'get_expert_advisors')
 
     async def get_expert_advisor(self, account_id: str, expert_id: str) -> ExpertAdvisorDto:
         """Retrieves an expert advisor by id (see
@@ -75,7 +75,7 @@ class ExpertAdvisorClient(MetaApiClient):
                 'auth-token': self._token
             }
         }
-        return await self._httpClient.request(opts)
+        return await self._httpClient.request(opts, 'get_expert_advisor')
 
     async def update_expert_advisor(self, account_id: str, expert_id: str, expert: NewExpertAdvisorDto) -> Response:
         """Updates or creates expert advisor data (see
@@ -100,7 +100,7 @@ class ExpertAdvisorClient(MetaApiClient):
             },
             'body': expert
         }
-        return await self._httpClient.request(opts)
+        return await self._httpClient.request(opts, 'update_expert_advisor')
 
     async def upload_expert_advisor_file(self, account_id: str, expert_id: str, file: str or memoryview) -> Response:
         """Uploads an expert advisor file (see https://metaapi.cloud/docs/provisioning/api/expertAdvisor/uploadEAFile/)
@@ -128,7 +128,7 @@ class ExpertAdvisorClient(MetaApiClient):
                 'auth-token': self._token
             }
         }
-        return await self._httpClient.request(opts)
+        return await self._httpClient.request(opts, 'upload_expert_advisor_file')
 
     async def delete_expert_advisor(self, account_id: str, expert_id: str) -> Response:
         """Deletes an expert advisor
@@ -151,4 +151,4 @@ class ExpertAdvisorClient(MetaApiClient):
                 'auth-token': self._token
             }
         }
-        return await self._httpClient.request(opts)
+        return await self._httpClient.request(opts, 'delete_expert_advisor')

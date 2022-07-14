@@ -25,6 +25,7 @@ from datetime import datetime, timedelta
 from typing import Coroutine, List, Dict, Callable
 from collections import deque
 from copy import copy
+from .latencyService import LatencyService
 import json
 import math
 from ...logger import LoggerManager
@@ -78,6 +79,7 @@ class MetaApiWebsocketClient:
             opts['unsubscribeThrottlingIntervalInSeconds'] if 'unsubscribeThrottlingIntervalInSeconds' in opts else
             None, 10, 'unsubscribeThrottlingIntervalInSeconds')
         self._socketMinimumReconnectTimeout = 0.5
+        self._latencyService = LatencyService(self, token, self._connect_timeout)
         self._token = token
         self._synchronizationListeners = {}
         self._latencyListeners = []
@@ -86,6 +88,8 @@ class MetaApiWebsocketClient:
         self._socketInstances = {}
         self._socketInstancesByAccounts = {}
         self._regionsByAccounts = {}
+        self._accountsByReplicaId = {}
+        self._accountReplicas = {}
         self._synchronizationThrottlerOpts = opts['synchronizationThrottler']
         self._subscriptionManager = SubscriptionManager(self)
         self._packetOrderer = PacketOrderer(self, opts['packetOrderingTimeout'])
@@ -103,12 +107,12 @@ class MetaApiWebsocketClient:
         else:
             self._packetLogger = None
 
-        async def clear_regions_task():
+        async def clear_account_cache_task():
             while True:
                 await asyncio.sleep(30 * 60)
-                self._clear_regions_job()
+                self._clear_account_cache_job()
 
-        asyncio.create_task(clear_regions_task())
+        asyncio.create_task(clear_account_cache_task())
 
     async def on_out_of_order_packet(self, account_id: str, instance_index: int, expected_sequence_number: int,
                                      actual_sequence_number: int, packet: Dict, received_at: datetime):
@@ -154,6 +158,24 @@ class MetaApiWebsocketClient:
     def socket_instances_by_accounts(self):
         """Returns the dictionary of socket instances by account ids"""
         return self._socketInstancesByAccounts
+
+    @property
+    def account_replicas(self) -> dict:
+        """Returns the dictionary of account replicas by region.
+
+        Returns:
+            Dictionary of account replicas by region.
+        """
+        return self._accountReplicas
+
+    @property
+    def accounts_by_replica_id(self) -> dict:
+        """Returns the dictionary of primary account ids by replica ids.
+
+        Returns:
+            Dictionary of primary account ids by replica ids.
+        """
+        return self._accountsByReplicaId
 
     def subscribed_account_ids(self, instance_number: int, socket_instance_index: int = None,
                                region: str = None) -> List[str]:
@@ -215,23 +237,27 @@ class MetaApiWebsocketClient:
         """
         return self._regionsByAccounts[account_id]['region'] if account_id in self._regionsByAccounts else None
 
-    def add_account_region(self, account_id: str, region: str):
+    def add_account_cache(self, account_id: str, replicas: dict):
         """Adds account region info.
 
         Args:
             account_id: Account id.
-            region: Account region.
+            replicas: Account replicas.
         """
-        if account_id not in self._regionsByAccounts:
-            self._regionsByAccounts[account_id] = {
-                'region': region,
-                'connections': 1,
-                'lastUsed': datetime.now().timestamp()
-            }
-        else:
-            self._regionsByAccounts[account_id]['connections'] += 1
+        self._accountReplicas[account_id] = replicas
+        for region in replicas.keys():
+            replica_id = replicas[region]
+            if replica_id not in self._regionsByAccounts:
+                self._regionsByAccounts[replica_id] = {
+                    'region': region,
+                    'connections': 1,
+                    'lastUsed': datetime.now().timestamp()
+                }
+            else:
+                self._regionsByAccounts[account_id]['connections'] += 1
+            self._accountsByReplicaId[replica_id] = account_id
 
-    def remove_account_region(self, account_id: str):
+    def remove_account_cache(self, account_id: str):
         """Removes account region info.
 
         Args:
@@ -290,7 +316,7 @@ class MetaApiWebsocketClient:
             'sessionId': random_id(),
             'isReconnecting': False,
             'socket': socketio.AsyncClient(reconnection=False, request_timeout=self._request_timeout,
-                                           engineio_logger=self._enableSocketioDebugger),
+                                           engineio_logger=False),
             'synchronizationThrottler': SynchronizationThrottler(self, socket_instance_index, instance_number, region,
                                                                  self._synchronizationThrottlerOpts),
             'subscribeLock': None,
@@ -412,10 +438,11 @@ class MetaApiWebsocketClient:
                 if self._packetLogger:
                     self._packetLogger.log_packet(data)
                 self._convert_iso_time_to_date(data)
+                ignored_packet_types = ['disconnected', 'status', 'keepalive']
                 if not self._subscriptionManager.is_subscription_active(data['accountId']) and \
-                        data['type'] != 'disconnected':
+                        data['type'] not in ignored_packet_types:
                     self._logger.debug(f'{data["accountId"]}: Packet arrived to inactive connection, attempting '
-                                       f'unsubscribe')
+                                       f'unsubscribe, packet: {data["type"]}')
                     if self._throttle_request('unsubscribe', data['accountId'], instance_number,
                                               self._unsubscribeThrottlingInterval):
                         async def unsubscribe():
@@ -704,7 +731,7 @@ class MetaApiWebsocketClient:
             raise TradeException(response['response']['message'], response['response']['numericCode'],
                                  response['response']['stringCode'])
 
-    def ensure_subscribe(self, account_id: str, instance_number: int = None):
+    def ensure_subscribe(self, account_id: str, instance_number: int):
         """Creates a subscription manager task to send subscription requests until cancelled.
 
         Args:
@@ -726,9 +753,9 @@ class MetaApiWebsocketClient:
         """
         return self._subscriptionManager.subscribe(account_id, instance_number)
 
-    def synchronize(self, account_id: str, instance_number: int, host: str, synchronization_id: str,
-                    starting_history_order_time: datetime, starting_deal_time: datetime,
-                    get_hashes) -> Coroutine:
+    async def synchronize(self, account_id: str, instance_number: int, host: str, synchronization_id: str,
+                          starting_history_order_time: datetime, starting_deal_time: datetime,
+                          get_hashes) -> Coroutine:
         """Requests the terminal to start synchronization process.
         (see https://metaapi.cloud/docs/client/websocket/synchronizing/synchronize/).
 
@@ -746,8 +773,10 @@ class MetaApiWebsocketClient:
         Returns:
             A coroutine which resolves when synchronization is started.
         """
+        if self._get_socket_instance_by_account(account_id, instance_number) is None:
+            await self._create_socket_instance_by_account(account_id, instance_number)
         sync_throttler = self._get_socket_instance_by_account(account_id, instance_number)['synchronizationThrottler']
-        return sync_throttler.schedule_synchronize(account_id, {
+        return await sync_throttler.schedule_synchronize(account_id, {
             'requestId': synchronization_id, 'type': 'synchronize',
             'startingHistoryOrderTime': format_date(starting_history_order_time),
             'startingDealTime': format_date(starting_deal_time),
@@ -957,6 +986,7 @@ class MetaApiWebsocketClient:
             A coroutine which resolves when socket is unsubscribed."""
         try:
             region = self.get_account_region(account_id)
+            self._latencyService.on_unsubscribe(account_id)
 
             async def unsubscribe_job(instance_number):
                 await self._subscriptionManager.unsubscribe(account_id, int(instance_number))
@@ -1004,6 +1034,29 @@ class MetaApiWebsocketClient:
             response = await self.rpc_request_all_instances(
                 account_id, {'application': application, 'type': 'calculateMargin', 'order': order}, reliability)
         return response['margin']
+
+    async def unsubscribe_account_region(self, account_id: str, region: str):
+        """Calls on_unsubscribe_region listener event.
+
+        Args:
+            account_id: Account id.
+            region: Account region to unsubscribe.
+        """
+        unsubscribe_tasks: List[asyncio.Task] = []
+
+        if account_id in self._synchronizationListeners:
+            for listener in self._synchronizationListeners[account_id]:
+                async def run_on_unsubscribe_region(listener):
+                    try:
+                        await self._process_event(lambda: listener.on_unsubscribe_region(
+                            region), f'{account_id}:{region}:on_unsubscribe_region', True)
+                    except Exception as err:
+                        self._logger.error(f'{account_id}:{region}: Failed to notify listener '
+                                           f'about on_unsubscribe_region event ' + string_format_error(err))
+
+                unsubscribe_tasks.append(run_on_unsubscribe_region(listener))
+        if len(unsubscribe_tasks) > 0:
+            await asyncio.gather(*unsubscribe_tasks)
 
     def add_synchronization_listener(self, account_id: str, listener: SynchronizationListener):
         """Adds synchronization listener for specific account.
@@ -1182,16 +1235,22 @@ class MetaApiWebsocketClient:
             request: Base request data.
             timeout_in_seconds: Request timeout in seconds.
         """
-        socket_instance_index = None
+        ignored_request_types = ['subscribe', 'synchronize', 'refreshMarketDataSubscriptions', 'unsubscribe']
+        primary_account_id = self._accountsByReplicaId[account_id]
+        connected_instances = self._latencyService.get_active_account_instances(primary_account_id)
+        connected_instance = connected_instances[0] if len(connected_instances) else None
+        if request['type'] not in ignored_request_types and connected_instance:
+            active_region = connected_instance.split(':')[1]
+            account_id = self._accountReplicas[primary_account_id][active_region]
+
         instance_number = 0
         region = self.get_account_region(account_id)
         self._refresh_account_region(account_id)
         if 'instanceIndex' in request and request['instanceIndex'] is not None:
             instance_number = request['instanceIndex']
         else:
-            instance = next((i for i in self._connectedHosts.keys() if (i.startswith(account_id))), None)
-            if instance:
-                instance_number = int(instance.split(':')[1])
+            if connected_instance:
+                instance_number = int(connected_instance.split(':')[2])
 
             if 'application' not in request or request['application'] != 'RPC':
                 request = copy(request)
@@ -1209,38 +1268,8 @@ class MetaApiWebsocketClient:
         if account_id in self._socketInstancesByAccounts[instance_number]:
             socket_instance_index = self._socketInstancesByAccounts[instance_number][account_id]
         else:
-            while self._subscribeLock and \
-                ((date(self._subscribeLock['recommendedRetryTime']).timestamp() > datetime.now().timestamp() and
-                  len(self.subscribed_account_ids(instance_number, None, region)) <
-                  self._subscribeLock['lockedAtAccounts']) or
-                 (date(self._subscribeLock['lockedAtTime']).timestamp() + self._subscribeCooldownInSeconds >
-                  datetime.now().timestamp() and
-                  len(self.subscribed_account_ids(instance_number, None, region)) >=
-                  self._subscribeLock['lockedAtAccounts'])):
-                await asyncio.sleep(1)
-            for index in range(len(self._socketInstances[region][instance_number])):
-                account_counter = len(self.get_assigned_accounts(instance_number, index, region))
-                instance = self.socket_instances[region][instance_number][index]
-                if instance['subscribeLock']:
-                    if instance['subscribeLock']['type'] == 'LIMIT_ACCOUNT_SUBSCRIPTIONS_PER_USER_PER_SERVER' and \
-                            (date(instance['subscribeLock']['recommendedRetryTime']).timestamp() >
-                             datetime.now().timestamp() or
-                             len(self.subscribed_account_ids(instance_number, index, region)) >=
-                             instance['subscribeLock']['lockedAtAccounts']):
-                        continue
-                    if instance['subscribeLock']['type'] == 'LIMIT_ACCOUNT_SUBSCRIPTIONS_PER_SERVER' and \
-                            (date(instance['subscribeLock']['recommendedRetryTime']).timestamp() >
-                             datetime.now().timestamp() and
-                             len(self.subscribed_account_ids(instance_number, index, region)) >=
-                             instance['subscribeLock']['lockedAtAccounts']):
-                        continue
-                if account_counter < self._maxAccountsPerInstance:
-                    socket_instance_index = index
-                    break
-            if socket_instance_index is None:
-                socket_instance_index = len(self._socketInstances[region][instance_number])
-                await self.connect(instance_number, region)
-            self._socketInstancesByAccounts[instance_number][account_id] = socket_instance_index
+            await self._create_socket_instance_by_account(account_id, instance_number)
+            socket_instance_index = self._socketInstancesByAccounts[instance_number][account_id]
         instance = self._socketInstances[region][instance_number][socket_instance_index]
         start_time = datetime.now()
         while not instance['resolved'] and (start_time + timedelta(seconds=self._connect_timeout) > datetime.now()):
@@ -1382,14 +1411,16 @@ class MetaApiWebsocketClient:
             socket_instance = self._get_socket_instance_by_account(data['accountId'], instance_number)
             if 'synchronizationId' in data and socket_instance:
                 socket_instance['synchronizationThrottler'].update_synchronization_id(data['synchronizationId'])
-            instance_id = data['accountId'] + ':' + str(instance_number) + ':' + \
+            region = self.get_account_region(data['accountId'])
+            primary_account_id = self._accountsByReplicaId[data['accountId']]
+            instance_id = primary_account_id + ':' + region + ':' + str(instance_number) + ':' + \
                 (data['host'] if 'host' in data else '0')
-            instance_index = str(instance_number) + ':' + (data['host'] if 'host' in data else '0')
+            instance_index = region + ':' + str(instance_number) + ':' + (data['host'] if 'host' in data else '0')
 
             def is_only_active_instance():
                 active_instance_ids = list(
                     filter(lambda instance: instance.startswith(
-                        data['accountId'] + ':' + str(instance_number)), self._connectedHosts.keys()))
+                        primary_account_id + ':' + region + ':' + str(instance_number)), self._connectedHosts.keys()))
                 return len(active_instance_ids) == 1 and active_instance_ids[0] == instance_id
 
             def cancel_disconnect_timer():
@@ -1401,7 +1432,7 @@ class MetaApiWebsocketClient:
                     await asyncio.sleep(60)
                     if is_only_active_instance():
                         self._subscriptionManager.on_timeout(data["accountId"], instance_number)
-                    self.queue_event(data["accountId"], f'{instance_index}:onDisconnected',
+                    self.queue_event(primary_account_id, f'{instance_index}:onDisconnected',
                                      lambda: on_disconnected(True))
 
                 cancel_disconnect_timer()
@@ -1409,19 +1440,20 @@ class MetaApiWebsocketClient:
 
             async def on_disconnected(is_timeout: bool = False):
                 if instance_id in self._connectedHosts:
+                    self._latencyService.on_disconnected(instance_id)
                     if is_only_active_instance():
                         on_disconnected_tasks: List[Coroutine] = []
                         if not is_timeout:
                             on_disconnected_tasks.append(
                                 self._subscriptionManager.on_disconnected(data['accountId'], instance_number))
 
-                        if data['accountId'] in self._synchronizationListeners:
-                            for listener in self._synchronizationListeners[data['accountId']]:
+                        if primary_account_id in self._synchronizationListeners:
+                            for listener in self._synchronizationListeners[primary_account_id]:
                                 def run_on_disconnected(listener: SynchronizationListener):
                                     return lambda: listener.on_disconnected(instance_index)
 
                                 on_disconnected_tasks.append(self._process_event(run_on_disconnected(listener),
-                                                             f'{data["accountId"]}:{instance_index}:on_disconnected'))
+                                                             f'{primary_account_id}:{instance_index}:on_disconnected'))
                         if len(on_disconnected_tasks) > 0:
                             await asyncio.gather(*on_disconnected_tasks)
 
@@ -1431,14 +1463,14 @@ class MetaApiWebsocketClient:
                         socket_instance['synchronizationThrottler'].remove_id_by_parameters(
                             data['accountId'], instance_number, data['host'] if 'host' in data else None)
 
-                    if data['accountId'] in self._synchronizationListeners:
-                        for listener in self._synchronizationListeners[data['accountId']]:
+                    if primary_account_id in self._synchronizationListeners:
+                        for listener in self._synchronizationListeners[primary_account_id]:
                             def run_on_stream_closed(listener: SynchronizationListener):
                                 return lambda: listener.on_stream_closed(instance_index)
 
                             on_stream_closed_tasks.append(self._process_event(
                                 run_on_stream_closed(listener),
-                                f'{data["accountId"]}:{instance_index}:on_stream_closed'))
+                                f'{primary_account_id}:{instance_index}:on_stream_closed'))
                     if len(on_stream_closed_tasks) > 0:
                         await asyncio.gather(*on_stream_closed_tasks)
                     if instance_id in self._connectedHosts:
@@ -1447,20 +1479,21 @@ class MetaApiWebsocketClient:
             if data['type'] == 'authenticated':
                 reset_disconnect_timer()
                 if 'sessionId' not in data or socket_instance and data['sessionId'] == socket_instance['sessionId']:
+                    asyncio.create_task(self._latencyService.on_connected(instance_id))
                     if 'host' in data:
                         self._connectedHosts[instance_id] = data['host']
 
                     on_connected_tasks: List[Coroutine] = []
 
-                    if data['accountId'] in self._synchronizationListeners:
-                        for listener in self._synchronizationListeners[data['accountId']]:
+                    if primary_account_id in self._synchronizationListeners:
+                        for listener in self._synchronizationListeners[primary_account_id]:
 
                             def run_on_connected(listener):
                                 return lambda: listener.on_connected(instance_index, data['replicas'])
 
                             on_connected_tasks.append(self._process_event(
                                 run_on_connected(listener),
-                                f'{data["accountId"]}:{instance_index}:on_connected'))
+                                f'{primary_account_id}:{instance_index}:on_connected'))
                         self._subscriptionManager.cancel_subscribe(data['accountId'] + ':' + str(instance_number))
                     if data['replicas'] == 1:
                         self._subscriptionManager.cancel_account(data['accountId'])
@@ -1481,8 +1514,8 @@ class MetaApiWebsocketClient:
                 }
                 self._synchronizationIdByInstance[instance_id] = data['synchronizationId']
 
-                if data['accountId'] in self._synchronizationListeners:
-                    for listener in self._synchronizationListeners[data['accountId']]:
+                if primary_account_id in self._synchronizationListeners:
+                    for listener in self._synchronizationListeners[primary_account_id]:
                         def run_on_sync_started(listener: SynchronizationListener):
                             return lambda: listener.on_synchronization_started(
                                 instance_index, specifications_updated=data['specificationsUpdated'] if
@@ -1492,7 +1525,7 @@ class MetaApiWebsocketClient:
 
                         on_sync_started_tasks.append(
                             self._process_event(run_on_sync_started(listener),
-                                                f'{data["accountId"]}:{instance_index}:on_synchronization_started'))
+                                                f'{primary_account_id}:{instance_index}:on_synchronization_started'))
                 if len(on_sync_started_tasks) > 0:
                     await asyncio.gather(*on_sync_started_tasks)
             elif data['type'] == 'accountInformation':
@@ -1500,30 +1533,30 @@ class MetaApiWebsocketClient:
                         instance_id not in self._synchronizationIdByInstance or data['synchronizationId'] !=
                         self._synchronizationIdByInstance[instance_id]):
                     return
-                if data['accountInformation'] and (data['accountId'] in self._synchronizationListeners):
+                if data['accountInformation'] and (primary_account_id in self._synchronizationListeners):
                     on_account_information_updated_tasks: List[asyncio.Task] = []
 
                     async def run_on_account_info(listener: SynchronizationListener):
                         try:
                             await self._process_event(lambda: listener.on_account_information_updated(
                                 instance_index, data['accountInformation']),
-                                f'{data["accountId"]}:{instance_index}:on_account_information_updated', True)
+                                f'{primary_account_id}:{instance_index}:on_account_information_updated', True)
                             if 'synchronizationId' in data and data['synchronizationId'] in \
                                     self._synchronizationFlags and \
                                     not self._synchronizationFlags[data['synchronizationId']]['positionsUpdated']:
                                 await self._process_event(lambda: listener.on_positions_synchronized(
                                     instance_index, data['synchronizationId']),
-                                    f'{data["accountId"]}:{instance_index}:on_positions_synchronized', True)
+                                    f'{primary_account_id}:{instance_index}:on_positions_synchronized', True)
                                 if not self._synchronizationFlags[data['synchronizationId']]['ordersUpdated']:
                                     await self._process_event(lambda: listener.on_pending_orders_synchronized(
                                             instance_index, data['synchronizationId']),
-                                            f'{data["accountId"]}:{instance_index}:on_pending_orders_synchronized',
+                                            f'{primary_account_id}:{instance_index}:on_pending_orders_synchronized',
                                             True)
                         except Exception as err:
-                            self._logger.error(f'{data["accountId"]}:{instance_index}: Failed to notify listener '
+                            self._logger.error(f'{primary_account_id}:{instance_index}: Failed to notify listener '
                                                f'about accountInformation event ' + string_format_error(err))
 
-                    for listener in self._synchronizationListeners[data['accountId']]:
+                    for listener in self._synchronizationListeners[primary_account_id]:
                         on_account_information_updated_tasks.append(
                             asyncio.create_task(run_on_account_info(listener)))
                     if len(on_account_information_updated_tasks) > 0:
@@ -1541,14 +1574,14 @@ class MetaApiWebsocketClient:
                     for deal in data['deals']:
                         on_deal_added_tasks: List[Coroutine] = []
 
-                        if data['accountId'] in self._synchronizationListeners:
-                            for listener in self._synchronizationListeners[data['accountId']]:
+                        if primary_account_id in self._synchronizationListeners:
+                            for listener in self._synchronizationListeners[primary_account_id]:
                                 def run_on_deal_added(listener: SynchronizationListener):
                                     return lambda: listener.on_deal_added(instance_index, deal)
 
                                 on_deal_added_tasks.append(self._process_event(
                                     run_on_deal_added(listener),
-                                    f'{data["accountId"]}:{instance_index}:on_deal_added'))
+                                    f'{primary_account_id}:{instance_index}:on_deal_added'))
                         if len(on_deal_added_tasks) > 0:
                             await asyncio.gather(*on_deal_added_tasks)
             elif data['type'] == 'orders':
@@ -1563,16 +1596,16 @@ class MetaApiWebsocketClient:
                         if 'orders' in data:
                             await self._process_event(
                                 lambda: listener.on_pending_orders_replaced(instance_index, data['orders']),
-                                f'{data["accountId"]}:{instance_index}:on_pending_orders_replaced', True)
+                                f'{primary_account_id}:{instance_index}:on_pending_orders_replaced', True)
                         await self._process_event(
                             lambda: listener.on_pending_orders_synchronized(instance_index, data['synchronizationId']),
-                            f'{data["accountId"]}:{instance_index}:on_pending_orders_synchronized', True)
+                            f'{primary_account_id}:{instance_index}:on_pending_orders_synchronized', True)
                     except Exception as err:
-                        self._logger.error(f'{data["accountId"]}:{instance_index}: Failed to notify listener about '
+                        self._logger.error(f'{primary_account_id}:{instance_index}: Failed to notify listener about '
                                            f'orders event ' + string_format_error(err))
 
-                if data['accountId'] in self._synchronizationListeners:
-                    for listener in self._synchronizationListeners[data['accountId']]:
+                if primary_account_id in self._synchronizationListeners:
+                    for listener in self._synchronizationListeners[primary_account_id]:
                         on_order_updated_tasks.append(asyncio.create_task(run_on_pending_orders_replaced(listener)))
                 if len(on_order_updated_tasks) > 0:
                     await asyncio.gather(*on_order_updated_tasks)
@@ -1587,15 +1620,15 @@ class MetaApiWebsocketClient:
                     for historyOrder in data['historyOrders']:
                         on_history_order_added_tasks: List[Coroutine] = []
 
-                        if data['accountId'] in self._synchronizationListeners:
-                            for listener in self._synchronizationListeners[data['accountId']]:
+                        if primary_account_id in self._synchronizationListeners:
+                            for listener in self._synchronizationListeners[primary_account_id]:
                                 def run_on_order_added(listener: SynchronizationListener):
                                     return lambda: listener.on_history_order_added(instance_index, historyOrder)
 
                                 on_history_order_added_tasks.append(
                                     self._process_event(
                                         run_on_order_added(listener),
-                                        f'{data["accountId"]}:{instance_index}:on_history_order_added'))
+                                        f'{primary_account_id}:{instance_index}:on_history_order_added'))
                         if len(on_history_order_added_tasks) > 0:
                             await asyncio.gather(*on_history_order_added_tasks)
             elif data['type'] == 'positions':
@@ -1610,22 +1643,22 @@ class MetaApiWebsocketClient:
                         if 'positions' in data:
                             await self._process_event(
                                 lambda: listener.on_positions_replaced(instance_index, data['positions']),
-                                f'{data["accountId"]}:{instance_index}:on_positions_replaced', True)
+                                f'{primary_account_id}:{instance_index}:on_positions_replaced', True)
                         await self._process_event(
                             lambda: listener.on_positions_synchronized(instance_index, data['synchronizationId']),
-                            f'{data["accountId"]}:{instance_index}:on_positions_synchronized', True)
+                            f'{primary_account_id}:{instance_index}:on_positions_synchronized', True)
                         if data['synchronizationId'] in self._synchronizationFlags and \
                                 not self._synchronizationFlags[data['synchronizationId']]['ordersUpdated']:
                             await self._process_event(
                                 lambda: listener.on_pending_orders_synchronized(
                                     instance_index, data['synchronizationId']),
-                                f'{data["accountId"]}:{instance_index}:on_pending_orders_synchronized', True)
+                                f'{primary_account_id}:{instance_index}:on_pending_orders_synchronized', True)
                     except Exception as err:
-                        self._logger.error(f'{data["accountId"]}:{instance_index}: Failed to notify listener about '
+                        self._logger.error(f'{primary_account_id}:{instance_index}: Failed to notify listener about '
                                            f'positions event ' + string_format_error(err))
 
-                if data['accountId'] in self._synchronizationListeners:
-                    for listener in self._synchronizationListeners[data['accountId']]:
+                if primary_account_id in self._synchronizationListeners:
+                    for listener in self._synchronizationListeners[primary_account_id]:
                         on_positions_replaced_tasks.append(asyncio.create_task(run_on_positions_replaced(listener)))
                 if len(on_positions_replaced_tasks) > 0:
                     await asyncio.gather(*on_positions_replaced_tasks)
@@ -1633,104 +1666,104 @@ class MetaApiWebsocketClient:
                         not self._synchronizationFlags[data['synchronizationId']]['ordersUpdated']:
                     del self._synchronizationFlags[data['synchronizationId']]
             elif data['type'] == 'update':
-                if 'accountInformation' in data and (data['accountId'] in self._synchronizationListeners):
+                if 'accountInformation' in data and (primary_account_id in self._synchronizationListeners):
                     on_account_information_updated_tasks: List[Coroutine] = []
 
-                    for listener in self._synchronizationListeners[data['accountId']]:
+                    for listener in self._synchronizationListeners[primary_account_id]:
                         def run_on_account_information_updated(listener: SynchronizationListener):
                             return lambda: listener.on_account_information_updated(instance_index,
                                                                                    data['accountInformation'])
 
                         on_account_information_updated_tasks.append(
                             self._process_event(run_on_account_information_updated(listener),
-                                                f'{data["accountId"]}:{instance_index}:on_account_information_updated'))
+                                                f'{primary_account_id}:{instance_index}:on_account_information_updated'))
                     if len(on_account_information_updated_tasks) > 0:
                         await asyncio.gather(*on_account_information_updated_tasks)
                 if 'updatedPositions' in data:
                     for position in data['updatedPositions']:
                         on_position_updated_tasks: List[Coroutine] = []
 
-                        if data['accountId'] in self._synchronizationListeners:
-                            for listener in self._synchronizationListeners[data['accountId']]:
+                        if primary_account_id in self._synchronizationListeners:
+                            for listener in self._synchronizationListeners[primary_account_id]:
                                 def run_on_position_updated(listener: SynchronizationListener):
                                     return lambda: listener.on_position_updated(instance_index, position)
 
                                 on_position_updated_tasks.append(
                                     self._process_event(run_on_position_updated(listener),
-                                                        f'{data["accountId"]}:{instance_index}:on_position_updated'))
+                                                        f'{primary_account_id}:{instance_index}:on_position_updated'))
                         if len(on_position_updated_tasks) > 0:
                             await asyncio.gather(*on_position_updated_tasks)
                 if 'removedPositionIds' in data:
                     for positionId in data['removedPositionIds']:
                         on_position_removed_tasks: List[asyncio.create_task] = []
 
-                        if data['accountId'] in self._synchronizationListeners:
-                            for listener in self._synchronizationListeners[data['accountId']]:
+                        if primary_account_id in self._synchronizationListeners:
+                            for listener in self._synchronizationListeners[primary_account_id]:
                                 def run_on_position_removed(listener: SynchronizationListener):
                                     return lambda: listener.on_position_removed(instance_index, positionId)
 
                                 on_position_removed_tasks.append(
                                     self._process_event(run_on_position_removed(listener),
-                                                        f'{data["accountId"]}:{instance_index}:on_position_removed'))
+                                                        f'{primary_account_id}:{instance_index}:on_position_removed'))
                         if len(on_position_removed_tasks) > 0:
                             await asyncio.gather(*on_position_removed_tasks)
                 if 'updatedOrders' in data:
                     for order in data['updatedOrders']:
                         on_order_updated_tasks: List[Coroutine] = []
 
-                        if data['accountId'] in self._synchronizationListeners:
-                            for listener in self._synchronizationListeners[data['accountId']]:
+                        if primary_account_id in self._synchronizationListeners:
+                            for listener in self._synchronizationListeners[primary_account_id]:
                                 def run_on_pending_order_updated(listener: SynchronizationListener):
                                     return lambda: listener.on_pending_order_updated(instance_index, order)
 
                                 on_order_updated_tasks.append(
                                     self._process_event(
                                         run_on_pending_order_updated(listener),
-                                        f'{data["accountId"]}:{instance_index}:on_pending_order_updated'))
+                                        f'{primary_account_id}:{instance_index}:on_pending_order_updated'))
                         if len(on_order_updated_tasks) > 0:
                             await asyncio.gather(*on_order_updated_tasks)
                 if 'completedOrderIds' in data:
                     for orderId in data['completedOrderIds']:
                         on_order_completed_tasks: List[Coroutine] = []
 
-                        if data['accountId'] in self._synchronizationListeners:
-                            for listener in self._synchronizationListeners[data['accountId']]:
+                        if primary_account_id in self._synchronizationListeners:
+                            for listener in self._synchronizationListeners[primary_account_id]:
                                 def run_on_pending_order_completed(listener: SynchronizationListener):
                                     return lambda: listener.on_pending_order_completed(instance_index, orderId)
 
                                 on_order_completed_tasks.append(
                                     self._process_event(
                                         run_on_pending_order_completed(listener),
-                                        f'{data["accountId"]}:{instance_index}:on_pending_order_completed'))
+                                        f'{primary_account_id}:{instance_index}:on_pending_order_completed'))
                         if len(on_order_completed_tasks) > 0:
                             await asyncio.gather(*on_order_completed_tasks)
                 if 'historyOrders' in data:
                     for historyOrder in data['historyOrders']:
                         on_history_order_added_tasks: List[Coroutine] = []
 
-                        if data['accountId'] in self._synchronizationListeners:
-                            for listener in self._synchronizationListeners[data['accountId']]:
+                        if primary_account_id in self._synchronizationListeners:
+                            for listener in self._synchronizationListeners[primary_account_id]:
                                 def run_on_history_order_added(listener: SynchronizationListener):
                                     return lambda: listener.on_history_order_added(instance_index, historyOrder)
 
                                 on_history_order_added_tasks.append(
                                     self._process_event(
                                         run_on_history_order_added(listener),
-                                        f'{data["accountId"]}:{instance_index}:on_history_order_added'))
+                                        f'{primary_account_id}:{instance_index}:on_history_order_added'))
                         if len(on_history_order_added_tasks) > 0:
                             await asyncio.gather(*on_history_order_added_tasks)
                 if 'deals' in data:
                     for deal in data['deals']:
                         on_deal_added_tasks: List[Coroutine] = []
 
-                        if data['accountId'] in self._synchronizationListeners:
-                            for listener in self._synchronizationListeners[data['accountId']]:
+                        if primary_account_id in self._synchronizationListeners:
+                            for listener in self._synchronizationListeners[primary_account_id]:
                                 def run_on_deal_added(listener: SynchronizationListener):
                                     return lambda: listener.on_deal_added(instance_index, deal)
 
                                 on_deal_added_tasks.append(
                                     self._process_event(run_on_deal_added(listener),
-                                                        f'{data["accountId"]}:{instance_index}:on_deal_added'))
+                                                        f'{primary_account_id}:{instance_index}:on_deal_added'))
                         if len(on_deal_added_tasks) > 0:
                             await asyncio.gather(*on_deal_added_tasks)
                 if 'timestamps' in data:
@@ -1742,7 +1775,7 @@ class MetaApiWebsocketClient:
                             return lambda: listener.on_update(data['accountId'], data['timestamps'])
 
                         on_update_tasks.append(self._process_event(run_on_update(listener),
-                                                                   f'{data["accountId"]}:{instance_index}:on_update'))
+                                                                   f'{primary_account_id}:{instance_index}:on_update'))
 
                     if len(on_update_tasks) > 0:
                         await asyncio.gather(*on_update_tasks)
@@ -1751,7 +1784,8 @@ class MetaApiWebsocketClient:
                         data['synchronizationId'] != self._synchronizationIdByInstance[instance_id]:
                     del self._synchronizationIdByInstance[instance_id]
                     return
-                if data['accountId'] in self._synchronizationListeners:
+                if primary_account_id in self._synchronizationListeners:
+                    asyncio.create_task(self._latencyService.on_deals_synchronized(instance_id))
                     on_deal_synchronization_finished_tasks: List[Coroutine] = []
                     if socket_instance:
                         socket_instance['synchronizationThrottler'] \
@@ -1760,10 +1794,10 @@ class MetaApiWebsocketClient:
                     def run_on_deals_synchronized(listener: SynchronizationListener):
                         return lambda: listener.on_deals_synchronized(instance_index, data['synchronizationId'])
 
-                    for listener in self._synchronizationListeners[data['accountId']]:
+                    for listener in self._synchronizationListeners[primary_account_id]:
                         on_deal_synchronization_finished_tasks.append(
                             self._process_event(run_on_deals_synchronized(listener),
-                                                f'{data["accountId"]}:{instance_index}:on_deals_synchronized'))
+                                                f'{primary_account_id}:{instance_index}:on_deals_synchronized'))
                     if len(on_deal_synchronization_finished_tasks) > 0:
                         await asyncio.gather(*on_deal_synchronization_finished_tasks)
             elif data['type'] == 'orderSynchronizationFinished':
@@ -1771,10 +1805,10 @@ class MetaApiWebsocketClient:
                         instance_id not in self._synchronizationIdByInstance or data['synchronizationId'] !=
                         self._synchronizationIdByInstance[instance_id]):
                     return
-                if data['accountId'] in self._synchronizationListeners:
+                if primary_account_id in self._synchronizationListeners:
                     on_order_synchronization_finished_tasks: List[Coroutine] = []
 
-                    for listener in self._synchronizationListeners[data['accountId']]:
+                    for listener in self._synchronizationListeners[primary_account_id]:
                         def run_on_history_orders_synchronized(listener: SynchronizationListener):
                             return lambda: listener.on_history_orders_synchronized(instance_index,
                                                                                    data['synchronizationId'])
@@ -1782,7 +1816,7 @@ class MetaApiWebsocketClient:
                         on_order_synchronization_finished_tasks.append(
                             self._process_event(
                                 run_on_history_orders_synchronized(listener),
-                                f'{data["accountId"]}:{instance_index}:on_history_orders_synchronized'))
+                                f'{primary_account_id}:{instance_index}:on_history_orders_synchronized'))
                     if len(on_order_synchronization_finished_tasks) > 0:
                         await asyncio.gather(*on_order_synchronization_finished_tasks)
             elif data['type'] == 'status':
@@ -1800,7 +1834,7 @@ class MetaApiWebsocketClient:
                     reset_disconnect_timer()
                     on_broker_connection_status_changed_tasks: List[Coroutine] = []
 
-                    for listener in self._synchronizationListeners[data['accountId']]:
+                    for listener in self._synchronizationListeners[primary_account_id]:
                         def run_on_broker_connection_status_changed(listener: SynchronizationListener):
                             return lambda: listener.on_broker_connection_status_changed(instance_index,
                                                                                         bool(data['connected']))
@@ -1808,25 +1842,25 @@ class MetaApiWebsocketClient:
                         on_broker_connection_status_changed_tasks.append(
                             self._process_event(
                                 run_on_broker_connection_status_changed(listener),
-                                f'{data["accountId"]}:{instance_index}:on_broker_connection_status_changed'))
+                                f'{primary_account_id}:{instance_index}:on_broker_connection_status_changed'))
                     if len(on_broker_connection_status_changed_tasks) > 0:
                         await asyncio.gather(*on_broker_connection_status_changed_tasks)
                     if 'healthStatus' in data:
                         on_health_status_tasks: List[Coroutine] = []
 
-                        if data['accountId'] in self._synchronizationListeners:
-                            for listener in self._synchronizationListeners[data['accountId']]:
+                        if primary_account_id in self._synchronizationListeners:
+                            for listener in self._synchronizationListeners[primary_account_id]:
                                 def run_on_health_status(listener: SynchronizationListener):
                                     return lambda: listener.on_health_status(instance_index, data['healthStatus'])
 
                                 on_health_status_tasks.append(
                                     self._process_event(run_on_health_status(listener),
-                                                        f'{data["accountId"]}:{instance_index}:on_health_status'))
+                                                        f'{primary_account_id}:{instance_index}:on_health_status'))
                             if len(on_health_status_tasks) > 0:
                                 await asyncio.gather(*on_health_status_tasks)
             elif data['type'] == 'downgradeSubscription':
                 self._logger.info(
-                    f'{data["accountId"]}:{instance_index}: Market data subscriptions for symbol {data["symbol"]}'
+                    f'{primary_account_id}:{instance_index}: Market data subscriptions for symbol {data["symbol"]}'
                     f' were downgraded by the server due to rate limits. Updated subscriptions: '
                     f'{json.dumps(data["updates"]) if "updates" in data else ""}, removed subscriptions: '
                     f'{json.dumps(data["unsubscriptions"]) if "unsubscriptions" in data else ""}. Please read '
@@ -1834,8 +1868,8 @@ class MetaApiWebsocketClient:
 
                 on_subscription_downgrade_tasks = []
 
-                if data['accountId'] in self._synchronizationListeners:
-                    for listener in self._synchronizationListeners[data['accountId']]:
+                if primary_account_id in self._synchronizationListeners:
+                    for listener in self._synchronizationListeners[primary_account_id]:
                         def run_on_subscription_downgraded(listener: SynchronizationListener):
                             return lambda: listener.on_subscription_downgraded(
                                 instance_index, data['symbol'], data['updates'] if 'updates' in data else None,
@@ -1843,7 +1877,7 @@ class MetaApiWebsocketClient:
 
                         on_subscription_downgrade_tasks.append(
                             self._process_event(run_on_subscription_downgraded(listener),
-                                                f'{data["accountId"]}:{instance_index}:on_subscription_downgraded'))
+                                                f'{primary_account_id}:{instance_index}:on_subscription_downgraded'))
                     if len(on_subscription_downgrade_tasks) > 0:
                         await asyncio.gather(*on_subscription_downgrade_tasks)
             elif data['type'] == 'specifications':
@@ -1858,12 +1892,12 @@ class MetaApiWebsocketClient:
                         instance_index, data['specifications'] if 'specifications' in data else [],
                         data['removedSymbols'] if 'removedSymbols' in data else [])
 
-                if data['accountId'] in self._synchronizationListeners:
-                    for listener in self._synchronizationListeners[data['accountId']]:
+                if primary_account_id in self._synchronizationListeners:
+                    for listener in self._synchronizationListeners[primary_account_id]:
                         on_symbol_specifications_updated_tasks.append(
                             self._process_event(
                                 run_on_symbol_specifications_updated(listener),
-                                f'{data["accountId"]}:{instance_index}:on_symbol_specifications_updated'))
+                                f'{primary_account_id}:{instance_index}:on_symbol_specifications_updated'))
                     if len(on_symbol_specifications_updated_tasks) > 0:
                         await asyncio.gather(*on_symbol_specifications_updated_tasks)
 
@@ -1874,12 +1908,12 @@ class MetaApiWebsocketClient:
                         def run_on_symbol_specification_updated(listener: SynchronizationListener):
                             return lambda: listener.on_symbol_specification_updated(instance_index, specification)
 
-                        if data['accountId'] in self._synchronizationListeners:
-                            for listener in self._synchronizationListeners[data['accountId']]:
+                        if primary_account_id in self._synchronizationListeners:
+                            for listener in self._synchronizationListeners[primary_account_id]:
                                 on_symbol_specification_updated_tasks.append(
                                     self._process_event(
                                         run_on_symbol_specification_updated(listener),
-                                        f'{data["accountId"]}:{instance_index}:on_symbol_specification_updated'))
+                                        f'{primary_account_id}:{instance_index}:on_symbol_specification_updated'))
                             if len(on_symbol_specification_updated_tasks) > 0:
                                 await asyncio.gather(*on_symbol_specification_updated_tasks)
 
@@ -1890,12 +1924,12 @@ class MetaApiWebsocketClient:
                         def run_on_symbol_specification_removed(listener: SynchronizationListener):
                             return lambda: listener.on_symbol_specification_removed(instance_index, removed_symbol)
 
-                        if data['accountId'] in self._synchronizationListeners:
-                            for listener in self._synchronizationListeners[data['accountId']]:
+                        if primary_account_id in self._synchronizationListeners:
+                            for listener in self._synchronizationListeners[primary_account_id]:
                                 on_symbol_specification_removed_tasks.append(
                                     self._process_event(
                                         run_on_symbol_specification_removed(listener),
-                                        f'{data["accountId"]}:{instance_index}:on_symbol_specification_removed'))
+                                        f'{primary_account_id}:{instance_index}:on_symbol_specification_removed'))
                             if len(on_symbol_specification_removed_tasks) > 0:
                                 await asyncio.gather(*on_symbol_specification_removed_tasks)
             elif data['type'] == 'prices':
@@ -1908,7 +1942,7 @@ class MetaApiWebsocketClient:
                 ticks = data['ticks'] if 'ticks' in data else []
                 books = data['books'] if 'books' in data else []
                 on_symbol_prices_updated_tasks: List[Coroutine] = []
-                if data['accountId'] in self._synchronizationListeners:
+                if primary_account_id in self._synchronizationListeners:
                     equity = data['equity'] if 'equity' in data else None
                     margin = data['margin'] if 'margin' in data else None
                     free_margin = data['freeMargin'] if 'freeMargin' in data else None
@@ -1916,7 +1950,7 @@ class MetaApiWebsocketClient:
                     account_currency_exchange_rate = data['accountCurrencyExchangeRate'] if \
                         'accountCurrencyExchangeRate' in data else None
 
-                    for listener in self._synchronizationListeners[data['accountId']]:
+                    for listener in self._synchronizationListeners[primary_account_id]:
                         if len(prices):
                             def run_on_symbol_prices_updated(listener: SynchronizationListener):
                                 return lambda: listener.on_symbol_prices_updated(
@@ -1925,7 +1959,7 @@ class MetaApiWebsocketClient:
 
                             on_symbol_prices_updated_tasks.append(
                                 self._process_event(run_on_symbol_prices_updated(listener),
-                                                    f'{data["accountId"]}:{instance_index}:on_symbol_prices_updated'))
+                                                    f'{primary_account_id}:{instance_index}:on_symbol_prices_updated'))
 
                         if len(candles):
                             def run_on_candles_updated(listener: SynchronizationListener):
@@ -1935,7 +1969,7 @@ class MetaApiWebsocketClient:
 
                             on_symbol_prices_updated_tasks.append(
                                 self._process_event(run_on_candles_updated(listener),
-                                                    f'{data["accountId"]}:{instance_index}:on_candles_updated'))
+                                                    f'{primary_account_id}:{instance_index}:on_candles_updated'))
 
                         if len(ticks):
                             def run_on_ticks_updated(listener: SynchronizationListener):
@@ -1945,7 +1979,7 @@ class MetaApiWebsocketClient:
 
                             on_symbol_prices_updated_tasks.append(
                                 self._process_event(run_on_ticks_updated(listener),
-                                                    f'{data["accountId"]}:{instance_index}:on_ticks_updated'))
+                                                    f'{primary_account_id}:{instance_index}:on_ticks_updated'))
 
                         if len(books):
                             def run_on_books_updated(listener: SynchronizationListener):
@@ -1955,7 +1989,7 @@ class MetaApiWebsocketClient:
 
                             on_symbol_prices_updated_tasks.append(
                                 self._process_event(run_on_books_updated(listener),
-                                                    f'{data["accountId"]}:{instance_index}:on_books_updated'))
+                                                    f'{primary_account_id}:{instance_index}:on_books_updated'))
 
                     if len(on_symbol_prices_updated_tasks) > 0:
                         await asyncio.gather(*on_symbol_prices_updated_tasks)
@@ -1963,14 +1997,14 @@ class MetaApiWebsocketClient:
                 for price in prices:
                     on_symbol_price_updated_tasks: List[Coroutine] = []
 
-                    if data['accountId'] in self._synchronizationListeners:
-                        for listener in self._synchronizationListeners[data['accountId']]:
+                    if primary_account_id in self._synchronizationListeners:
+                        for listener in self._synchronizationListeners[primary_account_id]:
                             def run_on_symbol_price_updated(listener: SynchronizationListener):
                                 return lambda: listener.on_symbol_price_updated(instance_index, price)
 
                             on_symbol_price_updated_tasks.append(
                                 self._process_event(run_on_symbol_price_updated(listener),
-                                                    f'{data["accountId"]}:{instance_index}:on_symbol_price_updated'))
+                                                    f'{primary_account_id}:{instance_index}:on_symbol_price_updated'))
                         if len(on_symbol_price_updated_tasks) > 0:
                             await asyncio.gather(*on_symbol_price_updated_tasks)
 
@@ -1981,12 +2015,12 @@ class MetaApiWebsocketClient:
 
                         for listener in self._latencyListeners:
                             def run_on_symbol_price(listener: LatencyListener):
-                                return lambda: listener.on_symbol_price(data['accountId'], price['symbol'],
+                                return lambda: listener.on_symbol_price(primary_account_id, price['symbol'],
                                                                         price['timestamps'])
 
                             on_symbol_price_tasks.append(
                                 self._process_event(run_on_symbol_price(listener),
-                                                    f'{data["accountId"]}:{instance_index}:on_symbol_price'))
+                                                    f'{primary_account_id}:{instance_index}:on_symbol_price'))
                         if len(on_symbol_price_tasks) > 0:
                             await asyncio.gather(*on_symbol_price_tasks)
         except Exception as err:
@@ -2057,34 +2091,45 @@ class MetaApiWebsocketClient:
         else:
             return None
 
+    async def get_url_settings(self, instance_number: int, region: str):
+        if self._url:
+            return {'url': self._url, 'isSharedClientApi': True}
+
+        url_settings = await self._httpClient.request({
+            'url': f'https://mt-provisioning-api-v1.{self._domain}/users/current/servers/mt-client-api',
+            'method': 'GET',
+            'headers': {
+                'auth-token': self._token
+            },
+        }, 'get_url_settings')
+
+        def get_url(hostname):
+            return f'https://{hostname}.{region}-{chr(97 + int(instance_number))}.{url_settings["domain"]}'
+
+        if self._useSharedClientApi:
+            url = get_url(self._hostname)
+        else:
+            url = get_url(url_settings['hostname'])
+
+        is_shared_client_api = url == get_url(self._hostname)
+        return {'url': url, 'isSharedClientApi': is_shared_client_api}
+
     async def _get_server_url(self, instance_number: int, socket_instance_index: int, region: str):
         if self._url:
             return self._url
 
         while self.socket_instances[region][instance_number][socket_instance_index]['connected']:
             try:
-                url_settings = await self._httpClient.request({
-                    'url': f'https://mt-provisioning-api-v1.{self._domain}/users/current/servers/mt-client-api',
-                    'method': 'GET',
-                    'headers': {
-                        'auth-token': self._token
-                    },
-                })
+                url_settings = await self.get_url_settings(instance_number, region)
+                url = url_settings['url']
+                is_shared_client_api = url_settings['isSharedClientApi']
 
-                def get_url(hostname):
-                    return f'https://{hostname}.{region}-{chr(97 + int(instance_number))}.{url_settings["domain"]}'
-
-                if self._useSharedClientApi:
-                    url = get_url(self._hostname)
-                else:
-                    url = get_url(url_settings['hostname'])
-
-                is_shared_client_api = url == get_url(self._hostname)
                 log_message = 'Connecting MetaApi websocket client to the MetaApi server ' + \
                     f'via {url} {"shared" if is_shared_client_api else "dedicated"} server.'
                 if self._firstConnect and not is_shared_client_api:
                     log_message += ' Please note that it can take up to 3 minutes for your dedicated server to ' + \
                         'start for the first time. During this time it is OK if you see some connection errors.'
+                    self._firstConnect = False
                 self._logger.info(log_message)
                 return url
             except Exception as err:
@@ -2107,12 +2152,54 @@ class MetaApiWebsocketClient:
         if account_id in self._regionsByAccounts:
             self._regionsByAccounts[account_id]['lastUsed'] = datetime.now().timestamp()
 
-    def _clear_regions_job(self):
+    async def _create_socket_instance_by_account(self, account_id: str, instance_number: int):
+        region = self.get_account_region(account_id)
+        if account_id not in self._socketInstancesByAccounts[instance_number]:
+            socket_instance_index = None
+            while self._subscribeLock and \
+                ((date(self._subscribeLock['recommendedRetryTime']).timestamp() > datetime.now().timestamp() and
+                  len(self.subscribed_account_ids(instance_number, None, region)) <
+                  self._subscribeLock['lockedAtAccounts']) or
+                 (date(self._subscribeLock['lockedAtTime']).timestamp() + self._subscribeCooldownInSeconds >
+                  datetime.now().timestamp() and
+                  len(self.subscribed_account_ids(instance_number, None, region)) >=
+                  self._subscribeLock['lockedAtAccounts'])):
+                await asyncio.sleep(1)
+            for index in range(len(self._socketInstances[region][instance_number])):
+                account_counter = len(self.get_assigned_accounts(instance_number, index, region))
+                instance = self.socket_instances[region][instance_number][index]
+                if instance['subscribeLock']:
+                    if instance['subscribeLock']['type'] == 'LIMIT_ACCOUNT_SUBSCRIPTIONS_PER_USER_PER_SERVER' and \
+                            (date(instance['subscribeLock']['recommendedRetryTime']).timestamp() >
+                             datetime.now().timestamp() or
+                             len(self.subscribed_account_ids(instance_number, index, region)) >=
+                             instance['subscribeLock']['lockedAtAccounts']):
+                        continue
+                    if instance['subscribeLock']['type'] == 'LIMIT_ACCOUNT_SUBSCRIPTIONS_PER_SERVER' and \
+                            (date(instance['subscribeLock']['recommendedRetryTime']).timestamp() >
+                             datetime.now().timestamp() and
+                             len(self.subscribed_account_ids(instance_number, index, region)) >=
+                             instance['subscribeLock']['lockedAtAccounts']):
+                        continue
+                if account_counter < self._maxAccountsPerInstance:
+                    socket_instance_index = index
+                    break
+            if socket_instance_index is None:
+                socket_instance_index = len(self._socketInstances[region][instance_number])
+                await self.connect(instance_number, region)
+            self._socketInstancesByAccounts[instance_number][account_id] = socket_instance_index
+
+    def _clear_account_cache_job(self):
         try:
             date = datetime.now().timestamp()
             for account_id in list(self._regionsByAccounts.keys()):
                 data = self._regionsByAccounts[account_id]
                 if data['connections'] == 0 and date - data['lastUsed'] > 2 * 60 * 60:
-                    del self._regionsByAccounts[account_id]
+                    primary_account_id = self._accountsByReplicaId[account_id]
+                    replicas = self._accountReplicas[primary_account_id].values()
+                    for replica in replicas:
+                        del self._accountsByReplicaId[replica]
+                        del self._regionsByAccounts[replica]
+                    del self._accountReplicas[primary_account_id]
         except Exception as err:
             self._logger.error(f'Failed to process clear regions job ' + string_format_error(err))

@@ -19,21 +19,29 @@ class HealthStatus(TypedDict, total=False):
 class SynchronizationListener(ABC):
     """Defines interface for a synchronization listener class."""
 
+    def get_region(self, instance_index: str = None) -> str:
+        """Returns region of instance index.
+
+        Args:
+            instance_index: Instance index
+        """
+        return instance_index.split(':')[0] if isinstance(instance_index, str) else None
+
     def get_instance_number(self, instance_index: str = None) -> int:
         """Returns instance number of instance index.
 
         Args:
             instance_index: Instance index
         """
-        return int(instance_index.split(':')[0]) if isinstance(instance_index, str) else None
+        return int(instance_index.split(':')[1]) if isinstance(instance_index, str) else None
 
     def get_host_name(self, instance_index: str = None) -> str:
         """Returns host name of instance index.
 
         Args:
-            instance_index:
+            instance_index: Instance index
         """
-        return instance_index.split(':')[1] if isinstance(instance_index, str) else None
+        return instance_index.split(':')[2] if isinstance(instance_index, str) else None
 
     async def on_connected(self, instance_index: str, replicas: int):
         """Invoked when connection to MetaTrader terminal established.
@@ -407,6 +415,17 @@ class SynchronizationListener(ABC):
 
         Args:
             instance_index: Index of an account instance connected.
+
+        Returns:
+            A coroutine which resolves when the asynchronous event is processed.
+        """
+        pass
+
+    async def on_unsubscribe_region(self, region: str):
+        """Invoked when account region has been unsubscribed.
+
+        Args:
+            region: Account region unsubscribed.
 
         Returns:
             A coroutine which resolves when the asynchronous event is processed.

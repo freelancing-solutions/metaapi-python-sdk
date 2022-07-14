@@ -61,7 +61,7 @@ class MetatraderAccountIdDto(TypedDict):
     """MetaTrader account unique identifier"""
 
 
-class MetatraderAccountReplica(TypedDict, total=False):
+class MetatraderAccountReplicaDto(TypedDict, total=False):
     """Metatrader account replica model"""
 
     _id: str
@@ -185,7 +185,7 @@ class MetatraderAccountDto(TypedDict, total=False):
     brokers. You should not alter this setting unless you understand what you are doing."""
     copyFactoryRoles: Optional[List[str]]
     """Account roles for CopyFactory2 application. Allowed values are `PROVIDER` and `SUBSCRIBER`."""
-    resourceSlots: int
+    resourceSlots: Optional[int]
     """Number of resource slots to allocate to account. Allocating extra resource slots
     results in better account performance under load which is useful for some applications. E.g. if you have many
     accounts copying the same strategy via CopyFactory API, then you can increase resourceSlots to get a lower trade
@@ -210,7 +210,7 @@ class MetatraderAccountDto(TypedDict, total=False):
     """Flag indicating that account is primary."""
     riskManagementApiEnabled: Optional[bool]
     """Flag indicating that risk management API should be enabled on account. Default is false"""
-    accountReplicas: Optional[List[MetatraderAccountReplica]]
+    accountReplicas: Optional[List[MetatraderAccountReplicaDto]]
     """MetaTrader account replicas."""
     connections: List[AccountConnection]
     """Active account connections."""
@@ -288,24 +288,91 @@ class MetatraderAccountUpdateDto(TypedDict, total=False):
     access or master password to enable trading features. Required for cloud account"""
     server: str
     """MetaTrader server which hosts the account"""
-    manualTrades: bool
+    magic: int
+    """MetaTrader magic to place trades using."""
+    manualTrades: Optional[bool]
     """Flag indicating if trades should be placed as manual trades. Default is false."""
+    quoteStreamingIntervalInSeconds: Optional[float]
+    """Quote streaming interval in seconds. Set to 0 in order to receive quotes on each tick. Default value is
+    2.5 seconds. Intervals less than 2.5 seconds are supported only for G2."""
+    tags: Optional[List[str]]
+    """MetaTrader account tags."""
+    extensions: Optional[List[Extension]]
+    """API extensions."""
+    metadata: Optional[Dict]
+    """Extra information which can be stored together with your account."""
+    copyFactoryRoles: Optional[List[str]]
+    """Account roles for CopyFactory2 application. Allowed values are `PROVIDER` and `SUBSCRIBER`."""
+    resourceSlots: Optional[int]
+    """Number of resource slots to allocate to account. Allocating extra resource slots results in better account
+    performance under load which is useful for some applications. E.g. if you have many accounts copying the same
+    strategy via CopyFactory API, then you can increase resourceSlots to get a lower trade copying latency. Please
+    note that allocating extra resource slots is a paid option. Default is 1."""
+    copyFactoryResourceSlots: Optional[int]
+    """Number of CopyFactory 2 resource slots to allocate to account. Allocating extra resource slots results in lower
+    trade copying latency. Please note that allocating extra resource slots is a paid option. Please also note that
+    CopyFactory 2 uses redundant infrastructure so that each CopyFactory resource slot is billed as 2 standard resource
+    slots. You will be billed for CopyFactory 2 resource slots only if you have added your account to CopyFactory 2 by
+    specifying copyFactoryRoles field. Default is 1."""
+
+
+class NewMetaTraderAccountReplicaDto(TypedDict, total=False):
+    """New MetaTrader account replica model"""
+
+    symbol: Optional[str]
+    """Any MetaTrader symbol your broker provides historical market data for. This value should be specified for G1
+    accounts only and only in case your MT account fails to connect to broker."""
+    magic: int
+    """MetaTrader magic to place trades using. When manualTrades field is set to true, magic value must be 0."""
+    quoteStreamingIntervalInSeconds: Optional[float]
+    """Quote streaming interval in seconds. Set to 0 in order to receive quotes on each tick. Default value is
+    2.5 seconds. Intervals less than 2.5 seconds are supported only for G2."""
+    tags: Optional[List[str]]
+    """MetaTrader account tags."""
+    metadata: Optional[Dict]
+    """Extra information which can be stored together with your account."""
+    reliability: Optional[str]
+    """Used to increase the reliability of the account. Allowed values are regular and high. Default is regular."""
+    resourceSlots: Optional[int]
+    """Number of resource slots to allocate to account. Allocating extra resource slots results in better account
+    performance under load which is useful for some applications. E.g. if you have many accounts copying the same
+    strategy via CopyFactory API, then you can increase resourceSlots to get a lower trade copying latency. Please
+    note that allocating extra resource slots is a paid option. Default is 1."""
+    copyFactoryResourceSlots: Optional[int]
+    """Number of CopyFactory 2 resource slots to allocate to account. Allocating extra resource slots results in lower
+    trade copying latency. Please note that allocating extra resource slots is a paid option. Please also note that
+    CopyFactory 2 uses redundant infrastructure so that each CopyFactory resource slot is billed as 2 standard resource
+    slots. You will be billed for CopyFactory 2 resource slots only if you have added your account to CopyFactory 2 by
+    specifying copyFactoryRoles field. Default is 1."""
+    region: Optional[str]
+    """Region id to deploy account at. One of returned by the /users/current/regions endpoint."""
+
+
+class UpdatedMetatraderAccountReplicaDto(TypedDict, total=False):
+    """Updated MetaTrader account replica data"""
+
+    magic: Optional[int]
+    """MetaTrader magic to place trades using."""
     quoteStreamingIntervalInSeconds: float
     """Quote streaming interval in seconds. Set to 0 in order to receive quotes on each tick. Default value is
     2.5 seconds. Intervals less than 2.5 seconds are supported only for G2."""
     tags: Optional[List[str]]
     """MetaTrader account tags."""
-    extensions: List[Extension]
-    """API extensions."""
     metadata: Dict
     """Extra information which can be stored together with your account."""
     copyFactoryRoles: List[str]
     """Account roles for CopyFactory2 application. Allowed values are `PROVIDER` and `SUBSCRIBER`."""
-    resourceSlots: int
+    resourceSlots: Optional[int]
     """Number of resource slots to allocate to account. Allocating extra resource slots results in better account
     performance under load which is useful for some applications. E.g. if you have many accounts copying the same
     strategy via CopyFactory API, then you can increase resourceSlots to get a lower trade copying latency. Please
     note that allocating extra resource slots is a paid option. Default is 1."""
+    copyFactoryResourceSlots: Optional[int]
+    """Number of CopyFactory 2 resource slots to allocate to account. Allocating extra resource slots results in lower
+    trade copying latency. Please note that allocating extra resource slots is a paid option. Please also note that
+    CopyFactory 2 uses redundant infrastructure so that each CopyFactory resource slot is billed as 2 standard resource
+    slots. You will be billed for CopyFactory 2 resource slots only if you have added your account to CopyFactory 2 by
+    specifying copyFactoryRoles field. Default is 1."""
 
 
 class MetatraderAccountClient(MetaApiClient):
@@ -337,7 +404,7 @@ class MetatraderAccountClient(MetaApiClient):
                 'auth-token': self._token
             }
         }
-        return await self._httpClient.request(opts)
+        return await self._httpClient.request(opts, 'get_accounts')
 
     async def get_account(self, id: str) -> Response:
         """Retrieves a MetaTrader account by id (see https://metaapi.cloud/docs/provisioning/api/account/readAccount/).
@@ -356,7 +423,28 @@ class MetatraderAccountClient(MetaApiClient):
                 'auth-token': self._token
             }
         }
-        return await self._httpClient.request(opts)
+        return await self._httpClient.request(opts, 'get_account')
+
+    async def get_account_replica(self, primary_account_id: str, replica_id: str) -> Response:
+        """Retrieves a MetaTrader account replica by id
+        (see https://metaapi.cloud/docs/provisioning/api/accountReplica/readAccountReplica/).
+        Throws an error if account is not found.
+
+        Args:
+            primary_account_id: MetaTrader account id.
+            replica_id: MetaTrader account replica id.
+
+        Returns:
+            A coroutine resolving with MetatraderAccountReplicaDto - MetaTrader account replica found.
+        """
+        opts = {
+            'url': f'{self._host}/users/current/accounts/{primary_account_id}/replicas/{replica_id}',
+            'method': 'GET',
+            'headers': {
+                'auth-token': self._token
+            }
+        }
+        return await self._httpClient.request(opts, 'get_account_replica')
 
     async def get_account_by_token(self) -> 'Response[MetatraderAccountDto]':
         """Retrieves a MetaTrader account by token
@@ -372,7 +460,7 @@ class MetatraderAccountClient(MetaApiClient):
             'url': f'{self._host}/users/current/accounts/accessToken/{self._token}',
             'method': 'GET'
         }
-        return await self._httpClient.request(opts)
+        return await self._httpClient.request(opts, 'get_account_by_token')
 
     async def create_account(self, account: NewMetatraderAccountDto) -> Response:
         """Starts cloud API server for a MetaTrader account using specified provisioning profile
@@ -396,7 +484,33 @@ class MetatraderAccountClient(MetaApiClient):
             },
             'body': account
         }
-        return await self._httpClient.request(opts)
+        return await self._httpClient.request(opts, 'create_account')
+
+    async def create_account_replica(self, account_id: str, replica: NewMetaTraderAccountReplicaDto) -> Response:
+        """Starts cloud API server for a MetaTrader account replica using specified primary account
+        (see https://metaapi.cloud/docs/provisioning/api/accountReplica/createAccountReplica/).
+        It takes some time to launch the terminal and connect the terminal to the broker, you can use the
+        connectionStatus field to monitor the current status of the terminal.
+        Method is accessible only with API access token.
+
+        Args:
+            account_id: Primary MetaTrader account id.
+            replica: MetaTrader account replica to create
+
+        Returns:
+            A coroutine resolving with MetatraderAccountIdDto - an id of the MetaTrader account replica created.
+        """
+        if self._is_not_jwt_token():
+            return self._handle_no_access_exception('create_account_replica')
+        opts = {
+            'url': f'{self._host}/users/current/accounts/{account_id}/replicas',
+            'method': 'POST',
+            'headers': {
+                'auth-token': self._token
+            },
+            'body': replica
+        }
+        return await self._httpClient.request(opts, 'create_account_replica')
 
     async def deploy_account(self, id: str) -> Response:
         """Starts API server for MetaTrader account. This request will be ignored if the account has already
@@ -417,7 +531,29 @@ class MetatraderAccountClient(MetaApiClient):
                 'auth-token': self._token
             }
         }
-        return await self._httpClient.request(opts)
+        return await self._httpClient.request(opts, 'deploy_account')
+
+    async def deploy_account_replica(self, primary_account_id: str, replica_id: str) -> Response:
+        """Starts API server for MetaTrader account replica. This request will be ignored if the replica has already
+        been deployed. (see https://metaapi.cloud/docs/provisioning/api/accountReplica/deployAccountReplica/)
+
+        Args:
+            primary_account_id: MetaTrader account id.
+            replica_id: MetaTrader account replica id to deploy.
+
+        Returns:
+            A coroutine resolving when MetaTrader account replica is scheduled for deployment.
+        """
+        if self._is_not_jwt_token():
+            return self._handle_no_access_exception('deploy_account_replica')
+        opts = {
+            'url': f'{self._host}/users/current/accounts/{primary_account_id}/replicas/{replica_id}/deploy',
+            'method': 'POST',
+            'headers': {
+                'auth-token': self._token
+            }
+        }
+        return await self._httpClient.request(opts, 'deploy_account_replica')
 
     async def undeploy_account(self, id: str) -> Response:
         """Stops API server for a MetaTrader account. Terminal data such as downloaded market history data will
@@ -438,7 +574,29 @@ class MetatraderAccountClient(MetaApiClient):
                 'auth-token': self._token
             }
         }
-        return await self._httpClient.request(opts)
+        return await self._httpClient.request(opts, 'undeploy_account')
+
+    async def undeploy_account_replica(self, primary_account_id: str, replica_id: str) -> Response:
+        """Stops API server for MetaTrader account replica. Terminal data such as downloaded market history data will
+        be preserved. (see https://metaapi.cloud/docs/provisioning/api/accountReplica/undeployAccountReplica/)
+
+        Args:
+            primary_account_id: MetaTrader account id to undeploy.
+            replica_id: MetaTrader account replica id to undeploy.
+
+        Returns:
+            A coroutine resolving when MetaTrader account replica is scheduled for undeployment.
+        """
+        if self._is_not_jwt_token():
+            return self._handle_no_access_exception('undeploy_account_replica')
+        opts = {
+            'url': f'{self._host}/users/current/accounts/{primary_account_id}/replicas/{replica_id}/undeploy',
+            'method': 'POST',
+            'headers': {
+                'auth-token': self._token
+            }
+        }
+        return await self._httpClient.request(opts, 'undeploy_account_replica')
 
     async def redeploy_account(self, id: str) -> Response:
         """Redeploys MetaTrader account. This is equivalent to undeploy immediately followed by deploy.
@@ -459,7 +617,29 @@ class MetatraderAccountClient(MetaApiClient):
                 'auth-token': self._token
             }
         }
-        return await self._httpClient.request(opts)
+        return await self._httpClient.request(opts, 'redeploy_account')
+
+    async def redeploy_account_replica(self, primary_account_id: str, replica_id: str) -> Response:
+        """Redeploys MetaTrader account replica. This is equivalent to undeploy immediately followed by deploy.
+        (see https://metaapi.cloud/docs/provisioning/api/account/redeployAccountReplica/)
+
+        Args:
+            primary_account_id: MetaTrader account id.
+            replica_id: MetaTrader account replica id to redeploy.
+
+        Returns:
+            A coroutine resolving when MetaTrader account replica is scheduled for redeployment.
+        """
+        if self._is_not_jwt_token():
+            return self._handle_no_access_exception('redeploy_account_replica')
+        opts = {
+            'url': f'{self._host}/users/current/accounts/{primary_account_id}/replicas/{replica_id}/redeploy',
+            'method': 'POST',
+            'headers': {
+                'auth-token': self._token
+            }
+        }
+        return await self._httpClient.request(opts, 'redeploy_account_replica')
 
     async def delete_account(self, id: str) -> Response:
         """Stops and deletes an API server for a specified MetaTrader account. The terminal state such as downloaded
@@ -481,7 +661,31 @@ class MetatraderAccountClient(MetaApiClient):
                 'auth-token': self._token
             }
         }
-        return await self._httpClient.request(opts)
+        return await self._httpClient.request(opts, 'delete_account')
+
+    async def delete_account_replica(self, primary_account_id: str, replica_id: str) -> Response:
+        """Stops and deletes an API server for a specified MetaTrader account. The terminal state such as downloaded
+        market data history will be deleted as well when you delete the account.
+        (see https://metaapi.cloud/docs/provisioning/api/account/deleteAccountReplica/).
+        Method is accessible only with API access token.
+
+        Args:
+            primary_account_id: MetaTrader account id.
+            replica_id: MetaTrader account replica id to delete.
+
+        Returns:
+            A coroutine resolving when MetaTrader account is scheduled for deletion.
+        """
+        if self._is_not_jwt_token():
+            return self._handle_no_access_exception('delete_account_replica')
+        opts = {
+            'url': f'{self._host}/users/current/accounts/{primary_account_id}/replicas/{replica_id}',
+            'method': 'DELETE',
+            'headers': {
+                'auth-token': self._token
+            }
+        }
+        return await self._httpClient.request(opts, 'delete_account_replica')
 
     async def update_account(self, id: str, account: MetatraderAccountUpdateDto) -> Response:
         """Updates existing metatrader account data (see
@@ -504,7 +708,32 @@ class MetatraderAccountClient(MetaApiClient):
             },
             'body': account
         }
-        return await self._httpClient.request(opts)
+        return await self._httpClient.request(opts, 'update_account')
+
+    async def update_account_replica(self, primary_account_id: str, replica_id: str,
+                                     account: UpdatedMetatraderAccountReplicaDto) -> Response:
+        """ Updates existing metatrader account replica data (see
+        https://metaapi.cloud/docs/provisioning/api/account/updateAccountReplica/)
+
+        Args:
+            primary_account_id: MetaTrader account id.
+            replica_id: MetaTrader account replica id.
+            account: Updated MetaTrader account.
+
+        Returns:
+            A coroutine resolving when MetaTrader account replica is updated.
+        """
+        if self._is_not_jwt_token():
+            return self._handle_no_access_exception('update_account_replica')
+        opts = {
+            'url': f'{self._host}/users/current/accounts/{primary_account_id}/replicas/{replica_id}',
+            'method': 'PUT',
+            'headers': {
+                'auth-token': self._token
+            },
+            'body': account
+        }
+        return await self._httpClient.request(opts, 'update_account_replica')
 
     async def increase_reliability(self, id: str):
         """Increases MetaTrader account reliability. The account will be temporary stopped to perform this action. (see
@@ -526,4 +755,4 @@ class MetatraderAccountClient(MetaApiClient):
                 'auth-token': self._token
             }
         }
-        return await self._httpClient.request(opts)
+        return await self._httpClient.request(opts, 'increase_reliability')

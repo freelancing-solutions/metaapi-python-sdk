@@ -1,9 +1,8 @@
 from ..clients.metaApi.metatraderAccount_client import MetatraderAccountClient, MetatraderAccountDto, \
-    MetatraderAccountUpdateDto, AccountConnection
+    MetatraderAccountUpdateDto, NewMetaTraderAccountReplicaDto,  AccountConnection
 from ..clients.metaApi.metaApiWebsocket_client import MetaApiWebsocketClient
 from ..clients.timeoutException import TimeoutException
 from .streamingMetaApiConnection import StreamingMetaApiConnection
-from .metatraderAccountModel import MetatraderAccountModel
 from ..metaApi.filesystemHistoryDatabase import FilesystemHistoryDatabase
 from .historyStorage import HistoryStorage
 from .connectionRegistryModel import ConnectionRegistryModel
@@ -14,6 +13,8 @@ from .models import MetatraderCandle, MetatraderTick
 from datetime import datetime, timedelta
 from typing import List, Dict
 from .rpcMetaApiConnection import RpcMetaApiConnection
+from .metatraderAccountReplica import MetatraderAccountReplica
+from .metatraderAccountModel import MetatraderAccountModel
 import asyncio
 
 
@@ -42,6 +43,8 @@ class MetatraderAccount(MetatraderAccountModel):
         self._expertAdvisorClient = expert_advisor_client
         self._historicalMarketDataClient = historical_market_data_client
         self._application = application
+        self._replicas = list(map(lambda replica: MetatraderAccountReplica(replica, self, metatrader_account_client),
+                                  data['accountReplicas'] if 'accountReplicas' in data else []))
 
     @property
     def id(self) -> str:
@@ -166,7 +169,7 @@ class MetatraderAccount(MetatraderAccountModel):
         """Returns user-defined account tags.
 
         Returns:
-            User-defined account tag.
+            User-defined account tags.
         """
         return self._data['tags'] if 'tags' in self._data else None
 
@@ -222,7 +225,7 @@ class MetatraderAccount(MetatraderAccountModel):
         """Returns reliability value. Possible values are regular and high.
 
         Returns:
-            Reliability value.
+            Account reliability value.
         """
         return self._data['reliability']
 
@@ -271,6 +274,28 @@ class MetatraderAccount(MetatraderAccountModel):
         """
         return self._data['userId']
 
+    @property
+    def replicas(self) -> List[MetatraderAccountReplica]:
+        """Returns account replica instances.
+
+        Returns:
+            Account replica instances.
+        """
+        return self._replicas
+
+    @property
+    def account_regions(self) -> dict:
+        """Returns a dictionary with account's available regions and replicas.
+
+        Returns:
+            A dictionary with account's available regions and replicas.
+        """
+        regions = {self.region: self.id}
+        for replica in self.replicas:
+            regions[replica.region] = replica.id
+
+        return regions
+
     async def reload(self):
         """Reloads MetaTrader account from API.
 
@@ -278,6 +303,17 @@ class MetatraderAccount(MetatraderAccountModel):
             A coroutine resolving when MetaTrader account is updated.
         """
         self._data = await self._metatraderAccountClient.get_account(self.id)
+        updated_replica_data = self._data['accountReplicas'] if 'accountReplicas' in self._data else []
+        regions = list(map(lambda replica: replica['region'], updated_replica_data))
+        created_replica_regions = list(map(lambda replica: replica.region, self._replicas))
+        self._replicas = list(filter(lambda replica: replica.region in regions, self._replicas))
+        for replica in self._replicas:
+            updated_data = next((replica_data for replica_data in updated_replica_data if
+                                 (replica_data['_id'] == replica.id)), None)
+            replica.update_data(updated_data)
+        for replica in updated_replica_data:
+            if replica['region'] not in created_replica_regions:
+                self._replicas.append(MetatraderAccountReplica(replica, self, self._metatraderAccountClient))
 
     async def remove(self):
         """Removes MetaTrader account. Cloud account transitions to DELETING state.
@@ -418,13 +454,16 @@ class MetatraderAccount(MetatraderAccountModel):
         Raises:
             TimeoutException: If account has not connected to the broker within timeout allowed.
         """
+        def check_connected():
+            return 'CONNECTED' in [self.connection_status] + list(map(lambda replica: replica.connection_status,
+                                                                      self.replicas))
+
         start_time = datetime.now()
         await self.reload()
-        while self.connection_status != 'CONNECTED' and (start_time +
-                                                         timedelta(seconds=timeout_in_seconds)) > datetime.now():
+        while not check_connected() and (start_time + timedelta(seconds=timeout_in_seconds)) > datetime.now():
             await self._delay(interval_in_milliseconds)
             await self.reload()
-        if self.connection_status != 'CONNECTED':
+        if not check_connected():
             raise TimeoutException('Timed out waiting for account ' + self.id + ' to connect to the broker')
 
     def get_streaming_connection(self, history_storage: HistoryStorage = None,
@@ -465,6 +504,19 @@ class MetatraderAccount(MetatraderAccountModel):
         """
         await self._metatraderAccountClient.update_account(self.id, account)
         await self.reload()
+
+    async def create_replica(self, replica: NewMetaTraderAccountReplicaDto) -> MetatraderAccountReplica:
+        """Creates a MetaTrader account replica.
+
+        Args:
+            replica: MetaTrader account replica data.
+
+        Returns:
+            A coroutine resolving with MetaTrader account replica entity.
+        """
+        await self._metatraderAccountClient.create_account_replica(self.id, replica)
+        await self.reload()
+        return next((r for r in self._replicas if r.region == replica['region']), None)
 
     async def get_expert_advisors(self) -> List[ExpertAdvisor]:
         """Retrieves expert advisors of current account.

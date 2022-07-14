@@ -53,7 +53,8 @@ class HttpClient:
             'retryOpts.maxDelayInSeconds')
         self._logger = LoggerManager.get_logger('HttpClient')
 
-    async def request(self, options: RequestOptions, retry_counter: int = 0, end_time: float = None) -> Response:
+    async def request(self, options: RequestOptions, type: str = '', retry_counter: int = 0,
+                      end_time: float = None) -> Response:
         """Performs a request. Response errors are returned as ApiException or subclasses.
 
         Args:
@@ -82,14 +83,14 @@ class HttpClient:
                 except Exception as err:
                     print('Error parsing json', format_error(err))
         except HTTPError as err:
-            retry_counter = await self._handle_error(err, retry_counter, end_time)
-            return await self.request(options, retry_counter, end_time)
+            retry_counter = await self._handle_error(err, type, retry_counter, end_time)
+            return await self.request(options, type, retry_counter, end_time)
         if retry_after_seconds:
             if isinstance(response, dict) and 'message' in response:
                 self._logger.info(f'Retrying request in {math.floor(retry_after_seconds)} seconds because request '
                                   'returned message:', response['message'])
             await self._handle_retry(end_time, retry_after_seconds)
-            response = await self.request(options, retry_counter, end_time)
+            response = await self.request(options, type, retry_counter, end_time)
         return response
 
     async def _make_request(self, options: RequestOptions) -> Response:
@@ -110,7 +111,7 @@ class HttpClient:
         else:
             raise TimeoutException('Timed out waiting for the response')
 
-    async def _handle_error(self, err, retry_counter: int, end_time: float):
+    async def _handle_error(self, err, type: str, retry_counter: int, end_time: float):
         if err.__class__.__name__ == 'ConnectTimeout':
             error = err
         else:
@@ -123,6 +124,9 @@ class HttpClient:
         elif error.__class__.__name__ == 'TooManyRequestsException':
             retry_time = date(error.metadata['recommendedRetryTime']).timestamp()
             if retry_time < end_time:
+                self._logger.debug(f'{type} request has failed with TooManyRequestsError (HTTP status code 429). ' +
+                                   f'Will retry request in ' +
+                                   f'{math.ceil((retry_time - datetime.now().timestamp()) / 1000)} seconds')
                 await asyncio.sleep(retry_time - datetime.now().timestamp())
                 return retry_counter
         raise error

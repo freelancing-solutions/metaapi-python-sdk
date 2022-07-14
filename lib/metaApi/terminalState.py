@@ -138,11 +138,12 @@ class TerminalState(SynchronizationListener):
             A coroutine that resolves with hashes of terminal state data.
         """
         requested_state = self._get_state(instance_index)
-        hash_fields = await self._clientApiClient.get_hashing_ignored_field_lists()
         # get latest instance number state
-        instance_number = instance_index.split(':')[0]
+        region = instance_index.split(':')[0]
+        hash_fields = await self._clientApiClient.get_hashing_ignored_field_lists(region)
+        instance_number = instance_index.split(':')[1]
         instance_number_states = list(filter(
-            lambda state_instance_index: state_instance_index.startswith(f'{instance_number}:'),
+            lambda state_instance_index: state_instance_index.startswith(f'{region}:{instance_number}:'),
             self._stateByInstanceIndex.keys()))
         instance_number_states = sorted(
             instance_number_states,
@@ -762,8 +763,10 @@ class TerminalState(SynchronizationListener):
                 state['lastSyncUpdateTime'] = datetime.now().timestamp()
 
     def _get_state_indices_of_same_instance_number(self, instance_index: str):
-        instance_number = instance_index.split(':')[0]
-        return list(filter(lambda state_instance_index: state_instance_index.startswith(f'{instance_number}:') and
+        region = instance_index.split(':')[0]
+        instance_number = instance_index.split(':')[1]
+        return list(filter(lambda state_instance_index:
+                           state_instance_index.startswith(f'{region}:{instance_number}:') and
                            instance_index != state_instance_index, self._stateByInstanceIndex.keys()))
 
     def _update_position_profits(self, position: Dict, price: Dict):

@@ -23,7 +23,7 @@ class MockClient(ProvisioningProfileClient):
         pass
 
 
-client = MockClient(MagicMock(), 'token')
+client = MockClient(MagicMock(), MagicMock())
 api = ProvisioningProfileApi(client)
 
 

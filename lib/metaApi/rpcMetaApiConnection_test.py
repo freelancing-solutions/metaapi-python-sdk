@@ -141,6 +141,7 @@ async def run_around_tests():
                                    'MetaApi')
     global client
     client = MockClient(MagicMock(), 'token')
+    client.ensure_subscribe = AsyncMock()
     global api
     api = RpcMetaApiConnection(client, account)
     yield
@@ -150,26 +151,50 @@ class TestRpcMetaApiConnection:
     @pytest.mark.asyncio
     async def test_wait_synchronized(self):
         """Should wait until RPC application is synchronized."""
+        async def call_connected():
+            await asyncio.sleep(0.05)
+            await api.on_connected('vint-hill:1:mpa-1', 1)
         await api.connect()
         client.wait_synchronized = AsyncMock(side_effect=[TimeoutException('timeout'), TimeoutException('timeout'),
                                                           MagicMock()])
+        asyncio.create_task(call_connected())
         await api.wait_synchronized()
 
     @pytest.mark.asyncio
     async def test_timeout_synchronization(self):
         """Should time out waiting for synchronization."""
         await api.connect()
+
+        async def call_connected():
+            await asyncio.sleep(0.05)
+            await api.on_connected('vint-hill:1:mpa-1', 1)
+
+        asyncio.create_task(call_connected())
+
         async def wait_synchronized(account_id: str, instance_index: str, application_pattern: str,
                                     timeout_in_seconds: float, application: str = None):
             await asyncio.sleep(0.1)
             raise TimeoutException('timeout')
 
-        client.wait_synchronized = wait_synchronized
+        client.wait_synchronized = AsyncMock(side_effect=wait_synchronized)
         try:
             await api.wait_synchronized(0.09)
-            raise Exception('TimeoutError is expected')
+            raise Exception('TimeoutException is expected')
         except Exception as err:
             assert err.__class__.__name__ == 'TimeoutException'
+        client.wait_synchronized.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_timeout_synchronization_if_no_connected(self):
+        """Should time out waiting for synchronization if no connected event has arrived."""
+        await api.connect()
+        client.wait_synchronized = AsyncMock()
+        try:
+            await api.wait_synchronized(0.09)
+            raise Exception('TimeoutException is expected')
+        except Exception as err:
+            assert err.__class__.__name__ == 'TimeoutException'
+        client.wait_synchronized.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_retrieve_account_information(self):

@@ -1,4 +1,6 @@
 from ..metaApi_client import MetaApiClient
+from ..httpClient import HttpClient
+from ..domain_client import DomainClient
 from typing import List
 from datetime import datetime
 from ...metaApi.models import format_date, date, MetatraderCandle, MetatraderTick
@@ -7,17 +9,15 @@ from urllib import parse
 
 class HistoricalMarketDataClient(MetaApiClient):
 
-    def __init__(self, http_client, token: str, domain: str = 'agiliumtrade.agiliumtrade.ai'):
+    def __init__(self, http_client: HttpClient, domain_client: DomainClient):
         """Inits historical market data API client instance.
 
         Args:
             http_client: HTTP client.
-            token: Authorization token.
-            domain: Domain to connect to, default is agiliumtrade.agiliumtrade.ai.
+            domain_client: Domain client.
         """
-        super().__init__(http_client, token, domain)
-        self._domain = domain
-        self._urlCache = None
+        super().__init__(http_client, domain_client)
+        self._host = 'https://mt-market-data-client-api-v1'
 
     async def get_historical_candles(self, account_id: str, region: str, symbol: str, timeframe: str,
                                      start_time: datetime = None, limit: int = None) -> List[MetatraderCandle]:
@@ -40,7 +40,7 @@ class HistoricalMarketDataClient(MetaApiClient):
         """
 
         symbol = parse.quote(symbol)
-        host = await self._get_host(region)
+        host = await self._domainClient.get_url(self._host, region)
         qs = {}
         if start_time is not None:
             qs['startTime'] = format_date(start_time)
@@ -56,7 +56,7 @@ class HistoricalMarketDataClient(MetaApiClient):
             },
             'params': qs
         }
-        candles = await self._httpClient.request(opts)
+        candles = await self._httpClient.request(opts, 'get_historical_candles')
         candles = candles or []
         for c in candles:
             c['time'] = date(c['time'])
@@ -81,7 +81,7 @@ class HistoricalMarketDataClient(MetaApiClient):
         """
 
         symbol = parse.quote(symbol)
-        host = await self._get_host(region)
+        host = await self._domainClient.get_url(self._host, region)
         qs = {}
         if start_time is not None:
             qs['startTime'] = format_date(start_time)
@@ -98,29 +98,8 @@ class HistoricalMarketDataClient(MetaApiClient):
             },
             'params': qs
         }
-        ticks = await self._httpClient.request(opts)
+        ticks = await self._httpClient.request(opts, 'get_historical_ticks')
         ticks = ticks or []
         for t in ticks:
             t['time'] = date(t['time'])
         return ticks
-
-    async def _get_host(self, region: str):
-        if self._urlCache and self._urlCache['lastUpdated'] > datetime.now().timestamp() - 600:
-            return self._urlCache['url']
-
-        url_settings = await self._httpClient.request({
-            'url': f'https://mt-provisioning-api-v1.{self._domain}/users/current/servers/mt-client-api',
-            'method': 'GET',
-            'headers': {
-                'auth-token': self._token
-            }
-        })
-
-        url = f'https://mt-market-data-client-api-v1.{region}.{url_settings["domain"]}'
-
-        self._urlCache = {
-            'url': url,
-            'lastUpdated': datetime.now().timestamp()
-        }
-
-        return url

@@ -999,3 +999,231 @@ class TestSyncStability:
             assert connection.synchronized and connection.terminal_state.connected and \
                    connection.terminal_state.connected_to_broker
             assert subscribe_calls == 1
+
+
+@pytest.fixture()
+def get_account_mock():
+    async def side_effect_get_account(account_id):
+        return {
+            '_id':  account_id,
+            'login': '50194988',
+            'name': 'mt5a',
+            'region': 'vint-hill',
+            'reliability': 'regular',
+            'server': 'ICMarketsSC-Demo',
+            'provisioningProfileId': 'f9ce1f12-e720-4b9a-9477-c2d4cb25f076',
+            'magic': 123456,
+            'application': 'MetaApi',
+            'connectionStatus': 'CONNECTED',
+            'state': 'DEPLOYED',
+            'type': 'cloud',
+            'accessToken': '2RUnoH1ldGbnEneCoqRTgI4QO1XOmVzbH5EVoQsA',
+            'accountReplicas': [
+                {
+                    '_id': 'accountIdReplica',
+                    'quoteStreamingIntervalInSeconds': 2.5,
+                    'region': 'new-york',
+                    'magic': 0,
+                    'symbol': 'EURUSD',
+                    'copyFactoryResourceSlots': 1,
+                    'resourceSlots': 1,
+                    'extensions': [],
+                    'tags': [],
+                    'state': 'DEPLOYED',
+                    'connectionStatus': 'CONNECTED',
+                    'reliability': 'regular'
+                }
+            ],
+        }
+
+    api.metatrader_account_api._metatraderAccountClient.get_account = side_effect_get_account
+
+
+class TestSyncReplica:
+    @pytest.mark.asyncio
+    async def test_sync(self, get_account_mock):
+        """Should synchronize account."""
+        account = await api.metatrader_account_api.get_account('accountId')
+        connection = account.get_streaming_connection()
+        await connection.connect()
+        await connection.wait_synchronized({'timeoutInSeconds': 10})
+        response = connection.terminal_state.account_information
+        assert response == account_information
+        assert connection.synchronized and connection.terminal_state.connected and \
+               connection.terminal_state.connected_to_broker
+
+    @pytest.mark.asyncio
+    async def test_sync_replica(self, get_account_mock):
+        """Should synchronize using a replica."""
+        called_account_id = None
+        unsubscribed_account_id = None
+        allowed_accounts = ['accountId', 'accountIdReplica']
+
+        account = await api.metatrader_account_api.get_account('accountId')
+
+        @sio.on('request')
+        async def on_request(sid, data):
+            if data['instanceIndex'] == 1:
+                await fake_server.respond(data, sid)
+                return
+
+            if data['accountId'] not in allowed_accounts:
+                return
+
+            nonlocal called_account_id
+            nonlocal unsubscribed_account_id
+
+            if data['type'] == 'subscribe':
+                await sleep(0.2)
+                await fake_server.respond(data, sid)
+                fake_server.status_tasks[data['accountId']] = \
+                    asyncio.create_task(fake_server.create_status_task(data['accountId'], sid))
+                await fake_server.authenticate(data, sid)
+            elif data['type'] == 'synchronize':
+                called_account_id = data['accountId']
+                await fake_server.respond(data, sid)
+                await fake_server.sync_account(data, sid)
+            elif data['type'] in ['waitSynchronized', 'refreshMarketDataSubscriptions']:
+                called_account_id = data['accountId']
+                await fake_server.respond(data, sid)
+            elif data['type'] == 'getAccountInformation':
+                await fake_server.respond_account_information(data, sid)
+            elif data['type'] == 'unsubscribe':
+                unsubscribed_account_id = data['accountId']
+                fake_server.delete_status_task(data['accountId'])
+                await fake_server.respond(data, sid)
+
+        connection = account.get_streaming_connection()
+        connection._websocketClient._latencyService._latencyCache = {'vint-hill': 500, 'new-york': 100}
+        await connection.connect()
+        await connection.wait_synchronized({'timeoutInSeconds': 10})
+        response = connection.terminal_state.account_information
+        assert response == account_information
+        assert called_account_id == 'accountIdReplica'
+        assert unsubscribed_account_id == 'accountId'
+        assert connection.synchronized and connection.terminal_state.connected and \
+               connection.terminal_state.connected_to_broker
+
+    @pytest.mark.asyncio
+    async def test_resync_if_other_account_undeployed(self, get_account_mock):
+        """Should resynchronize if used account was undeployed, then return when redeployed."""
+        with patch('lib.clients.metaApi.metaApiWebsocket_client.asyncio.sleep', new=lambda x: sleep(x / 50)):
+            called_account_id = None
+            unsubscribed_account_id = None
+            allowed_accounts = ['accountId', 'accountIdReplica']
+
+            account = await api.metatrader_account_api.get_account('accountId')
+
+            @sio.on('request')
+            async def on_request(sid, data):
+                if data['instanceIndex'] == 1:
+                    await fake_server.respond(data, sid)
+                    return
+
+                if data['accountId'] not in allowed_accounts:
+                    return
+
+                nonlocal called_account_id
+                nonlocal unsubscribed_account_id
+
+                if data['type'] == 'subscribe':
+                    await sleep(0.2)
+                    await fake_server.respond(data, sid)
+                    fake_server.status_tasks[data['accountId']] = \
+                        asyncio.create_task(fake_server.create_status_task(data['accountId'], sid))
+                    await fake_server.authenticate(data, sid)
+                elif data['type'] == 'synchronize':
+                    called_account_id = data['accountId']
+                    await fake_server.respond(data, sid)
+                    await fake_server.sync_account(data, sid)
+                elif data['type'] in ['waitSynchronized', 'refreshMarketDataSubscriptions']:
+                    called_account_id = data['accountId']
+                    await fake_server.respond(data, sid)
+                elif data['type'] == 'getAccountInformation':
+                    await fake_server.respond_account_information(data, sid)
+                elif data['type'] == 'unsubscribe':
+                    unsubscribed_account_id = data['accountId']
+                    fake_server.delete_status_task(data['accountId'])
+                    await fake_server.respond(data, sid)
+
+            connection = account.get_streaming_connection()
+            connection._websocketClient._latencyService._latencyCache = {'vint-hill': 500, 'new-york': 100}
+            await connection.connect()
+            await connection.wait_synchronized({'timeoutInSeconds': 10})
+            response = connection.terminal_state.account_information
+            assert response == account_information
+            assert called_account_id == 'accountIdReplica'
+            assert unsubscribed_account_id == 'accountId'
+            assert connection.synchronized and connection.terminal_state.connected and \
+                   connection.terminal_state.connected_to_broker
+
+            allowed_accounts = allowed_accounts[:1]
+            fake_server.delete_status_task('accountIdReplica')
+            await sleep(1.3)
+            assert called_account_id == 'accountId'
+            assert unsubscribed_account_id == 'accountId'
+            assert connection.synchronized and connection.terminal_state.connected and \
+                   connection.terminal_state.connected_to_broker
+            allowed_accounts.append('accountIdReplica')
+            await fake_server.emit_status('accountIdReplica', connections[0])
+            await sleep(0.5)
+            assert called_account_id == 'accountIdReplica'
+            assert unsubscribed_account_id == 'accountId'
+            assert connection.synchronized and connection.terminal_state.connected and \
+                   connection.terminal_state.connected_to_broker
+
+    @pytest.mark.asyncio
+    async def test_change_replica_if_region_priority_changed(self, get_account_mock):
+        """Should change replica if region priority changed."""
+        with patch('lib.clients.metaApi.latencyService.asyncio.sleep', new=lambda x: sleep(x / 1800)):
+            called_account_id = None
+            unsubscribed_account_id = None
+
+            account = await api.metatrader_account_api.get_account('accountId')
+
+            @sio.on('request')
+            async def on_request(sid, data):
+                if data['instanceIndex'] == 1:
+                    await fake_server.respond(data, sid)
+                    return
+
+                nonlocal called_account_id
+                nonlocal unsubscribed_account_id
+
+                if data['type'] == 'subscribe':
+                    await sleep(0.2)
+                    await fake_server.respond(data, sid)
+                    fake_server.status_tasks[data['accountId']] = \
+                        asyncio.create_task(fake_server.create_status_task(data['accountId'], sid))
+                    await fake_server.authenticate(data, sid)
+                elif data['type'] == 'synchronize':
+                    called_account_id = data['accountId']
+                    await fake_server.respond(data, sid)
+                    await fake_server.sync_account(data, sid)
+                elif data['type'] in ['waitSynchronized', 'refreshMarketDataSubscriptions']:
+                    called_account_id = data['accountId']
+                    await fake_server.respond(data, sid)
+                elif data['type'] == 'getAccountInformation':
+                    await fake_server.respond_account_information(data, sid)
+                elif data['type'] == 'unsubscribe':
+                    unsubscribed_account_id = data['accountId']
+                    fake_server.delete_status_task(data['accountId'])
+                    await fake_server.respond(data, sid)
+
+            connection = account.get_streaming_connection()
+            connection._websocketClient._latencyService._refresh_latency = AsyncMock()
+            connection._websocketClient._latencyService._latencyCache = {'vint-hill': 500, 'new-york': 100}
+            await connection.connect()
+            await connection.wait_synchronized({'timeoutInSeconds': 10})
+            response = connection.terminal_state.account_information
+            assert response == account_information
+            assert called_account_id == 'accountIdReplica'
+            assert unsubscribed_account_id == 'accountId'
+            assert connection.synchronized and connection.terminal_state.connected and \
+                   connection.terminal_state.connected_to_broker
+            connection._websocketClient._latencyService._latencyCache = {'vint-hill': 100, 'new-york': 500}
+            await sleep(1)
+            assert called_account_id == 'accountId'
+            assert unsubscribed_account_id == 'accountIdReplica'
+            assert connection.synchronized and connection.terminal_state.connected and \
+                   connection.terminal_state.connected_to_broker

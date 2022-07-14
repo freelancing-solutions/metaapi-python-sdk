@@ -1,11 +1,30 @@
 import pytest
 import respx
 from httpx import Response
+from mock import MagicMock, AsyncMock
 from ..httpClient import HttpClient
 from .metatraderAccountGenerator_client import MetatraderAccountGeneratorClient
+
+
 PROVISIONING_API_URL = 'https://mt-provisioning-api-v1.agiliumtrade.agiliumtrade.ai'
+token = 'header.payload.sign'
+account_token = 'token'
 http_client = HttpClient()
-demo_account_client = MetatraderAccountGeneratorClient(http_client, 'header.payload.sign')
+domain_client: MagicMock = None
+demo_account_client: MetatraderAccountGeneratorClient = None
+
+
+@pytest.fixture(autouse=True)
+async def run_around_tests():
+    global http_client
+    http_client = HttpClient()
+    global domain_client
+    domain_client = MagicMock()
+    domain_client.token = token
+    domain_client.domain = 'agiliumtrade.agiliumtrade.ai'
+    domain_client.get_url = AsyncMock(return_value=PROVISIONING_API_URL)
+    global demo_account_client
+    demo_account_client = MetatraderAccountGeneratorClient(http_client, domain_client)
 
 
 class TestMetatraderDemoAccountClient:
@@ -38,9 +57,11 @@ class TestMetatraderDemoAccountClient:
     @pytest.mark.asyncio
     async def test_not_create_mt4_demo_with_account_token(self):
         """Should not create MetaTrader 4 demo account via API with account token."""
-        account_client = MetatraderAccountGeneratorClient(http_client, 'token')
+        domain_client.token = account_token
+        account_client = MetatraderAccountGeneratorClient(http_client, domain_client)
         try:
             await account_client.create_mt4_demo_account({}, '')
+            pytest.fail()
         except Exception as err:
             assert err.__str__() == 'You can not invoke create_mt4_demo_account method, because you have ' + \
                                     'connected with account access token. Please use API access token from ' + \
@@ -75,9 +96,11 @@ class TestMetatraderDemoAccountClient:
     @pytest.mark.asyncio
     async def test_not_create_mt4_live_with_account_token(self):
         """Should not create MetaTrader 4 live account via API with account token."""
-        account_client = MetatraderAccountGeneratorClient(http_client, 'token')
+        domain_client.token = account_token
+        account_client = MetatraderAccountGeneratorClient(http_client, domain_client)
         try:
             await account_client.create_mt4_live_account({}, '')
+            pytest.fail()
         except Exception as err:
             assert err.__str__() == 'You can not invoke create_mt4_live_account method, because you have ' + \
                                     'connected with account access token. Please use API access token from ' + \
@@ -112,9 +135,11 @@ class TestMetatraderDemoAccountClient:
     @pytest.mark.asyncio
     async def test_not_create_mt5_demo_with_account_token(self):
         """Should not create MetaTrader 5 demo account via API with account token."""
-        account_client = MetatraderAccountGeneratorClient(http_client, 'token')
+        domain_client.token = account_token
+        account_client = MetatraderAccountGeneratorClient(http_client, domain_client)
         try:
             await account_client.create_mt5_demo_account({}, '')
+            pytest.fail()
         except Exception as err:
             assert err.__str__() == 'You can not invoke create_mt5_demo_account method, because you have ' + \
                                     'connected with account access token. Please use API access token from ' + \
@@ -149,9 +174,11 @@ class TestMetatraderDemoAccountClient:
     @pytest.mark.asyncio
     async def test_not_create_mt5_live_with_account_token(self):
         """Should not create MetaTrader 5 live account via API with account token."""
-        account_client = MetatraderAccountGeneratorClient(http_client, 'token')
+        domain_client.token = account_token
+        account_client = MetatraderAccountGeneratorClient(http_client, domain_client)
         try:
             await account_client.create_mt5_live_account({}, '')
+            pytest.fail()
         except Exception as err:
             assert err.__str__() == 'You can not invoke create_mt5_live_account method, because you have ' + \
                                     'connected with account access token. Please use API access token from ' + \

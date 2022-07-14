@@ -1,5 +1,5 @@
 import json
-import mock as mock
+from mock import MagicMock, AsyncMock, patch, mock_open
 import pytest
 import respx
 from httpx import Response
@@ -8,7 +8,23 @@ from .provisioningProfile_client import ProvisioningProfileClient
 
 PROVISIONING_API_URL = 'https://mt-provisioning-api-v1.agiliumtrade.agiliumtrade.ai'
 httpClient = HttpClient()
-provisioning_client = ProvisioningProfileClient(httpClient, 'header.payload.sign')
+token = 'header.payload.sign'
+account_token = 'token'
+domain_client: MagicMock = None
+provisioning_client: ProvisioningProfileClient = None
+
+
+@pytest.fixture(autouse=True)
+async def run_around_tests():
+    global http_client
+    http_client = HttpClient()
+    global domain_client
+    domain_client = MagicMock()
+    domain_client.token = token
+    domain_client.domain = 'agiliumtrade.agiliumtrade.ai'
+    domain_client.get_url = AsyncMock(return_value=PROVISIONING_API_URL)
+    global provisioning_client
+    provisioning_client = ProvisioningProfileClient(http_client, domain_client)
 
 
 class TestProvisioningProfileClient:
@@ -33,9 +49,11 @@ class TestProvisioningProfileClient:
     @pytest.mark.asyncio
     async def test_not_retrieve_profiles_with_account_token(self):
         """Should not retrieve provisioning profiles from API with account token."""
-        provisioning_client = ProvisioningProfileClient(httpClient, 'token')
+        domain_client.token = account_token
+        provisioning_client = ProvisioningProfileClient(httpClient, domain_client)
         try:
             await provisioning_client.get_provisioning_profiles(5, 'active')
+            pytest.fail()
         except Exception as err:
             assert err.__str__() == 'You can not invoke get_provisioning_profiles method, because you ' + \
                 'have connected with account access token. Please use API access token from ' + \
@@ -62,9 +80,11 @@ class TestProvisioningProfileClient:
     @pytest.mark.asyncio
     async def test_not_retrieve_profile_with_account_token(self):
         """Should not retrieve provisioning profile from API with account token."""
-        provisioning_client = ProvisioningProfileClient(httpClient, 'token')
+        domain_client.token = account_token
+        provisioning_client = ProvisioningProfileClient(httpClient, domain_client)
         try:
             await provisioning_client.get_provisioning_profile('id')
+            pytest.fail()
         except Exception as err:
             assert err.__str__() == 'You can not invoke get_provisioning_profile method, because you ' + \
                    'have connected with account access token. Please use API access token from ' + \
@@ -92,9 +112,11 @@ class TestProvisioningProfileClient:
     @pytest.mark.asyncio
     async def test_not_create_profile_with_account_token(self):
         """Should not create provisioning profile from API with account token."""
-        provisioning_client = ProvisioningProfileClient(httpClient, 'token')
+        domain_client.token = account_token
+        provisioning_client = ProvisioningProfileClient(httpClient, domain_client)
         try:
             await provisioning_client.create_provisioning_profile({})
+            pytest.fail()
         except Exception as err:
             assert err.__str__() == 'You can not invoke create_provisioning_profile method, because you ' + \
                    'have connected with account access token. Please use API access token from ' + \
@@ -106,7 +128,7 @@ class TestProvisioningProfileClient:
         """Should upload file to a provisioning profile via API."""
         rsps = respx.put(f'{PROVISIONING_API_URL}/users/current/provisioning-profiles/id/servers.dat') \
             .mock(return_value=Response(204))
-        with mock.patch('__main__.open', new=mock.mock_open(read_data='test')) as file:
+        with patch('__main__.open', new=mock_open(read_data='test')) as file:
             file.return_value = json.dumps('test').encode()
             await provisioning_client.upload_provisioning_profile_file('id', 'servers.dat', file())
             assert rsps.calls[0].request.url == \
@@ -116,9 +138,11 @@ class TestProvisioningProfileClient:
     @pytest.mark.asyncio
     async def test_not_upload_file_with_account_token(self):
         """Should not upload provisioning profile file via API with account token."""
-        provisioning_client = ProvisioningProfileClient(httpClient, 'token')
+        domain_client.token = account_token
+        provisioning_client = ProvisioningProfileClient(httpClient, domain_client)
         try:
             await provisioning_client.upload_provisioning_profile_file('id', 'servers.dat', {})
+            pytest.fail()
         except Exception as err:
             assert err.__str__() == 'You can not invoke upload_provisioning_profile_file method, because you ' + \
                    'have connected with account access token. Please use API access token from ' + \
@@ -138,9 +162,11 @@ class TestProvisioningProfileClient:
     @pytest.mark.asyncio
     async def test_not_delete_with_account_token(self):
         """Should not delete provisioning profile via API with account token."""
-        provisioning_client = ProvisioningProfileClient(httpClient, 'token')
+        domain_client.token = account_token
+        provisioning_client = ProvisioningProfileClient(httpClient, domain_client)
         try:
             await provisioning_client.delete_provisioning_profile('id')
+            pytest.fail()
         except Exception as err:
             assert err.__str__() == 'You can not invoke delete_provisioning_profile method, because you ' + \
                    'have connected with account access token. Please use API access token from ' + \
@@ -161,9 +187,11 @@ class TestProvisioningProfileClient:
     @pytest.mark.asyncio
     async def test_not_update_with_account_token(self):
         """Should not update provisioning profile via API with account token."""
-        provisioning_client = ProvisioningProfileClient(httpClient, 'token')
+        domain_client.token = account_token
+        provisioning_client = ProvisioningProfileClient(httpClient, domain_client)
         try:
             await provisioning_client.update_provisioning_profile('id', {'name': 'new name'})
+            pytest.fail()
         except Exception as err:
             assert err.__str__() == 'You can not invoke update_provisioning_profile method, because you ' + \
                    'have connected with account access token. Please use API access token from ' + \

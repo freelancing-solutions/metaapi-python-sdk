@@ -1,3 +1,14 @@
+19.6.0
+  - added support for multiple account region replicas
+  - added APIs to manage account replicas deployed in different regions
+  - improved logging TooManyRequests error
+  - added caching for ignored field lists
+  - added waiting for broker connection by replica
+  - add accountCurrencyExchangeRate to MetatraderAccountInformation
+  - made accountCurrencyExchangeRate optional in SynchronizationListener.on_symbol_prices_updated
+  - fixed typings for MetatraderAccount.get_streaming_connection: historyStorage parameter is now optional
+  - fixed synchronization when using account access tokens
+
 19.5.2
   - fixed dependency vulnerabilities
   - fixed readme for RPC connections
