@@ -11,12 +11,13 @@ install_requires = [
 ]
 
 tests_require = [
-      'pytest', 'pytest-mock', 'pytest-asyncio', 'asynctest', 'mock', 'freezegun==1.0.0', 'respx==0.19.2'
+    'pytest==6.2.5', 'pytest-mock==3.8.2', 'pytest-asyncio==0.16.0', 'asynctest==0.13.0', 'mock==4.0.3',
+    'freezegun==1.0.0', 'respx==0.19.2'
 ]
 
 setuptools.setup(
     name="metaapi_cloud_sdk",
-    version="19.6.0",
+    version="19.7.0",
     author="Agilium Labs LLC",
     author_email="agiliumtrade@agiliumtrade.ai",
     description="SDK for MetaApi, a professional cloud forex API which includes MetaTrader REST API "

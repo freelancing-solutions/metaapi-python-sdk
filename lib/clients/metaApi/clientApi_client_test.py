@@ -5,7 +5,8 @@ import asyncio
 from ..httpClient import HttpClient
 from .clientApi_client import ClientApiClient
 from freezegun import freeze_time
-from mock import AsyncMock, MagicMock
+from mock import AsyncMock, MagicMock, patch
+from asyncio import sleep
 
 CLIENT_API_URL = 'https://mt-client-api-v1.agiliumtrade.agiliumtrade.ai'
 token = 'header.payload.sign'
@@ -98,20 +99,25 @@ class TestClientApiClient:
 
     @respx.mock
     @pytest.mark.asyncio
-    async def test_return_error_to_promise(self):
-        """Should return error to promise."""
-        client_api_client._httpClient.request = AsyncMock(side_effect=Exception('test'))
-        responses = [
-            asyncio.create_task(client_api_client.get_hashing_ignored_field_lists('vint-hill')),
-            asyncio.create_task(client_api_client.get_hashing_ignored_field_lists('vint-hill'))
-        ]
-        try:
-            await responses[0]
-            pytest.fail()
-        except Exception as err:
-            assert err.args[0] == 'test'
-        try:
-            await responses[1]
-            pytest.fail()
-        except Exception as err:
-            assert err.args[0] == 'test'
+    async def test_retry_request_if_received_error(self):
+        """Should retry request if received error."""
+        with patch('lib.clients.metaApi.clientApi_client.asyncio.sleep', new=lambda x: sleep(x / 60)):
+            call_number = 0
+
+            def request_stub(opts1, opts2):
+                nonlocal call_number
+                call_number += 1
+                if call_number < 3:
+                    raise Exception('test')
+                else:
+                    return expected
+
+            client_api_client._httpClient.request = AsyncMock(side_effect=request_stub)
+            ignored_fields = [
+                asyncio.create_task(client_api_client.get_hashing_ignored_field_lists('vint-hill')),
+                asyncio.create_task(client_api_client.get_hashing_ignored_field_lists('vint-hill'))
+            ]
+            await sleep(0.11)
+            assert await ignored_fields[0] == expected
+            assert await ignored_fields[1] == expected
+            assert client_api_client._httpClient.request.call_count == 3

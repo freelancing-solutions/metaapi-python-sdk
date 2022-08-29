@@ -194,6 +194,8 @@ class SubscriptionManager:
             self._websocketClient.connected(
                 instance_number, self._websocketClient.socket_instances_by_accounts[instance_number][account_id],
                 region):
+            self._logger.debug(f'{account_id}:{instance_number}: scheduling subscribe subscribe because of account ' +
+                               'timeout')
             asyncio.create_task(self.schedule_subscribe(account_id, instance_number, is_disconnected_retry_mode=True))
 
     async def on_disconnected(self, account_id: str, instance_number: int = None):
@@ -206,6 +208,7 @@ class SubscriptionManager:
         await asyncio.sleep(uniform(1, 5))
         if instance_number in self._websocketClient.socket_instances_by_accounts and \
                 account_id in self._websocketClient.socket_instances_by_accounts[instance_number]:
+            self._logger.debug(f'{account_id}:{instance_number}: scheduling subscribe because account disconnected')
             asyncio.create_task(self.schedule_subscribe(account_id, instance_number, is_disconnected_retry_mode=True))
 
     def on_reconnected(self, instance_number: int, socket_instance_index: int, reconnect_account_ids: List[str]):
@@ -228,6 +231,8 @@ class SubscriptionManager:
                     await asyncio.sleep(uniform(0, 5))
                     if account_id in self._awaitingResubscribe[instance_number]:
                         del self._awaitingResubscribe[instance_number][account_id]
+                        self._logger.debug(
+                            f'{account_id}:{instance_number}: scheduling subscribe because account reconnected')
                         asyncio.create_task(self.schedule_subscribe(account_id, instance_number))
             except Exception as err:
                 self._logger.error(f'{account_id}: Account resubscribe task failed ' + string_format_error(err))

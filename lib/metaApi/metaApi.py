@@ -127,15 +127,13 @@ class MetaApi:
         account_generator_http_client = HttpClient(account_generator_request_timeout, retry_opts)
         client_api_client = ClientApiClient(http_client, domain_client)
         self._metaApiWebsocketClient = MetaApiWebsocketClient(
-            http_client, token, {'application': application, 'domain': domain, 'requestTimeout': request_timeout,
-                                 'connectTimeout': connect_timeout, 'packetLogger': packet_logger,
-                                 'region': region,
-                                 'packetOrderingTimeout': packet_ordering_timeout,
-                                 'synchronizationThrottler': synchronization_throttler,
-                                 'retryOpts': retry_opts,
-                                 'useSharedClientApi': use_shared_client_api,
-                                 'enableSocketioDebugger': enable_socketio_debugger,
-                                 'unsubscribeThrottlingIntervalInSeconds': unsubscribe_throttling_interval_in_seconds})
+            domain_client, token, {
+                'application': application, 'domain': domain, 'requestTimeout': request_timeout,
+                'connectTimeout': connect_timeout, 'packetLogger': packet_logger, 'region': region,
+                'packetOrderingTimeout': packet_ordering_timeout,
+                'synchronizationThrottler': synchronization_throttler, 'retryOpts': retry_opts,
+                'useSharedClientApi': use_shared_client_api, 'enableSocketioDebugger': enable_socketio_debugger,
+                'unsubscribeThrottlingIntervalInSeconds': unsubscribe_throttling_interval_in_seconds})
         self._provisioningProfileApi = ProvisioningProfileApi(ProvisioningProfileClient(http_client, domain_client))
         self._connectionRegistry = ConnectionRegistry(self._metaApiWebsocketClient, client_api_client, application,
                                                       refresh_subscriptions_opts)

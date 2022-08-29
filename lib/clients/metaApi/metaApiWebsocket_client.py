@@ -34,11 +34,11 @@ from ...logger import LoggerManager
 class MetaApiWebsocketClient:
     """MetaApi websocket API client (see https://metaapi.cloud/docs/client/websocket/overview/)"""
 
-    def __init__(self, http_client, token: str, opts: Dict = None):
+    def __init__(self, domain_client, token: str, opts: Dict = None):
         """Inits MetaApi websocket API client instance.
 
         Args:
-            http_client: HTTP client.
+            domain_client: Domain client.
             token: Authorization token.
             opts: Websocket client options.
         """
@@ -48,7 +48,7 @@ class MetaApiWebsocketClient:
             opts['packetOrderingTimeout'] if 'packetOrderingTimeout' in opts else None, 60, 'packetOrderingTimeout')
         opts['synchronizationThrottler'] = opts['synchronizationThrottler'] if 'synchronizationThrottler' in \
                                                                                opts else {}
-        self._httpClient = http_client
+        self._domainClient = domain_client
         self._application = opts['application'] if 'application' in opts else 'MetaApi'
         self._domain = opts['domain'] if 'domain' in opts else 'agiliumtrade.agiliumtrade.ai'
         self._region = opts['region'] if 'region' in opts else None
@@ -93,6 +93,7 @@ class MetaApiWebsocketClient:
         self._synchronizationThrottlerOpts = opts['synchronizationThrottler']
         self._subscriptionManager = SubscriptionManager(self)
         self._packetOrderer = PacketOrderer(self, opts['packetOrderingTimeout'])
+        self._packetOrderer.start()
         self._status_timers = {}
         self._eventQueues = {}
         self._synchronizationFlags = {}
@@ -326,12 +327,10 @@ class MetaApiWebsocketClient:
         socket_instance = instance['socket']
         self._socketInstances[region][instance_number].append(instance)
         instance['connected'] = True
-        if len(self._socketInstances[region][instance_number]) == 1:
-            self._packetOrderer.start()
 
         @socket_instance.on('connect')
         async def on_connect():
-            self._logger.info('MetaApi websocket client connected to the MetaApi server')
+            self._logger.info(f'{region}:{instance_number}: MetaApi websocket client connected to the MetaApi server')
             instance['reconnectWaitTime'] = self._socketMinimumReconnectTimeout
             if not instance['resolved']:
                 instance['resolved'] = True
@@ -342,14 +341,15 @@ class MetaApiWebsocketClient:
 
         @socket_instance.on('connect_error')
         def on_connect_error(err):
-            self._logger.error('MetaApi websocket client connection error ' + string_format_error(err))
+            self._logger.error(f'{region}:{instance_number}: MetaApi websocket client connection error ' +
+                               string_format_error(err))
             if not instance['resolved']:
                 instance['resolved'] = True
                 instance['connectResult'].set_exception(Exception(err))
 
         @socket_instance.on('connect_timeout')
         def on_connect_timeout(timeout):
-            self._logger.error('MetaApi websocket client connection timeout')
+            self._logger.error(f'{region}:{instance_number}: MetaApi websocket client connection timeout')
             if not instance['resolved']:
                 instance['resolved'] = True
                 instance['connectResult'].set_exception(TimeoutException(
@@ -358,12 +358,14 @@ class MetaApiWebsocketClient:
         @socket_instance.on('disconnect')
         async def on_disconnect():
             instance['synchronizationThrottler'].on_disconnect()
-            self._logger.info('MetaApi websocket client disconnected from the MetaApi server')
+            self._logger.info(f'{region}:{instance_number}: MetaApi websocket client disconnected from the'
+                              ' MetaApi server')
             await self._reconnect(instance_number, instance['id'], region)
 
         @socket_instance.on('error')
         async def on_error(err):
-            self._logger.error('MetaApi websocket client error ' + string_format_error(err))
+            self._logger.error(f'{region}:{instance_number}: MetaApi websocket client error ' +
+                               string_format_error(err))
             await self._reconnect(instance_number, instance['id'], region)
 
         @socket_instance.on('response')
@@ -774,6 +776,7 @@ class MetaApiWebsocketClient:
             A coroutine which resolves when synchronization is started.
         """
         if self._get_socket_instance_by_account(account_id, instance_number) is None:
+            self._logger.debug(f'{account_id}:{instance_number}: creating socket instance on synchronize')
             await self._create_socket_instance_by_account(account_id, instance_number)
         sync_throttler = self._get_socket_instance_by_account(account_id, instance_number)['synchronizationThrottler']
         return await sync_throttler.schedule_synchronize(account_id, {
@@ -992,7 +995,7 @@ class MetaApiWebsocketClient:
                 await self._subscriptionManager.unsubscribe(account_id, int(instance_number))
                 if instance_number in self._socketInstancesByAccounts and \
                         account_id in self._socketInstancesByAccounts[instance_number]:
-                    del self._socketInstancesByAccounts[instance_number]
+                    del self._socketInstancesByAccounts[instance_number][account_id]
 
             await asyncio.gather(
                 *list(map(lambda instance_number: asyncio.create_task(unsubscribe_job(instance_number)),
@@ -1192,7 +1195,7 @@ class MetaApiWebsocketClient:
                     instance['resolved'] = False
                     instance['sessionId'] = random_id()
                     server_url = await self._get_server_url(instance_number, socket_instance_index, region)
-                    url = f'{server_url}?auth-token={self._token}&clientId={client_id}&protocol=2'
+                    url = f'{server_url}?auth-token={self._token}&clientId={client_id}&protocol=3'
                     await asyncio.wait_for(instance['socket'].connect(url, socketio_path='ws',
                                                                       headers={'Client-Id': client_id}),
                                            timeout=self._connect_timeout)
@@ -1268,6 +1271,7 @@ class MetaApiWebsocketClient:
         if account_id in self._socketInstancesByAccounts[instance_number]:
             socket_instance_index = self._socketInstancesByAccounts[instance_number][account_id]
         else:
+            self._logger.debug(f'{account_id}:{instance_number}: creating socket instance on RPC request')
             await self._create_socket_instance_by_account(account_id, instance_number)
             socket_instance_index = self._socketInstancesByAccounts[instance_number][account_id]
         instance = self._socketInstances[region][instance_number][socket_instance_index]
@@ -1431,7 +1435,8 @@ class MetaApiWebsocketClient:
                 async def disconnect():
                     await asyncio.sleep(60)
                     if is_only_active_instance():
-                        self._subscriptionManager.on_timeout(data["accountId"], instance_number)
+                        self._subscriptionManager.on_timeout(data["accountId"], 0)
+                        self._subscriptionManager.on_timeout(data["accountId"], 1)
                     self.queue_event(primary_account_id, f'{instance_index}:onDisconnected',
                                      lambda: on_disconnected(True))
 
@@ -1445,7 +1450,9 @@ class MetaApiWebsocketClient:
                         on_disconnected_tasks: List[Coroutine] = []
                         if not is_timeout:
                             on_disconnected_tasks.append(
-                                self._subscriptionManager.on_disconnected(data['accountId'], instance_number))
+                                self._subscriptionManager.on_disconnected(data['accountId'], 0))
+                            on_disconnected_tasks.append(
+                                self._subscriptionManager.on_disconnected(data['accountId'], 1))
 
                         if primary_account_id in self._synchronizationListeners:
                             for listener in self._synchronizationListeners[primary_account_id]:
@@ -1676,7 +1683,8 @@ class MetaApiWebsocketClient:
 
                         on_account_information_updated_tasks.append(
                             self._process_event(run_on_account_information_updated(listener),
-                                                f'{primary_account_id}:{instance_index}:on_account_information_updated'))
+                                                f'{primary_account_id}:{instance_index}:'
+                                                'on_account_information_updated'))
                     if len(on_account_information_updated_tasks) > 0:
                         await asyncio.gather(*on_account_information_updated_tasks)
                 if 'updatedPositions' in data:
@@ -2051,22 +2059,23 @@ class MetaApiWebsocketClient:
             self._logger.warn(f'{label}: finished in {math.floor(datetime.now().timestamp() - start_time)} seconds')
 
     async def _fire_reconnected(self, instance_number: int, socket_instance_index: int, region: str):
-        reconnect_listeners = []
-        for listener in self._reconnectListeners:
-            if listener['accountId'] in self._socketInstancesByAccounts[instance_number] and \
-                    self._socketInstancesByAccounts[instance_number][listener['accountId']] == \
-                    socket_instance_index and self.get_account_region(listener['accountId']) == region:
-                reconnect_listeners.append(listener)
-
-        for synchronization_id in list(self._synchronizationFlags.keys()):
-            account_id = self._synchronizationFlags[synchronization_id]['accountId']
-            if account_id in self._socketInstancesByAccounts[instance_number] and \
-                    self._socketInstancesByAccounts[instance_number][account_id] == socket_instance_index and \
-                    self._synchronizationFlags[synchronization_id]['instanceNumber'] == instance_number and \
-                    account_id in self._regionsByAccounts and self._regionsByAccounts[account_id]['region'] == region:
-                del self._synchronizationFlags[synchronization_id]
-
         try:
+            reconnect_listeners = []
+            for listener in self._reconnectListeners:
+                if listener['accountId'] in self._socketInstancesByAccounts[instance_number] and \
+                        self._socketInstancesByAccounts[instance_number][listener['accountId']] == \
+                        socket_instance_index and self.get_account_region(listener['accountId']) == region:
+                    reconnect_listeners.append(listener)
+
+            for synchronization_id in list(self._synchronizationFlags.keys()):
+                account_id = self._synchronizationFlags[synchronization_id]['accountId']
+                if account_id in self._socketInstancesByAccounts[instance_number] and \
+                        self._socketInstancesByAccounts[instance_number][account_id] == socket_instance_index and \
+                        self._synchronizationFlags[synchronization_id]['instanceNumber'] == instance_number and \
+                        account_id in self._regionsByAccounts and self._regionsByAccounts[account_id]['region'] == \
+                        region:
+                    del self._synchronizationFlags[synchronization_id]
+
             reconnect_account_ids = list(map(lambda listener: listener['accountId'], reconnect_listeners))
             self._subscriptionManager.on_reconnected(instance_number, socket_instance_index, reconnect_account_ids)
             self._packetOrderer.on_reconnected(reconnect_account_ids)
@@ -2074,7 +2083,7 @@ class MetaApiWebsocketClient:
             for listener in reconnect_listeners:
                 async def on_reconnected_task(listener):
                     try:
-                        await listener['listener'].on_reconnected()
+                        await listener['listener'].on_reconnected(region, instance_number)
                     except Exception as err:
                         self._logger.error(f'Failed to notify reconnect listener ' + string_format_error(err))
 
@@ -2095,13 +2104,7 @@ class MetaApiWebsocketClient:
         if self._url:
             return {'url': self._url, 'isSharedClientApi': True}
 
-        url_settings = await self._httpClient.request({
-            'url': f'https://mt-provisioning-api-v1.{self._domain}/users/current/servers/mt-client-api',
-            'method': 'GET',
-            'headers': {
-                'auth-token': self._token
-            },
-        }, 'get_url_settings')
+        url_settings = await self._domainClient.get_settings()
 
         def get_url(hostname):
             return f'https://{hostname}.{region}-{chr(97 + int(instance_number))}.{url_settings["domain"]}'
@@ -2133,7 +2136,7 @@ class MetaApiWebsocketClient:
                 self._logger.info(log_message)
                 return url
             except Exception as err:
-                self._logger.error(string_format_error(err))
+                self._logger.error('Failed to retrieve server URL ' + string_format_error(err))
                 await asyncio.sleep(1)
 
     def _throttle_request(self, type, account_id, instance_number, time_in_ms):

@@ -42,7 +42,7 @@ class TestMemoryHistoryStorage:
         await storage.on_deal_added('vint-hill:1:ps-mpa-1', {
             'id': '3', 'time': date('2020-01-02T00:00:00.000Z'), 'entryType': 'DEAL_ENTRY_IN',
             'type': 'DEAL_TYPE_SELL'})
-        await storage.on_history_order_added('vint-hill:1:ps-mpa-1', 
+        await storage.on_history_order_added('vint-hill:1:ps-mpa-1',
                                              {'id': '3', 'doneTime': date('2020-01-02T00:00:00.000Z'),
                                               'state': 'ORDER_STATE_FILLED', 'type': 'ORDER_TYPE_SELL'})
         await storage.clear()
@@ -156,20 +156,26 @@ class TestMemoryHistoryStorage:
         await storage.on_history_order_added('vint-hill:1:ps-mpa-1', {
             'id': '7', 'doneTime': date('2020-05-01T00:00:00.000Z'), 'type': 'ORDER_TYPE_BUY',
             'state': 'ORDER_STATE_FILLED'})
-        await storage.on_history_order_added('vint-hill:1:ps-mpa-1', {'id': '8', 'doneTime': date('2020-02-01T00:00:00.000Z'),
-                                             'type': 'ORDER_TYPE_SELL', 'state': 'ORDER_STATE_FILLED'})
-        await storage.on_history_order_added('vint-hill:1:ps-mpa-1', {'id': '6', 'doneTime': date('2020-10-01T00:00:00.000Z'),
-                                             'type': 'ORDER_TYPE_BUY', 'state': 'ORDER_STATE_FILLED'})
-        await storage.on_history_order_added('vint-hill:1:ps-mpa-1', {'id': '4', 'doneTime': date('2020-02-01T00:00:00.000Z'),
-                                             'type': 'ORDER_TYPE_SELL', 'state': 'ORDER_STATE_FILLED'})
-        await storage.on_history_order_added('vint-hill:1:ps-mpa-1', {'id': '5', 'doneTime': date('2020-06-01T00:00:00.000Z'),
-                                             'type': 'ORDER_TYPE_BUY', 'state': 'ORDER_STATE_FILLED'})
+        await storage.on_history_order_added('vint-hill:1:ps-mpa-1', {
+            'id': '8', 'doneTime': date('2020-02-01T00:00:00.000Z'),
+            'type': 'ORDER_TYPE_SELL', 'state': 'ORDER_STATE_FILLED'})
+        await storage.on_history_order_added('vint-hill:1:ps-mpa-1', {
+            'id': '6', 'doneTime': date('2020-10-01T00:00:00.000Z'),
+            'type': 'ORDER_TYPE_BUY', 'state': 'ORDER_STATE_FILLED'})
+        await storage.on_history_order_added('vint-hill:1:ps-mpa-1', {
+            'id': '4', 'doneTime': date('2020-02-01T00:00:00.000Z'),
+            'type': 'ORDER_TYPE_SELL', 'state': 'ORDER_STATE_FILLED'})
+        await storage.on_history_order_added('vint-hill:1:ps-mpa-1', {
+            'id': '5', 'doneTime': date('2020-06-01T00:00:00.000Z'),
+            'type': 'ORDER_TYPE_BUY', 'state': 'ORDER_STATE_FILLED'})
         await storage.on_history_order_added('vint-hill:1:ps-mpa-1', {'id': '11', 'type': 'ORDER_TYPE_SELL',
                                                                       'state': 'ORDER_STATE_FILLED'})
-        await storage.on_history_order_added('vint-hill:1:ps-mpa-1', {'id': '3', 'doneTime': date('2020-09-01T00:00:00.000Z'),
-                                             'type': 'ORDER_TYPE_BUY', 'state': 'ORDER_STATE_FILLED'})
-        await storage.on_history_order_added('vint-hill:1:ps-mpa-1', {'id': '5', 'doneTime': date('2020-06-01T00:00:00.000Z'),
-                                             'type': 'ORDER_TYPE_BUY', 'state': 'ORDER_STATE_FILLED'})
+        await storage.on_history_order_added('vint-hill:1:ps-mpa-1', {
+            'id': '3', 'doneTime': date('2020-09-01T00:00:00.000Z'),
+            'type': 'ORDER_TYPE_BUY', 'state': 'ORDER_STATE_FILLED'})
+        await storage.on_history_order_added('vint-hill:1:ps-mpa-1', {
+            'id': '5', 'doneTime': date('2020-06-01T00:00:00.000Z'),
+            'type': 'ORDER_TYPE_BUY', 'state': 'ORDER_STATE_FILLED'})
         await storage.on_history_order_added('vint-hill:1:ps-mpa-1', {
             'id': '2', 'positionId': '1', 'doneTime': date('2020-08-01T00:00:00.000Z'),
             'type': 'ORDER_TYPE_SELL', 'state': 'ORDER_STATE_FILLED'})

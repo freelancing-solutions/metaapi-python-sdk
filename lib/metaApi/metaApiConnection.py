@@ -402,7 +402,16 @@ class MetaApiConnection(SynchronizationListener, ReconnectListener):
         self._check_is_connection_active()
         return self._trade({'actionType': 'ORDER_CANCEL', 'orderId': order_id})
 
-    def on_reconnected(self):
+    def on_reconnected(self, region: str, instance_number: int):
+        """Invoked when connection to MetaApi websocket API restored after a disconnect.
+
+        Args:
+            region: Reconnected region.
+            instance_number: Reconnected instance number.
+
+        Returns:
+            A coroutine which resolves when connection to MetaApi websocket API restored after a disconnect.
+        """
         pass
 
     def calculate_margin(self, order: MarginOrder):

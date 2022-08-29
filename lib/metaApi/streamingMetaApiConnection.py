@@ -363,13 +363,6 @@ class StreamingMetaApiConnection(MetaApiConnection):
         state['synchronizationRetryIntervalInSeconds'] = 1
         state['synchronized'] = False
         asyncio.create_task(self._ensure_synchronized(instance_index, key))
-        indices = []
-        for i in range(replicas):
-            indices.append(i)
-        for key in list(self._stateByInstanceIndex.keys()):
-            e = self._stateByInstanceIndex[key]
-            if self.get_instance_number(e['instanceIndex']) not in indices:
-                del self._stateByInstanceIndex[key]
         self._logger.debug(f'{self._account.id}:{instance_index}: connected to broker')
 
     async def on_disconnected(self, instance_index: str):
@@ -469,17 +462,26 @@ class StreamingMetaApiConnection(MetaApiConnection):
         state['ordersSynchronized'][synchronization_id] = True
         self._schedule_synchronization_timeout(instance_index)
 
-    async def on_reconnected(self):
+    async def on_reconnected(self, region: str, instance_number: int):
         """Invoked when connection to MetaApi websocket API restored after a disconnect.
+
+        Args:
+            region: Reconnected region.
+            instance_number: Reconnected instance number.
 
         Returns:
             A coroutine which resolves when connection to MetaApi websocket API restored after a disconnect.
         """
-        self._stateByInstanceIndex = {}
-        self._refreshMarketDataSubscriptionSessions = {}
-        for instance in list(self._refreshMarketDataSubscriptionTimeouts.keys()):
-            self._refreshMarketDataSubscriptionTimeouts[instance].cancel()
-        self._refreshMarketDataSubscriptionTimeouts = {}
+        instance_template = f'{region}:{instance_number}'
+        for key in list(filter(lambda key: key.startswith(f'{instance_template}:'),
+                               self._stateByInstanceIndex.keys())):
+            del self._stateByInstanceIndex[key]
+        if instance_template in self._refreshMarketDataSubscriptionSessions:
+            del self._refreshMarketDataSubscriptionSessions[instance_template]
+
+        if instance_template in self._refreshMarketDataSubscriptionTimeouts:
+            self._refreshMarketDataSubscriptionTimeouts[instance_template].cancel()
+            del self._refreshMarketDataSubscriptionTimeouts[instance_template]
 
     async def on_stream_closed(self, instance_index: str):
         """Invoked when a stream for an instance index is closed.
