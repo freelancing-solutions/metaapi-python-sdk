@@ -2,10 +2,11 @@ from .httpClient import HttpClient
 from .domain_client import DomainClient
 import pytest
 import respx
-from mock import AsyncMock
+from mock import AsyncMock, patch
 from httpx import Response
 from freezegun import freeze_time
 import asyncio
+from asyncio import sleep
 http_client: HttpClient = None
 domain_client: DomainClient = None
 rsps: respx.Route = None
@@ -80,22 +81,38 @@ class TestDomainClient:
 
     @respx.mock
     @pytest.mark.asyncio
-    async def test_return_error_to_promise(self):
-        """Should return error to promise."""
-        domain_client._httpClient.request = AsyncMock(side_effect=Exception('test'))
-        responses = [
-            asyncio.create_task(domain_client.get_url(host, region)),
-            asyncio.create_task(domain_client.get_url(host, region))
-        ]
-        try:
-            await responses[0]
-            pytest.fail()
-        except Exception as err:
-            assert err.args[0] == 'test'
-        try:
-            await responses[1]
-            pytest.fail()
-        except Exception as err:
-            assert err.args[0] == 'test'
+    async def test_retry_request_if_received_error(self):
+        """Should retry request if received error."""
+        with patch('lib.clients.domain_client.asyncio.sleep', new=lambda x: sleep(x / 60)):
+            call_number = 0
 
-        domain_client._httpClient.request.assert_called_once()
+            def request_stub(opts1, opts2):
+                nonlocal call_number
+                call_number += 1
+                if call_number < 3:
+                    raise Exception('test')
+                else:
+                    return host_data
+
+            domain_client._httpClient.request = AsyncMock(side_effect=request_stub)
+            responses = [
+                asyncio.create_task(domain_client.get_url(host, region)),
+                asyncio.create_task(domain_client.get_url(host, region))
+            ]
+            await sleep(0.11)
+            assert await responses[0] == expected
+            assert await responses[1] == expected
+
+            assert domain_client._httpClient.request.call_count == 3
+
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_return_domain_settings(self):
+        """Should return domain settings."""
+        settings = await domain_client.get_settings()
+
+        assert settings == {
+            'hostname': 'mt-client-api-v1',
+            'domain': 'agiliumtrade.ai'
+        }
+        assert len(rsps.calls) == 1

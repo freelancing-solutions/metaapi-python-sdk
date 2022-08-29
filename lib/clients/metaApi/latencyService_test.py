@@ -89,7 +89,6 @@ async def test_disconnect_connected_instances_with_bigger_ping():
     """Should disconnect connected instances with bigger ping."""
     with freeze_time(start_time) as frozen_datetime:
         async def delayed_tick():
-            await asyncio.sleep(0.01)
             frozen_datetime.tick(5)
 
         asyncio.create_task(delayed_tick())
@@ -97,8 +96,8 @@ async def test_disconnect_connected_instances_with_bigger_ping():
         await service.on_connected('accountId:vint-hill:0:ps-mpa-1')
         assert service.get_active_account_instances('accountId') == \
                ['accountId:new-york:0:ps-mpa-1', 'accountId:vint-hill:0:ps-mpa-1']
-        client.unsubscribe.assert_called_with('accountIdReplica')
-        client.unsubscribe_account_region.assert_called_with('accountId', 'new-york')
+        client.unsubscribe.assert_any_call('accountIdReplica')
+        client.unsubscribe_account_region.assert_any_call('accountId', 'new-york')
 
 
 @pytest.mark.asyncio
@@ -106,7 +105,6 @@ async def test_disconnect_synchronized_instances_with_bigger_ping():
     """Should disconnect synchronized instances with bigger ping."""
     with freeze_time(start_time) as frozen_datetime:
         async def delayed_tick():
-            await asyncio.sleep(0.01)
             frozen_datetime.tick(5)
 
         asyncio.create_task(delayed_tick())
@@ -134,28 +132,41 @@ async def test_not_double_check_ping_if_two_accounts_connected_at_the_same_time(
 @pytest.mark.asyncio
 async def test_deploy_to_better_ping():
     """Should deploy to a better ping if ping stats changed on refresh."""
-    with freeze_time() as frozen_datetime:
-        async def delayed_tick():
-            await asyncio.sleep(0.01)
-            frozen_datetime.tick(5)
+    client_mock = MagicMock()
+    client_mock.connected = False
 
-        service = LatencyService(client, token, 5000)
-        asyncio.create_task(delayed_tick())
-        await service.on_connected('accountId:vint-hill:0:ps-mpa-1')
-        await service.on_deals_synchronized('accountId:vint-hill:0:ps-mpa-1')
-        await service.on_connected('accountId:new-york:0:ps-mpa-1')
-        await service.on_deals_synchronized('accountId:new-york:0:ps-mpa-1')
-        client.unsubscribe.assert_called_with('accountId')
-        client.unsubscribe_account_region.assert_called_with('accountId', 'vint-hill')
-        service.on_unsubscribe('accountId')
-        task = asyncio.create_task(service._refresh_latency_job())
-        await sleep(0.01)
-        await service._refreshPromisesByRegion['vint-hill']
-        asyncio.create_task(delayed_tick())
-        await task
-        await sleep(0.05)
-        client.ensure_subscribe.assert_any_call('accountId', 0)
-        client.ensure_subscribe.assert_any_call('accountId', 1)
+    async def wait_func(url, socketio_path):
+        client_mock.connected = True
+        await asyncio.sleep(0.05)
+
+    async def disconnect_func():
+        client_mock.connected = False
+
+    client_mock.connect = wait_func
+    client_mock.disconnect = disconnect_func
+    with patch('lib.clients.metaApi.latencyService.socketio.AsyncClient', return_value=client_mock):
+
+        with freeze_time() as frozen_datetime:
+            async def delayed_tick():
+                frozen_datetime.tick(5)
+
+            service = LatencyService(client, token, 5000)
+            asyncio.create_task(delayed_tick())
+            await service.on_connected('accountId:vint-hill:0:ps-mpa-1')
+            await service.on_deals_synchronized('accountId:vint-hill:0:ps-mpa-1')
+            await service.on_connected('accountId:new-york:0:ps-mpa-1')
+            await service.on_deals_synchronized('accountId:new-york:0:ps-mpa-1')
+            client.unsubscribe.assert_called_with('accountId')
+            client.unsubscribe_account_region.assert_called_with('accountId', 'vint-hill')
+            service.on_unsubscribe('accountId')
+            task = asyncio.create_task(service._refresh_latency_job())
+            await sleep(0.02)
+            await service._refreshPromisesByRegion['vint-hill']
+            asyncio.create_task(delayed_tick())
+            await task
+            await sleep(0.05)
+            client.ensure_subscribe.assert_any_call('accountId', 0)
+            client.ensure_subscribe.assert_any_call('accountId', 1)
 
 
 @pytest.mark.asyncio

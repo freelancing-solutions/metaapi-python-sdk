@@ -2,7 +2,6 @@ from .metaApiWebsocket_client import MetaApiWebsocketClient
 from socketio import AsyncServer
 from aiohttp import web
 from ...metaApi.models import date, format_date
-from ..httpClient import HttpClient
 import pytest
 import asyncio
 import copy
@@ -12,10 +11,11 @@ from copy import deepcopy
 from datetime import datetime, timedelta
 from freezegun import freeze_time
 from ..timeoutException import TimeoutException
+from ..domain_client import DomainClient
 from asyncio import sleep
 import json
 sio = None
-http_client = HttpClient()
+domain_client = MagicMock()
 client: MetaApiWebsocketClient = None
 future_close = asyncio.Future()
 fake_server = None
@@ -71,17 +71,17 @@ class FakeServer:
 async def run_around_tests():
     global connections
     connections = []
-    global http_client
-    http_client = HttpClient()
+    global domain_client
+    domain_client = MagicMock()
     global fake_server
     fake_server = FakeServer()
     await fake_server.start()
     global client
-    client = MetaApiWebsocketClient(http_client, 'token', {'application': 'application',
-                                                           'domain': 'project-stock.agiliumlabs.cloud',
-                                                           'requestTimeout': 3, 'useSharedClientApi': True,
-                                                           'retryOpts': {'retries': 3, 'minDelayInSeconds': 0.1,
-                                                                         'maxDelayInSeconds': 0.5}})
+    client = MetaApiWebsocketClient(domain_client, 'token', {'application': 'application',
+                                                             'domain': 'project-stock.agiliumlabs.cloud',
+                                                             'requestTimeout': 3, 'useSharedClientApi': True,
+                                                             'retryOpts': {'retries': 3, 'minDelayInSeconds': 0.1,
+                                                                           'maxDelayInSeconds': 0.5}})
     client.set_url('http://localhost:8080')
     client._socketInstances = {'vint-hill': {0: [], 1: []}, 'new-york': {0: []}}
     client._regionsByAccounts['accountId'] = {'region': 'vint-hill', 'connections': 1}
@@ -192,7 +192,7 @@ async def test_retry_connection_if_timed_out():
         'unrealizedProfit': -85.25999999999901,
         'realizedProfit': -6.536993168992922e-13
     }]
-    client = MetaApiWebsocketClient(http_client, 'token', {
+    client = MetaApiWebsocketClient(domain_client, 'token', {
         'application': 'application',
         'domain': 'project-stock.agiliumlabs.cloud', 'requestTimeout': 1.5, 'useSharedClientApi': False,
         'connectTimeout': 0.1,
@@ -222,17 +222,12 @@ async def test_retry_connection_if_timed_out():
 @pytest.mark.asyncio
 async def test_connect_to_shared_server():
     """Should connect to shared server."""
-    async def fake_request(arg, func_name):
-        if arg['url'] == 'https://mt-provisioning-api-v1.project-stock.agiliumlabs.cloud/' + \
-                'users/current/servers/mt-client-api':
-            return {
-                'domain': 'v3.agiliumlabs.cloud'
-            }
-
-    client = MetaApiWebsocketClient(http_client, 'token', {
+    client = MetaApiWebsocketClient(domain_client, 'token', {
         'application': 'application', 'domain': 'project-stock.agiliumlabs.cloud',
         'requestTimeout': 1.5, 'useSharedClientApi': True})
-    client._httpClient.request = AsyncMock(side_effect=fake_request)
+    client._domainClient.get_settings = AsyncMock(return_value={
+            'domain': 'v3.agiliumlabs.cloud'
+        })
     client._socketInstances = {
         'vint-hill': {0: [{
             'connected': True,
@@ -246,19 +241,14 @@ async def test_connect_to_shared_server():
 @pytest.mark.asyncio
 async def test_connect_to_dedicated_server():
     """Should connect to dedicated server."""
-    async def fake_request(arg, func_name):
-        if arg['url'] == 'https://mt-provisioning-api-v1.project-stock.agiliumlabs.cloud/' + \
-                'users/current/servers/mt-client-api':
-            return {
-                'url': 'http://localhost:8081',
-                'hostname': 'mt-client-api-dedicated',
-                'domain': 'project-stock.agiliumlabs.cloud'
-            }
-
-    client = MetaApiWebsocketClient(http_client, 'token', {
+    client = MetaApiWebsocketClient(domain_client, 'token', {
         'application': 'application', 'domain': 'project-stock.agiliumlabs.cloud',
         'requestTimeout': 1.5, 'useSharedClientApi': False})
-    client._httpClient.request = AsyncMock(side_effect=fake_request)
+    client._domainClient.get_settings = AsyncMock(return_value={
+            'url': 'http://localhost:8081',
+            'hostname': 'mt-client-api-dedicated',
+            'domain': 'project-stock.agiliumlabs.cloud'
+        })
     client._socketInstances = {
         'vint-hill': {0: [{
             'connected': True,
@@ -274,7 +264,7 @@ async def test_add_account_cache():
     """Should add account cache."""
     with freeze_time() as frozen_datetime:
         with patch('lib.clients.metaApi.metaApiWebsocket_client.asyncio.sleep', new=lambda x: sleep(x / 7200)):
-            client = MetaApiWebsocketClient(http_client, 'token', {
+            client = MetaApiWebsocketClient(domain_client, 'token', {
                 'application': 'application', 'domain': 'project-stock.agiliumlabs.cloud',
                 'requestTimeout': 3})
             client.add_account_cache('accountId2', {'vint-hill': 'accountId2'})
@@ -307,7 +297,7 @@ async def test_delay_region_deletion():
     with freeze_time() as frozen_datetime:
         with patch('lib.clients.metaApi.metaApiWebsocket_client.asyncio.sleep', new=lambda x: sleep(x / 7200)):
             frozen_datetime.move_to('2020-10-10 01:00:00.000')
-            client = MetaApiWebsocketClient(http_client, 'token', {
+            client = MetaApiWebsocketClient(domain_client, 'token', {
                 'application': 'application', 'domain': 'project-stock.agiliumlabs.cloud',
                 'requestTimeout': 3})
             client.set_url('http://localhost:8080')
@@ -1149,7 +1139,7 @@ class TestUnsubscribe:
 
         await client.unsubscribe('accountId')
         assert request_received
-        assert len(client.socket_instances_by_accounts.keys()) == 0
+        assert len(client.socket_instances_by_accounts[0].keys()) == 1
         client._latencyService.on_unsubscribe.assert_called_with('accountId')
 
     @pytest.mark.asyncio
@@ -1611,7 +1601,8 @@ class TestConnectionStatusSynchronization:
             await sleep(0.3)
             listener.on_disconnected.assert_called_with('vint-hill:0:ps-mpa-2')
             client._subscriptionManager.on_disconnected.assert_not_called()
-            client._subscriptionManager.on_timeout.assert_called_with('accountId', 0)
+            client._subscriptionManager.on_timeout.assert_any_call('accountId', 0)
+            client._subscriptionManager.on_timeout.assert_any_call('accountId', 1)
 
     @pytest.mark.asyncio
     async def test_process_server_health_status(self, sub_active):
@@ -1644,7 +1635,8 @@ class TestConnectionStatusSynchronization:
         await sio.emit('synchronization', {'type': 'disconnected', 'accountId': 'accountId', 'host': 'ps-mpa-1',
                                            'instanceIndex': 0})
         await future_close
-        client._subscriptionManager.on_disconnected.assert_called_with('accountId', 0)
+        client._subscriptionManager.on_disconnected.assert_any_call('accountId', 0)
+        client._subscriptionManager.on_disconnected.assert_any_call('accountId', 1)
         listener.on_disconnected.assert_called_with('vint-hill:0:ps-mpa-1')
         listener.on_stream_closed.assert_called_with('vint-hill:0:ps-mpa-1')
 
@@ -1672,7 +1664,8 @@ class TestConnectionStatusSynchronization:
                                            'instanceIndex': 0})
         await future_close
         listener.on_disconnected.assert_called()
-        client._subscriptionManager.on_disconnected.assert_called_with('accountId', 0)
+        client._subscriptionManager.on_disconnected.assert_any_call('accountId', 0)
+        client._subscriptionManager.on_disconnected.assert_any_call('accountId', 1)
 
 
 class TestTerminalStateSynchronization:

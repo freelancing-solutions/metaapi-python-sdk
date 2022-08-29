@@ -141,8 +141,8 @@ class TestTerminalState:
     async def test_return_specifications(self):
         """Should return specifications."""
         assert len(state.specifications) == 0
-        await state.on_symbol_specifications_updated('vint-hill:1:ps-mpa-1', [{'symbol': 'EURUSD', 'tickSize': 0.00001},
-                                                                    {'symbol': 'GBPUSD'}], [])
+        await state.on_symbol_specifications_updated('vint-hill:1:ps-mpa-1', [
+            {'symbol': 'EURUSD', 'tickSize': 0.00001}, {'symbol': 'GBPUSD'}], [])
         await state.on_symbol_specifications_updated('vint-hill:1:ps-mpa-1', [
             {'symbol': 'AUDNZD'}, {'symbol': 'EURUSD', 'tickSize': 0.0001}], ['AUDNZD'])
         assert len(state.specifications) == 2
@@ -171,16 +171,17 @@ class TestTerminalState:
         """Should wait for price."""
         assert state.price('EURUSD') is None
         promise = asyncio.create_task(state.wait_for_price('EURUSD'))
-        await state.on_symbol_prices_updated('vint-hill:1:ps-mpa-1', [{'time': date('2022-01-01 02:00:00.000'),
-                                                             'brokerTime': '2022-01-01 02:00:00.000',
-                                             'symbol': 'EURUSD', 'bid': 1, 'ask': 1.1}])
+        await state.on_symbol_prices_updated('vint-hill:1:ps-mpa-1', [
+            {'time': date('2022-01-01 02:00:00.000'), 'brokerTime': '2022-01-01 02:00:00.000',
+             'symbol': 'EURUSD', 'bid': 1, 'ask': 1.1}])
         assert (await promise) == {'time': date('2022-01-01 02:00:00.000'), 'brokerTime': '2022-01-01 02:00:00.000',
                                    'symbol': 'EURUSD', 'bid': 1, 'ask': 1.1}
 
     @pytest.mark.asyncio
     async def test_update_account_equity_and_position(self):
         """Should update account equity and position profit on price update."""
-        await state.on_account_information_updated('vint-hill:1:ps-mpa-1', {'equity': 1000, 'balance': 800, 'platform': 'mt4'})
+        await state.on_account_information_updated('vint-hill:1:ps-mpa-1',
+                                                   {'equity': 1000, 'balance': 800, 'platform': 'mt4'})
         await state.on_positions_replaced('vint-hill:1:ps-mpa-1', [{
             'id': '1',
             'symbol': 'EURUSD',
@@ -237,7 +238,7 @@ class TestTerminalState:
         await state.on_account_information_updated('vint-hill:1:ps-mpa-1', {'equity': 1000, 'balance': 800})
         await state.on_symbol_prices_updated(
             'vint-hill:1:ps-mpa-1', [{'time': datetime.now(), 'brokerTime': '2022-01-01 02:00:00.000',
-                            'symbol': 'EURUSD', 'bid': 1, 'ask': 1.1}], 100, 200, 400, 40000)
+                                      'symbol': 'EURUSD', 'bid': 1, 'ask': 1.1}], 100, 200, 400, 40000)
         assert state.account_information['equity'] == 100
         assert state.account_information['margin'] == 200
         assert state.account_information['freeMargin'] == 400
@@ -259,7 +260,8 @@ class TestTerminalState:
             'type': 'ORDER_TYPE_SELL_LIMIT',
             'currentPrice': 9
         })
-        await state.on_symbol_specifications_updated('vint-hill:1:ps-mpa-1', [{'symbol': 'EURUSD', 'tickSize': 0.01}], [])
+        await state.on_symbol_specifications_updated('vint-hill:1:ps-mpa-1',
+                                                     [{'symbol': 'EURUSD', 'tickSize': 0.01}], [])
         await state.on_symbol_prices_updated('vint-hill:1:ps-mpa-1', [{
           'time': datetime.now(),
           'brokerTime': '2022-01-01 02:00:00.000',
@@ -276,8 +278,8 @@ class TestTerminalState:
         """Should remove state on closed stream."""
         assert not state.price('EURUSD')
         await state.on_symbol_prices_updated('vint-hill:1:ps-mpa-1', [{'time': datetime.fromtimestamp(1000000),
-                                                             'brokerTime': '2022-01-01 02:00:00.000',
-                                                             'symbol': 'EURUSD', 'bid': 1, 'ask': 1.1}])
+                                                                       'brokerTime': '2022-01-01 02:00:00.000',
+                                                                       'symbol': 'EURUSD', 'bid': 1, 'ask': 1.1}])
         assert state.price('EURUSD') == {'time': datetime.fromtimestamp(1000000),
                                          'brokerTime': '2022-01-01 02:00:00.000',
                                          'symbol': 'EURUSD', 'bid': 1, 'ask': 1.1}
@@ -310,26 +312,26 @@ class TestTerminalState:
         assert state.account_information == {'balance': 1000}
         assert state.specification('EURUSD') == specification
         await state.on_pending_orders_synchronized('vint-hill:1:ps-mpa-1', 'synchronizationId')
-        await state.on_synchronization_started('vint-hill:1:ps-mpa-1', specifications_updated=False, positions_updated=False,
-                                               orders_updated=False)
+        await state.on_synchronization_started('vint-hill:1:ps-mpa-1', specifications_updated=False,
+                                               positions_updated=False, orders_updated=False)
         await state.on_pending_orders_synchronized('vint-hill:1:ps-mpa-1', 'synchronizationId')
         assert not state.account_information
         assert state.specification('EURUSD') == specification
         assert state.orders == orders
         assert state.positions == positions
-        await state.on_synchronization_started('vint-hill:1:ps-mpa-1', specifications_updated=True, positions_updated=False,
-                                               orders_updated=False)
+        await state.on_synchronization_started('vint-hill:1:ps-mpa-1', specifications_updated=True,
+                                               positions_updated=False, orders_updated=False)
         await state.on_pending_orders_synchronized('vint-hill:1:ps-mpa-1', 'synchronizationId')
         assert not state.specification('EURUSD')
         assert state.orders == orders
         assert state.positions == positions
-        await state.on_synchronization_started('vint-hill:1:ps-mpa-1', specifications_updated=True, positions_updated=False,
-                                               orders_updated=True)
+        await state.on_synchronization_started('vint-hill:1:ps-mpa-1', specifications_updated=True,
+                                               positions_updated=False, orders_updated=True)
         await state.on_pending_orders_synchronized('vint-hill:1:ps-mpa-1', 'synchronizationId')
         assert state.orders == []
         assert state.positions == positions
-        await state.on_synchronization_started('vint-hill:1:ps-mpa-1', specifications_updated=True, positions_updated=True,
-                                               orders_updated=True)
+        await state.on_synchronization_started('vint-hill:1:ps-mpa-1', specifications_updated=True,
+                                               positions_updated=True, orders_updated=True)
         await state.on_pending_orders_synchronized('vint-hill:1:ps-mpa-1', 'synchronizationId')
         assert state.positions == []
 

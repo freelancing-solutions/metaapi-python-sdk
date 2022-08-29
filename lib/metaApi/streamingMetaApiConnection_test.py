@@ -645,7 +645,8 @@ class TestStreamingMetaApiConnection:
         await api.connect()
         api.subscribe_to_market_data = AsyncMock()
         api.unsubscribe_from_market_data = AsyncMock()
-        await api.on_subscription_downgraded('vint-hill:1:ps-mpa-1', 'EURUSD', None, [{'type': 'ticks'}, {'type': 'books'}])
+        await api.on_subscription_downgraded('vint-hill:1:ps-mpa-1', 'EURUSD', None,
+                                             [{'type': 'ticks'}, {'type': 'books'}])
         api.unsubscribe_from_market_data.assert_called_with('EURUSD', [{'type': 'ticks'}, {'type': 'books'}])
         api.subscribe_to_market_data.assert_not_called()
 
@@ -781,7 +782,7 @@ class TestStreamingMetaApiConnection:
         await promise
         assert pytest.approx(10, 10) == (datetime.now() - start_time).seconds * 1000
         assert (await api.is_synchronized('vint-hill:1:ps-mpa-1', 'synchronizationId'))
-        client.wait_synchronized.assert_called_with('accountId', 1, 'app.*', 1)
+        client.wait_synchronized.assert_called_with('accountId', 1, 'app.*', ANY)
 
     @pytest.mark.timeout(60)
     @pytest.mark.asyncio
@@ -805,7 +806,7 @@ class TestStreamingMetaApiConnection:
         await promise
         assert pytest.approx(10, 10) == (datetime.now() - start_time).seconds * 1000
         assert (await api.is_synchronized('new-york:1:ps-mpa-1', 'synchronizationId'))
-        client.wait_synchronized.assert_called_with('accountIdReplica', 1, 'app.*', 1)
+        client.wait_synchronized.assert_called_with('accountIdReplica', 1, 'app.*', ANY)
 
     @pytest.mark.asyncio
     async def test_time_out_waiting_for_sync(self):
@@ -942,3 +943,35 @@ class TestStreamingMetaApiConnection:
 
         api.queue_event('test', event_callable)
         client.queue_event.assert_called_with('accountId', 'test', event_callable)
+
+    @pytest.mark.asyncio
+    async def test_clear_region_states_on_socket_reconnect(self):
+        """Should clear region states on socket reconnect."""
+        with patch('lib.metaApi.streamingMetaApiConnection.asyncio.sleep', new=lambda x: sleep(x / 10)):
+            with patch('lib.metaApi.streamingMetaApiConnection.uniform', new=MagicMock(return_value=1)):
+                await api.connect()
+                client.refresh_market_data_subscriptions = AsyncMock()
+                client.subscribe_to_market_data = AsyncMock()
+                client.add_synchronization_listener = MagicMock()
+                client.remove_synchronization_listener = MagicMock()
+                client.unsubscribe = AsyncMock()
+                await api.on_synchronization_started('new-york:1:ps-mpa-1')
+                await api.on_synchronization_started('vint-hill:1:ps-mpa-1')
+                await sleep(0.05)
+                client.refresh_market_data_subscriptions.assert_any_call('accountIdReplica', 1, [])
+                client.refresh_market_data_subscriptions.assert_any_call('accountId', 1, [])
+                await api.terminal_state.on_symbol_prices_updated('new-york:1:ps-mpa-1', [
+                    {'time': datetime.now(), 'symbol': 'EURUSD', 'bid': 1, 'ask': 1.1,
+                     'brokerTime': '2022-01-01 02:00:00.000'}])
+                await api.terminal_state.on_symbol_prices_updated('vint-hill:1:ps-mpa-1', [
+                    {'time': datetime.now(), 'symbol': 'EURUSD', 'bid': 1, 'ask': 1.1,
+                     'brokerTime': '2022-01-01 02:00:00.000'}])
+                await api.subscribe_to_market_data('EURUSD', [{'type': 'quotes'}], 1)
+                await sleep(0.11)
+                assert client.refresh_market_data_subscriptions.call_count == 4
+                await api.on_reconnected('new-york', 1)
+                await sleep(0.11)
+                assert client.refresh_market_data_subscriptions.call_count == 5
+                await api.on_reconnected('vint-hill', 1)
+                await sleep(0.11)
+                assert client.refresh_market_data_subscriptions.call_count == 5

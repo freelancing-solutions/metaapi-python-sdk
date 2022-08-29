@@ -1,3 +1,14 @@
+19.7.0
+  - fixed resubscribe on disconnect
+  - added extra logging to debug connection issues 
+  - fixed caching domain settings
+  - fixed caching region data
+  - fixed streaming connection on connected event
+  - fixed synchronization after socket client reconnect
+  - fixed synchronization of RPC connections
+  - fixed synchronization when using account access tokens
+  - added copyfactory user log and transaction streaming
+
 19.6.0
   - added support for multiple account region replicas
   - added APIs to manage account replicas deployed in different regions
