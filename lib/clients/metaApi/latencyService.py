@@ -1,5 +1,5 @@
 from ...logger import LoggerManager
-from typing import List
+from typing import List, Dict
 from datetime import datetime
 import asyncio
 import socketio
@@ -23,6 +23,7 @@ class LatencyService:
         self._connectedInstancesCache = {}
         self._synchronizedInstancesCache = {}
         self._refreshPromisesByRegion = {}
+        self._waitConnectPromises: Dict[str, asyncio.Future] = {}
         self._logger = LoggerManager.get_logger('LatencyService')
 
         async def refresh_latency_task():
@@ -30,7 +31,11 @@ class LatencyService:
                 await asyncio.sleep(15 * 60)
                 await self._refresh_latency_job()
 
-        asyncio.create_task(refresh_latency_task())
+        self._refreshRegionLatencyInterval = asyncio.create_task(refresh_latency_task())
+
+    def stop(self):
+        """Stops the service."""
+        self._refreshRegionLatencyInterval.cancel()
 
     @property
     def regions_sorted_by_latency(self) -> List[str]:
@@ -98,6 +103,9 @@ class LatencyService:
                     asyncio.create_task(self._websocketClient.unsubscribe(
                         self._websocketClient.account_replicas[account_id][region_item]))
                     asyncio.create_task(self._websocketClient.unsubscribe_account_region(account_id, region_item))
+            if account_id in self._waitConnectPromises:
+                self._waitConnectPromises[account_id].set_result(True)
+                del self._waitConnectPromises[account_id]
         except Exception as err:
             self._logger.error(f'Failed to process on_connected event for instance {instance_id}', err)
 
@@ -148,6 +156,23 @@ class LatencyService:
         """
         return list(filter(lambda instance_id: instance_id in self._synchronizedInstancesCache and
                            self._synchronizedInstancesCache[instance_id], self._get_account_instances(account_id)))
+
+    async def wait_connected_instance(self, account_id: str) -> str:
+        """Waits for connected instance.
+
+        Args:
+            account_id: Account id.
+
+        Returns:
+            Instance id.
+        """
+        instances = self.get_active_account_instances(account_id)
+        if not len(instances):
+            if account_id not in self._waitConnectPromises:
+                self._waitConnectPromises[account_id] = asyncio.Future()
+            await self._waitConnectPromises[account_id]
+            instances = self.get_active_account_instances(account_id)
+        return instances[0]
 
     def _get_account_instances(self, account_id: str):
         return list(filter(lambda instance_id: instance_id.startswith(f'{account_id}:'),

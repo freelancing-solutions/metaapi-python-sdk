@@ -191,7 +191,8 @@ class MetaApi:
         """
         return self._latencyMonitor if hasattr(self, '_latencyMonitor') else None
 
-    def format_error(self, err: Exception):
+    @staticmethod
+    def format_error(err: Exception):
         """Formats and outputs metaApi errors with additional information.
 
         Args:
@@ -200,7 +201,8 @@ class MetaApi:
         return format_error(err)
 
     def close(self):
-        """Closes all clients and connections"""
+        """Closes all clients and connections and stops all internal jobs"""
         if hasattr(self, '_latencyMonitor'):
             self._metaApiWebsocketClient.remove_latency_listener(self._latencyMonitor)
         asyncio.create_task(self._metaApiWebsocketClient.close())
+        self._metaApiWebsocketClient.stop()

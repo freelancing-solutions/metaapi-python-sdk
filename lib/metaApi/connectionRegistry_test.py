@@ -15,10 +15,13 @@ class MockClient(MetaApiWebsocketClient):
     async def subscribe(self, account_id: str, instance_index: str = None):
         pass
 
+    async def unsubscribe(self, account_id: str):
+        pass
+
     def add_synchronization_listener(self, account_id: str, listener):
         pass
 
-    def add_reconnect_listener(self, listener: ReconnectListener):
+    def add_reconnect_listener(self, listener: ReconnectListener, account_id: str):
         pass
 
 
@@ -79,6 +82,10 @@ class MockAccount(MetatraderAccount):
     def id(self):
         return self._id
 
+    @property
+    def account_regions(self) -> dict:
+        return {'vint-hill': 'id', 'new-york': 'idReplica'}
+
 
 def create_connection_mock():
     mock = StreamingMetaApiConnection(MagicMock(), MagicMock(), MagicMock(), MagicMock(), registry)
@@ -101,54 +108,88 @@ async def run_around_tests():
 class TestConnectionRegistry:
 
     @pytest.mark.asyncio
-    async def test_connect_and_add(self):
-        """Should connect and add connection to registry."""
+    async def test_create_streaming(self):
+        """Should create streaming connection."""
         with patch('lib.metaApi.connectionRegistry.StreamingMetaApiConnection') as mock_connection:
             connection_instance = create_connection_mock()
             mock_connection.return_value = connection_instance
             account = MockAccount('id')
-            connection = registry.connect(account, mock_storage)
+            connection = registry.connect_streaming(account, mock_storage)
             await connection.connect()
             assert connection.history_storage == connection_instance.history_storage
-            connection_instance.initialize.assert_called()
-            connection_instance.subscribe.assert_called()
-            assert 'id' in registry._connections
-            assert registry._connections['id'] == connection
+            assert 'id' in registry._streamingConnections
 
     @pytest.mark.asyncio
-    async def test_connect_and_return_previous(self):
-        """Should return the same connection on second connect if same account id."""
+    async def test_disconnect_streaming(self):
+        """Should disconnect streaming connection."""
         with patch('lib.metaApi.connectionRegistry.StreamingMetaApiConnection') as mock_connection:
-            connection_mock1 = create_connection_mock()
-            connection_mock2 = create_connection_mock()
-            connection_mock3 = create_connection_mock()
-            mock_connection.side_effect = [connection_mock1, connection_mock2, connection_mock3]
-            accounts = [MockAccount('id0'), MockAccount('id1')]
-            connection0 = registry.connect(accounts[0], mock_storage)
-            connection02 = registry.connect(accounts[0], mock_storage)
-            connection1 = registry.connect(accounts[1], mock_storage)
-            await connection0.connect()
-            await connection02.connect()
-            await connection1.connect()
-            connection_mock1.initialize.assert_called()
-            connection_mock1.subscribe.assert_called()
-            connection_mock2.initialize.assert_called()
-            connection_mock2.subscribe.assert_called()
-            assert registry._connections['id0'] == connection0
-            assert registry._connections['id1'] == connection1
-            assert connection0 == connection02
-            assert connection0 != connection1
-
-    @pytest.mark.asyncio
-    async def test_remove(self):
-        """Should remove the account from registry."""
-        with patch('lib.metaApi.connectionRegistry.StreamingMetaApiConnection') as mock_connection:
+            mock_client.unsubscribe = AsyncMock()
             connection_instance = create_connection_mock()
             mock_connection.return_value = connection_instance
-            accounts = [MockAccount('id0'), MockAccount('id1')]
-            connection0 = registry.connect(accounts[0], mock_storage)
-            connection1 = registry.connect(accounts[1], mock_storage)
-            assert registry._connections['id0'] == connection0
-            assert registry._connections['id1'] == connection1
-            registry.remove(accounts[0].id)
-            assert not accounts[0].id in registry._connections
+            account = MockAccount('id')
+            registry.connect_streaming(account, mock_storage)
+            await registry.remove_streaming(account)
+            mock_client.unsubscribe.assert_any_call('id')
+            mock_client.unsubscribe.assert_any_call('idReplica')
+
+    @pytest.mark.asyncio
+    async def test_not_disconnect_until_both_are_closed_1(self):
+        """Should not disconnect until both streaming and rpc connections are closed."""
+        with patch('lib.metaApi.connectionRegistry.StreamingMetaApiConnection') as mock_connection:
+            mock_client.unsubscribe = AsyncMock()
+            connection_instance = create_connection_mock()
+            mock_connection.return_value = connection_instance
+            account = MockAccount('id')
+            registry.connect_streaming(account, mock_storage)
+            registry.connect_streaming(account, mock_storage)
+            registry.connect_rpc(account)
+            await registry.remove_streaming(account)
+            mock_client.unsubscribe.assert_not_called()
+            await registry.remove_streaming(account)
+            mock_client.unsubscribe.assert_not_called()
+            await registry.remove_rpc(account)
+            mock_client.unsubscribe.assert_any_call('id')
+            mock_client.unsubscribe.assert_any_call('idReplica')
+
+    @pytest.mark.asyncio
+    async def test_create_rpc_connection(self):
+        """Should create rpc connection."""
+        with patch('lib.metaApi.connectionRegistry.RpcMetaApiConnection') as mock_connection:
+            connection_instance = create_connection_mock()
+            mock_connection.return_value = connection_instance
+            account = MockAccount('id')
+            connection = registry.connect_rpc(account)
+            await connection.connect()
+            assert 'id' in registry._rpcConnections
+
+    @pytest.mark.asyncio
+    async def test_disconnect_rpc_connection(self):
+        """Should disconnect rpc connection."""
+        with patch('lib.metaApi.connectionRegistry.RpcMetaApiConnection') as mock_connection:
+            mock_client.unsubscribe = AsyncMock()
+            connection_instance = create_connection_mock()
+            mock_connection.return_value = connection_instance
+            account = MockAccount('id')
+            registry.connect_rpc(account)
+            await registry.remove_rpc(account)
+            mock_client.unsubscribe.assert_any_call('id')
+            mock_client.unsubscribe.assert_any_call('idReplica')
+
+    @pytest.mark.asyncio
+    async def test_not_disconnect_until_both_are_closed_2(self):
+        """Should not disconnect until both rpc and streaming connections are closed."""
+        with patch('lib.metaApi.connectionRegistry.StreamingMetaApiConnection') as mock_connection:
+            mock_client.unsubscribe = AsyncMock()
+            connection_instance = create_connection_mock()
+            mock_connection.return_value = connection_instance
+            account = MockAccount('id')
+            registry.connect_rpc(account)
+            registry.connect_rpc(account)
+            registry.connect_streaming(account, mock_storage)
+            await registry.remove_rpc(account)
+            mock_client.unsubscribe.assert_not_called()
+            await registry.remove_rpc(account)
+            mock_client.unsubscribe.assert_not_called()
+            await registry.remove_streaming(account)
+            mock_client.unsubscribe.assert_any_call('id')
+            mock_client.unsubscribe.assert_any_call('idReplica')

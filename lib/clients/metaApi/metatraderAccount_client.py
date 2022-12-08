@@ -1,37 +1,36 @@
 from ..metaApi_client import MetaApiClient
 from typing_extensions import TypedDict
-from typing import List, Union, Optional, Dict
+from typing import List, Union, Optional, Dict, Literal
 from httpx import Response
-from enum import Enum
 
 
-class Extension(TypedDict):
-    """Extension model."""
-    id: str
-    """Extension id."""
-    configuration: Dict
-    """Extension configuration."""
+State = Literal['CREATED', 'DEPLOYING', 'DEPLOYED', 'DEPLOY_FAILED', 'UNDEPLOYING', 'UNDEPLOYED', 'UNDEPLOY_FAILED',
+                'DELETING', 'DELETE_FAILED', 'REDEPLOY_FAILED']
+"""Account state."""
 
 
-class State(Enum):
-    """Account state."""
-    CREATED = 'CREATED'
-    DEPLOYING = 'DEPLOYING'
-    DEPLOYED = 'DEPLOYED'
-    DEPLOY_FAILED = 'DEPLOY_FAILED'
-    UNDEPLOYING = 'UNDEPLOYING'
-    UNDEPLOYED = 'UNDEPLOYED'
-    UNDEPLOY_FAILED = 'UNDEPLOY_FAILED'
-    DELETING = 'DELETING'
-    DELETE_FAILED = 'DELETE_FAILED'
-    REDEPLOY_FAILED = 'REDEPLOY_FAILED'
+ConnectionStatus = Literal['CONNECTED', 'DISCONNECTED', 'DISCONNECTED_FROM_BROKER']
+"""Account connection status."""
 
 
-class ConnectionStatus(Enum):
-    """Account connection status."""
-    CONNECTED = 'CONNECTED'
-    DISCONNECTED = 'DISCONNECTED'
-    DISCONNECTED_FROM_BROKER = 'DISCONNECTED_FROM_BROKER'
+Reliability = Literal['high', 'regular']
+"""Account reliability."""
+
+
+Type = Literal['cloud-g1', 'cloud-g2']
+"""Account type"""
+
+
+Platform = Literal['mt4', 'mt5']
+"""MT platform."""
+
+
+Version = Literal[4, 5]
+"""MT version."""
+
+
+CopyFactoryRoles = Literal['SUBSCRIBER', 'PROVIDER']
+"""CopyFactory roles."""
 
 
 class AccountsFilter(TypedDict, total=False):
@@ -65,67 +64,42 @@ class MetatraderAccountReplicaDto(TypedDict, total=False):
     """Metatrader account replica model"""
 
     _id: str
-    """Account unique identifier."""
-    name: str
-    """MetaTrader account human-readable name in the MetaApi app."""
-    type: str
-    """Account type, can be cloud, cloud-g1, cloud-g2 or self-hosted. Cloud and cloud-g2 are aliases."""
-    login: str
-    """MetaTrader account number."""
-    server: str
-    """MetaTrader server which hosts the account."""
-    version: int
-    """MT version (allowed values are 4 and 5)."""
-    provisioningProfileId: Optional[str]
-    """Id of the account's provisioning profile."""
-    application: str
-    """Application name to connect the account to. Currently allowed values are MetaApi and AgiliumTrade"""
+    """Unique account replica id."""
+    state: State
+    """Current account replica state."""
     magic: int
-    """MetaTrader magic to place trades using."""
-    state: str
-    """Account deployment state. One of CREATED, DEPLOYING, DEPLOYED, UNDEPLOYING, UNDEPLOYED, DELETING"""
-    connectionStatus: str
-    """Terminal & broker connection status, one of CONNECTED, DISCONNECTED, DISCONNECTED_FROM_BROKER"""
-    accessToken: str
-    """Authorization token to be used for accessing single account data. Intended to be used in browser API."""
-    manualTrades: Optional[bool]
-    """Flag indicating if trades should be placed as manual trades. Default is false. Supported on G2 only."""
-    quoteStreamingIntervalInSeconds: float
+    """Magic value the trades should be performed using."""
+    connectionStatus: ConnectionStatus
+    """Connection status of the MetaTrader terminal to the application."""
+    quoteStreamingIntervalInSeconds: str
     """Quote streaming interval in seconds. Set to 0 in order to receive quotes on each tick. Default value is
     2.5 seconds. Intervals less than 2.5 seconds are supported only for G2."""
-    tags: Optional[List[str]]
-    """MetaTrader account tags."""
+    symbol: Optional[str]
+    """Any symbol provided by broker (required for G1 only)."""
+    reliability: Reliability
+    """Used to increase the reliability of the account replica. High is a recommended value for production
+    environment."""
+    tags: List[str]
+    """User-defined account replica tags."""
     metadata: Optional[Dict]
     """Extra information which can be stored together with your account."""
-    reliability: Optional[str]
-    """Used to increase the reliability of the account. Allowed values are regular and high. Default is regular."""
-    baseCurrency: Optional[str]
-    """3-character ISO currency code of the account base currency. Default value is USD.
-    The setting is to be used for copy trading accounts which use national currencies only, such as some Brazilian
-    brokers. You should not alter this setting unless you understand what you are doing."""
-    copyFactoryRoles: Optional[List[str]]
-    """Account roles for CopyFactory2 application. Allowed values are `PROVIDER` and `SUBSCRIBER`."""
     resourceSlots: Optional[int]
     """Number of resource slots to allocate to account. Allocating extra resource slots
     results in better account performance under load which is useful for some applications. E.g. if you have many
     accounts copying the same strategy via CopyFactory API, then you can increase resourceSlots to get a lower trade
     copying latency. Please note that allocating extra resource slots is a paid option. Please note that high
     reliability accounts use redundant infrastructure, so that each resource slot for a high reliability account
-    is billed as 2 standard resource slots. Default is 1."""
+    is billed as 2 standard resource slots."""
     copyFactoryResourceSlots: Optional[int]
-    """Number of CopyFactory 2 resource slots to allocate to account.
+    """Number of CopyFactory 2 resource slots to allocate to account replica.
     Allocating extra resource slots results in lower trade copying latency. Please note that allocating extra resource
     slots is a paid option. Please also note that CopyFactory 2 uses redundant infrastructure so that
     each CopyFactory resource slot is billed as 2 standard resource slots. You will be billed for CopyFactory 2
-    resource slots only if you have added your account to CopyFactory 2 by specifying copyFactoryRoles field.
-    Default is 1."""
-    symbol: Optional[str]
-    """Any symbol provided by broker (required for G1 only)."""
+    resource slots only if you have added your account to CopyFactory 2 by specifying copyFactoryRoles field."""
     region: str
     """Region id to deploy account at. One of returned by the /users/current/regions endpoint."""
-    slippage: Optional[float]
-    """Default trade slippage in points. Should be greater or equal to zero. If not specified, system internal setting
-    will be used which we believe is reasonable for most cases."""
+    primaryAccount: dict
+    """Primary account."""
 
 
 class AccountConnection(TypedDict, total=False):
@@ -143,52 +117,106 @@ class MetatraderAccountDto(TypedDict, total=False):
     """MetaTrader account model"""
 
     _id: str
-    """Account unique identifier."""
-    userId: str
-    """User id."""
-    name: str
-    """MetaTrader account human-readable name in the MetaApi app."""
-    type: str
-    """Account type, can be cloud, cloud-g1, cloud-g2 or self-hosted. Cloud and cloud-g2 are aliases."""
-    login: str
-    """MetaTrader account number."""
-    server: str
-    """MetaTrader server which hosts the account."""
-    version: int
-    """MT version (allowed values are 4 and 5)."""
-    provisioningProfileId: Optional[str]
-    """Id of the account's provisioning profile."""
-    application: str
-    """Application name to connect the account to. Currently allowed values are MetaApi and AgiliumTrade"""
+    """Unique account id."""
+    state: State
+    """Current account state."""
     magic: int
     """MetaTrader magic to place trades using."""
-    state: str
-    """Account deployment state. One of CREATED, DEPLOYING, DEPLOYED, UNDEPLOYING, UNDEPLOYED, DELETING"""
-    connectionStatus: str
-    """Terminal & broker connection status, one of CONNECTED, DISCONNECTED, DISCONNECTED_FROM_BROKER"""
-    accessToken: str
-    """Authorization token to be used for accessing single account data. Intended to be used in browser API."""
-    manualTrades: Optional[bool]
-    """Flag indicating if trades should be placed as manual trades. Default is false. Supported on G2 only."""
-    quoteStreamingIntervalInSeconds: float
+    connectionStatus: ConnectionStatus
+    """Connection status of the MetaTrader terminal to the application."""
+    quoteStreamingIntervalInSeconds: str
     """Quote streaming interval in seconds. Set to 0 in order to receive quotes on each tick. Default value is
     2.5 seconds. Intervals less than 2.5 seconds are supported only for G2."""
+    symbol: Optional[str]
+    """Any symbol provided by broker (required for G1 only)."""
+    reliability: Reliability
+    """Used to increase the reliability of the account. High is a recommended value for production environment."""
     tags: Optional[List[str]]
-    """MetaTrader account tags."""
+    """User-defined account tags."""
     metadata: Optional[Dict]
-    """Extra information which can be stored together with your account."""
-    reliability: str
-    """Used to increase the reliability of the account. Allowed values are regular and high. Default is regular."""
-    baseCurrency: Optional[str]
-    """3-character ISO currency code of the account base currency. Default value is USD.
-    The setting is to be used for copy trading accounts which use national currencies only, such as some Brazilian
-    brokers. You should not alter this setting unless you understand what you are doing."""
-    copyFactoryRoles: Optional[List[str]]
-    """Account roles for CopyFactory2 application. Allowed values are `PROVIDER` and `SUBSCRIBER`."""
-    resourceSlots: Optional[int]
+    """Extra information which can be stored together with your account. Total length of this field after serializing
+    it to JSON is limited to 1024 characters."""
+    resourceSlots: int
     """Number of resource slots to allocate to account. Allocating extra resource slots
     results in better account performance under load which is useful for some applications. E.g. if you have many
     accounts copying the same strategy via CopyFactory API, then you can increase resourceSlots to get a lower trade
+    copying latency. Please note that allocating extra resource slots is a paid option. Please note that high
+    reliability accounts use redundant infrastructure, so that each resource slot for a high reliability account
+    is billed as 2 standard resource slots."""
+    copyFactoryResourceSlots: int
+    """Number of CopyFactory 2 resource slots to allocate to account.
+    Allocating extra resource slots results in lower trade copying latency. Please note that allocating extra resource
+    slots is a paid option. Please also note that CopyFactory 2 uses redundant infrastructure so that
+    each CopyFactory resource slot is billed as 2 standard resource slots. You will be billed for CopyFactory 2
+    resource slots only if you have added your account to CopyFactory 2 by specifying copyFactoryRoles field."""
+    region: str
+    """Region id to deploy account at. One of returned by the /users/current/regions endpoint."""
+    name: str
+    """Human-readable account name."""
+    manualTrades: bool
+    """Flag indicating if trades should be placed as manual trades. Supported on G2 only."""
+    slippage: Optional[float]
+    """Default trade slippage in points. Should be greater or equal to zero. If not specified, system internal setting
+    will be used which we believe is reasonable for most cases."""
+    provisioningProfileId: Optional[str]
+    """Id of the provisioning profile that was used as the basis for creating this account."""
+    login: str
+    """MetaTrader account number."""
+    server: str
+    """MetaTrader server name to connect to."""
+    type: Type
+    """Account type. Executing accounts as cloud-g2 is faster and cheaper."""
+    version: Version
+    """MetaTrader version."""
+    hash: float
+    """Hash-code of the account."""
+    baseCurrency: str
+    """3-character ISO currency code of the account base currency. The setting is to be used for copy trading accounts
+    which use national currencies only, such as some Brazilian brokers. You should not alter this setting unless you
+    understand what you are doing."""
+    copyFactoryRoles: List[CopyFactoryRoles]
+    """Account roles for CopyFactory2 application."""
+    riskManagementApiEnabled: bool
+    """Flag indicating that risk management API is enabled on account."""
+    metastatsHourlyTarificationEnabled: bool
+    """Flag indicating that MetaStats hourly tarification is enabled on account."""
+    accessToken: str
+    """Authorization token to be used for accessing single account data. Intended to be used in browser API."""
+    connections: List[AccountConnection]
+    """Active account connections."""
+    primaryReplica: bool
+    """Flag indicating that account is primary."""
+    userId: str
+    """User id."""
+    primaryAccountId: Optional[str]
+    """Primary account id. Only replicas can have this field."""
+    accountReplicas: Optional[List[MetatraderAccountReplicaDto]]
+    """MetaTrader account replicas."""
+
+
+class NewMetatraderAccountDto(TypedDict, total=False):
+    """New MetaTrader account model"""
+    symbol: Optional[str]
+    """Any MetaTrader symbol your broker provides historical market data for. This value should be specified for G1
+    accounts only and only in case your MT account fails to connect to broker."""
+    magic: int
+    """Magic value the trades should be performed using. When manualTrades field is set to true, magic value
+    must be 0."""
+    quoteStreamingIntervalInSeconds: Optional[str]
+    """Quote streaming interval in seconds. Set to 0 in order to receive quotes on each tick. Default value is 2.5
+    seconds. Intervals less than 2.5 seconds are supported only for G2."""
+    tags: Optional[List[str]]
+    """User-defined account tags."""
+    metadata: Optional[Dict]
+    """Extra information which can be stored together with your account. Total length of this field after serializing
+    it to JSON is limited to 1024 characters."""
+    reliability: Optional[Reliability]
+    """Used to increase the reliability of the account. High is a recommended value for production environment.
+    Default value is high."""
+    resourceSlots: Optional[int]
+    """Number of resource slots to allocate to account. Allocating extra resource slots
+    results in better account performance under load which is useful for some applications. E.g. if you have many
+    accounts copying the same strategy via CooyFactory API, then you can increase resourceSlots to get a lower trade
     copying latency. Please note that allocating extra resource slots is a paid option. Please note that high
     reliability accounts use redundant infrastructure, so that each resource slot for a high reliability account
     is billed as 2 standard resource slots. Default is 1."""
@@ -199,160 +227,125 @@ class MetatraderAccountDto(TypedDict, total=False):
     each CopyFactory resource slot is billed as 2 standard resource slots. You will be billed for CopyFactory 2
     resource slots only if you have added your account to CopyFactory 2 by specifying copyFactoryRoles field.
     Default is 1."""
-    symbol: Optional[str]
-    """Any symbol provided by broker (required for G1 only)."""
     region: str
     """Region id to deploy account at. One of returned by the /users/current/regions endpoint."""
-    slippage: Optional[float]
-    """Default trade slippage in points. Should be greater or equal to zero. If not specified, system internal setting
-    will be used which we believe is reasonable for most cases."""
-    primaryReplica: Optional[bool]
-    """Flag indicating that account is primary."""
-    riskManagementApiEnabled: Optional[bool]
-    """Flag indicating that risk management API should be enabled on account. Default is false"""
-    accountReplicas: Optional[List[MetatraderAccountReplicaDto]]
-    """MetaTrader account replicas."""
-    connections: List[AccountConnection]
-    """Active account connections."""
-
-
-class NewMetatraderAccountDto(TypedDict, total=False):
-    """New MetaTrader account model"""
-
     name: str
-    """MetaTrader account human-readable name in the MetaApi app."""
-    type: Optional[str]
-    """Account type, can be cloud, cloud-g1, cloud-g2 or self-hosted. cloud-g2 and cloud are aliases. When you
-    create MT5 cloud account the type is automatically converted to cloud-g1 because MT5 G2 support is still
-    experimental. You can still create MT5 G2 account by setting type to cloud-g2."""
-    login: str
-    """MetaTrader account number."""
-    password: str
-    """MetaTrader account password. The password can be either investor password for read-only access or master
-    password to enable trading features. Required for cloud account."""
-    server: str
-    """MetaTrader server which hosts the account."""
-    platform: Optional[str]
-    """Platform id (mt4 or mt5)"""
-    provisioningProfileId: Optional[str]
-    """Id of the account's provisioning profile."""
-    application: str
-    """Application name to connect the account to. Currently allowed values are MetaApi and AgiliumTrade."""
-    magic: int
-    """MetaTrader magic to place trades using. When manualTrades field is set to true, magic value must be 0."""
+    """Human-readable account name."""
     manualTrades: Optional[bool]
-    """Flag indicating if trades should be placed as manual trades. Default is false."""
-    quoteStreamingIntervalInSeconds: Optional[float]
-    """Quote streaming interval in seconds. Set to 0 in order to receive quotes on each tick. Default value is
-    2.5 seconds. Intervals less than 2.5 seconds are supported only for G2."""
-    tags: Optional[List[str]]
-    """MetaTrader account tags."""
-    metadata: Optional[Dict]
-    """Extra information which can be stored together with your account."""
-    reliability: Optional[str]
-    """Used to increase the reliability of the account. Allowed values are regular and high. Default is regular."""
-    baseCurrency: Optional[str]
-    """3-character ISO currency code of the account base currency. Default value is USD.
-    The setting is to be used for copy trading accounts which use national currencies only, such as some Brazilian
-    brokers. You should not alter this setting unless you understand what you are doing."""
-    copyFactoryRoles: Optional[List[str]]
-    """Account roles for CopyFactory2 application. Allowed values are `PROVIDER` and `SUBSCRIBER`."""
-    resourceSlots: Optional[int]
-    """Number of resource slots to allocate to account. Allocating extra resource slots results in better account
-    performance under load which is useful for some applications. E.g. if you have many accounts copying the same
-    strategy via CopyFactory API, then you can increase resourceSlots to get a lower trade copying latency. Please
-    note that allocating extra resource slots is a paid option. Default is 1."""
-    symbol: Optional[str]
-    """Any MetaTrader symbol your broker provides historical market data for. This value should be specified for G1
-    accounts only and only in case your MT account fails to connect to broker."""
-    copyFactoryResourceSlots: Optional[int]
-    """Number of CopyFactory 2 resource slots to allocate to account. Allocating extra resource slots results in lower
-    trade copying latency. Please note that allocating extra resource slots is a paid option. Please also note that
-    CopyFactory 2 uses redundant infrastructure so that each CopyFactory resource slot is billed as 2 standard resource
-    slots. You will be billed for CopyFactory 2 resource slots only if you have added your account to CopyFactory 2 by
-    specifying copyFactoryRoles field.Default is 1."""
-    region: Optional[str]
-    """Region id to deploy account at. One of returned by the /users/current/regions endpoint."""
+    """Flag indicating if trades should be placed as manual trades. Supported on G2 only. Default is false."""
     slippage: Optional[float]
     """Default trade slippage in points. Should be greater or equal to zero. If not specified, system internal setting
     will be used which we believe is reasonable for most cases."""
+    provisioningProfileId: Optional[str]
+    """Id of the provisioning profile that was used as the basis for creating this account.
+    Required for cloud account."""
+    login: str
+    """MetaTrader account number. Only digits are allowed."""
+    password: str
+    """MetaTrader account password. The password can be either investor password for read-only
+    access or master password to enable trading features. Required for cloud account."""
+    server: str
+    """MetaTrader server name to connect to."""
+    platform: Optional[Platform]
+    """MetaTrader platform."""
+    type: Optional[Type]
+    """Account type. Executing accounts as cloud-g2 is faster and cheaper. Default value is cloud-g2."""
+    baseCurrency: Optional[str]
+    """3-character ISO currency code of the account base currency. Default value is USD. The setting is to be used
+    for copy trading accounts which use national currencies only, such as some Brazilian
+    brokers. You should not alter this setting unless you understand what you are doing."""
+    copyFactoryRoles: Optional[List[CopyFactoryRoles]]
+    """Account roles for CopyFactory2 API."""
+    riskManagementApiEnabled: Optional[bool]
+    """Flag indicating that risk management API should be enabled on account. Default is false."""
+    metastatsHourlyTarificationEnabled: Optional[bool]
+    """Flag indicating that MetaStats hourly tarification should be enabled on account. Default is false"""
 
 
 class MetatraderAccountUpdateDto(TypedDict, total=False):
     """Updated MetaTrader account data"""
 
     name: str
-    """MetaTrader account human-readable name in the MetaApi app."""
+    """Human-readable account name."""
     password: str
     """MetaTrader account password. The password can be either investor password for read-only
-    access or master password to enable trading features. Required for cloud account"""
+    access or master password to enable trading features. Required for cloud account."""
     server: str
-    """MetaTrader server which hosts the account"""
-    magic: int
-    """MetaTrader magic to place trades using."""
+    """MetaTrader server name to connect to."""
+    magic: Optional[int]
+    """Magic value the trades should be performed using. When manualTrades field is set to true, magic value must
+    be 0."""
     manualTrades: Optional[bool]
-    """Flag indicating if trades should be placed as manual trades. Default is false."""
+    """Flag indicating if trades should be placed as manual trades. Supported for G2 only. Default is false."""
+    slippage: Optional[float]
+    """Default trade slippage in points. Should be greater or equal to zero. If not specified,
+    system internal setting will be used which we believe is reasonable for most cases."""
     quoteStreamingIntervalInSeconds: Optional[float]
-    """Quote streaming interval in seconds. Set to 0 in order to receive quotes on each tick. Default value is
-    2.5 seconds. Intervals less than 2.5 seconds are supported only for G2."""
+    """Quote streaming interval in seconds. Set to 0 in order to receive quotes on each tick. Intervals less than 2.5
+    seconds are supported only for G2. Default value is 2.5 seconds"""
     tags: Optional[List[str]]
     """MetaTrader account tags."""
-    extensions: Optional[List[Extension]]
-    """API extensions."""
     metadata: Optional[Dict]
-    """Extra information which can be stored together with your account."""
-    copyFactoryRoles: Optional[List[str]]
-    """Account roles for CopyFactory2 application. Allowed values are `PROVIDER` and `SUBSCRIBER`."""
+    """Extra information which can be stored together with your account. Total length of this field after serializing
+    it to JSON is limited to 1024 characters."""
     resourceSlots: Optional[int]
-    """Number of resource slots to allocate to account. Allocating extra resource slots results in better account
-    performance under load which is useful for some applications. E.g. if you have many accounts copying the same
-    strategy via CopyFactory API, then you can increase resourceSlots to get a lower trade copying latency. Please
-    note that allocating extra resource slots is a paid option. Default is 1."""
+    """Number of resource slots to allocate to account. Allocating extra resource slots
+    results in better account performance under load which is useful for some applications. E.g. if you have many
+    accounts copying the same strategy via CooyFactory API, then you can increase resourceSlots to get a lower trade
+    copying latency. Please note that allocating extra resource slots is a paid option. Default is 1."""
     copyFactoryResourceSlots: Optional[int]
-    """Number of CopyFactory 2 resource slots to allocate to account. Allocating extra resource slots results in lower
-    trade copying latency. Please note that allocating extra resource slots is a paid option. Please also note that
-    CopyFactory 2 uses redundant infrastructure so that each CopyFactory resource slot is billed as 2 standard resource
-    slots. You will be billed for CopyFactory 2 resource slots only if you have added your account to CopyFactory 2 by
-    specifying copyFactoryRoles field. Default is 1."""
+    """Number of CopyFactory 2 resource slots to allocate to account.
+    Allocating extra resource slots results in lower trade copying latency. Please note that allocating extra resource
+    slots is a paid option. Please also note that CopyFactory 2 uses redundant infrastructure so that
+    each CopyFactory resource slot is billed as 2 standard resource slots. You will be billed for CopyFactory 2
+    resource slots only if you have added your account to CopyFactory 2 by specifying copyFactoryRoles field.
+    Default is 1."""
 
 
 class NewMetaTraderAccountReplicaDto(TypedDict, total=False):
     """New MetaTrader account replica model"""
 
     symbol: Optional[str]
-    """Any MetaTrader symbol your broker provides historical market data for. This value should be specified for G1
-    accounts only and only in case your MT account fails to connect to broker."""
+    """Any MetaTrader symbol your broker provides historical market data for.
+    This value should be specified for G1 accounts only and only in case your MT account fails to connect to broker."""
     magic: int
-    """MetaTrader magic to place trades using. When manualTrades field is set to true, magic value must be 0."""
-    quoteStreamingIntervalInSeconds: Optional[float]
-    """Quote streaming interval in seconds. Set to 0 in order to receive quotes on each tick. Default value is
-    2.5 seconds. Intervals less than 2.5 seconds are supported only for G2."""
+    """Magic value the trades should be performed using. When manualTrades field is set to true, magic value must
+    be 0."""
+    quoteStreamingIntervalInSeconds: Optional[str]
+    """Quote streaming interval in seconds. Set to 0 in order to receive quotes on each tick. Default value is 2.5
+    seconds. Intervals less than 2.5 seconds are supported only for G2."""
     tags: Optional[List[str]]
-    """MetaTrader account tags."""
+    """User-defined account replica tags."""
     metadata: Optional[Dict]
-    """Extra information which can be stored together with your account."""
-    reliability: Optional[str]
-    """Used to increase the reliability of the account. Allowed values are regular and high. Default is regular."""
+    """Extra information which can be stored together with your account. Total length of this field after serializing
+    it to JSON is limited to 1024 characters."""
+    reliability: Optional[Reliability]
+    """Used to increase the reliability of the account replica. High is a recommended value for production environment.
+    Default value is high."""
     resourceSlots: Optional[int]
-    """Number of resource slots to allocate to account. Allocating extra resource slots results in better account
-    performance under load which is useful for some applications. E.g. if you have many accounts copying the same
-    strategy via CopyFactory API, then you can increase resourceSlots to get a lower trade copying latency. Please
-    note that allocating extra resource slots is a paid option. Default is 1."""
+    """Number of resource slots to allocate to account replica. Allocating extra resource slots
+    results in better account performance under load which is useful for some applications. E.g. if you have many
+    accounts copying the same strategy via CooyFactory API, then you can increase resourceSlots to get a lower trade
+    copying latency. Please note that allocating extra resource slots is a paid option. Please note that high
+    reliability accounts use redundant infrastructure, so that each resource slot for a high reliability account
+    is billed as 2 standard resource slots. Default is 1."""
     copyFactoryResourceSlots: Optional[int]
-    """Number of CopyFactory 2 resource slots to allocate to account. Allocating extra resource slots results in lower
-    trade copying latency. Please note that allocating extra resource slots is a paid option. Please also note that
-    CopyFactory 2 uses redundant infrastructure so that each CopyFactory resource slot is billed as 2 standard resource
-    slots. You will be billed for CopyFactory 2 resource slots only if you have added your account to CopyFactory 2 by
-    specifying copyFactoryRoles field. Default is 1."""
-    region: Optional[str]
-    """Region id to deploy account at. One of returned by the /users/current/regions endpoint."""
+    """Number of CopyFactory 2 resource slots to allocate to account replica.
+    Allocating extra resource slots results in lower trade copying latency. Please note that allocating extra resource
+    slots is a paid option. Please also note that CopyFactory 2 uses redundant infrastructure so that
+    each CopyFactory resource slot is billed as 2 standard resource slots. You will be billed for CopyFactory 2
+    resource slots only if you have added your account to CopyFactory 2 by specifying copyFactoryRoles field.
+    Default is 1."""
+    region: str
+    """Region id to deploy account replica at. One of returned by the /users/current/regions endpoint."""
 
 
 class UpdatedMetatraderAccountReplicaDto(TypedDict, total=False):
     """Updated MetaTrader account replica data"""
 
     magic: Optional[int]
-    """MetaTrader magic to place trades using."""
+    """Magic value the trades should be performed using. When manualTrades field is set to true, magic value must
+    be 0."""
     quoteStreamingIntervalInSeconds: float
     """Quote streaming interval in seconds. Set to 0 in order to receive quotes on each tick. Default value is
     2.5 seconds. Intervals less than 2.5 seconds are supported only for G2."""
@@ -445,6 +438,26 @@ class MetatraderAccountClient(MetaApiClient):
             }
         }
         return await self._httpClient.request(opts, 'get_account_replica')
+
+    async def get_account_replicas(self, primary_account_id: str) -> Response:
+        """Retrieves a MetaTrader account replicas (see
+        https://metaapi.cloud/docs/provisioning/api/accountReplica/readAccountReplicas/).
+        Throws an error if account is not found.
+
+        Args:
+            primary_account_id: MetaTrader account id.
+
+        Returns:
+            A coroutine resolving with MetatraderAccountReplicaDto - MetaTrader account replica found.
+        """
+        opts = {
+            'url': f'{self._host}/users/current/accounts/{primary_account_id}/replicas',
+            'method': 'GET',
+            'headers': {
+                'auth-token': self._token
+            }
+        }
+        return await self._httpClient.request(opts, 'get_account_replicas')
 
     async def get_account_by_token(self) -> 'Response[MetatraderAccountDto]':
         """Retrieves a MetaTrader account by token
@@ -756,3 +769,42 @@ class MetatraderAccountClient(MetaApiClient):
             }
         }
         return await self._httpClient.request(opts, 'increase_reliability')
+
+    async def enable_risk_management_api(self, id: str):
+        """Enable risk management API for an account. The account will be temporary stopped to perform this action.
+        Note that this is a paid option. (see
+        https://metaapi.cloud/docs/provisioning/api/account/enableRiskManagementApi/).
+        Method is accessible only with API access token.
+
+        Args:
+            id: Account id.
+
+        Returns:
+            A coroutine resolving when account risk management is enabled.
+        """
+        if self._is_not_jwt_token():
+            return self._handle_no_access_exception('enable_risk_management_api')
+        opts = {
+            'url': f'{self._host}/users/current/accounts/{id}/enable-risk-management-api',
+            'method': 'POST',
+            'headers': {
+                'auth-token': self._token
+            }
+        }
+        return await self._httpClient.request(opts, 'enable_risk_management_api')
+
+    async def enable_metastats_hourly_tarification(self, id: str):
+        """Enable MetaStats hourly tarification for an account. The account will be temporary stopped to perform this
+        action. Note that this is a paid option. (see
+        https://metaapi.cloud/docs/provisioning/api/account/enableMetaStatsHourlyTarification/).
+        Method is accessible only with API access token."""
+        if self._is_not_jwt_token():
+            return self._handle_no_access_exception('enable_metastats_hourly_tarification')
+        opts = {
+            'url': f'{self._host}/users/current/accounts/{id}/enable-metastats-hourly-tarification',
+            'method': 'POST',
+            'headers': {
+                'auth-token': self._token
+            }
+        }
+        return await self._httpClient.request(opts, 'enable_metastats_hourly_tarification')

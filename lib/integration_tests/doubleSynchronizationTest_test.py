@@ -49,7 +49,6 @@ class TestDoubleSync:
                     'password': password,
                     'server': server_name,
                     'provisioningProfileId': profile.id,
-                    'application': 'MetaApi',
                     'magic': 1000
                 })
             account_copy = await api.metatrader_account_api.get_account(account.id)
@@ -72,5 +71,5 @@ class TestDoubleSync:
             await account.undeploy()
             await account_copy.undeploy()
             api._metaApiWebsocketClient.remove_all_listeners()
-            json.loads(open(f'.metaapi/{account.id}-{account.application}-deals.bin').read())
-            json.loads(open(f'.metaapi/{account.id}-{account.application}-historyOrders.bin').read())
+            json.loads(open(f'.metaapi/{account.id}-deals.bin').read())
+            json.loads(open(f'.metaapi/{account.id}-historyOrders.bin').read())

@@ -1,8 +1,7 @@
 from ..clients.metaApi.metatraderAccount_client import MetatraderAccountClient, MetatraderAccountDto, \
-    MetatraderAccountUpdateDto, NewMetaTraderAccountReplicaDto,  AccountConnection
+    MetatraderAccountUpdateDto, NewMetaTraderAccountReplicaDto,  AccountConnection, MetatraderAccountReplicaDto
 from ..clients.metaApi.metaApiWebsocket_client import MetaApiWebsocketClient
 from ..clients.timeoutException import TimeoutException
-from .streamingMetaApiConnection import StreamingMetaApiConnection
 from ..metaApi.filesystemHistoryDatabase import FilesystemHistoryDatabase
 from .historyStorage import HistoryStorage
 from .connectionRegistryModel import ConnectionRegistryModel
@@ -12,9 +11,10 @@ from ..clients.errorHandler import ValidationException
 from .models import MetatraderCandle, MetatraderTick
 from datetime import datetime, timedelta
 from typing import List, Dict
-from .rpcMetaApiConnection import RpcMetaApiConnection
 from .metatraderAccountReplica import MetatraderAccountReplica
 from .metatraderAccountModel import MetatraderAccountModel
+from .streamingMetaApiConnectionInstance import StreamingMetaApiConnectionInstance
+from .rpcMetaApiConnectionInstance import RpcMetaApiConnectionInstance
 import asyncio
 
 
@@ -48,66 +48,22 @@ class MetatraderAccount(MetatraderAccountModel):
 
     @property
     def id(self) -> str:
-        """Returns account id.
+        """Returns unique account id.
 
         Returns:
-            Account id.
+            Unique account id.
         """
         return self._data['_id']
 
     @property
-    def name(self) -> str:
-        """Returns account name.
+    def state(self) -> str:
+        """Returns current account state. One of CREATED, DEPLOYING, DEPLOYED, DEPLOY_FAILED, UNDEPLOYING,
+        UNDEPLOYED, UNDEPLOY_FAILED, DELETING, DELETE_FAILED, REDEPLOY_FAILED.
 
         Returns:
-            Account name.
+            Current account state.
         """
-        return self._data['name']
-
-    @property
-    def type(self) -> str:
-        """Returns account type. Possible values are cloud, cloud-g1, cloud-g2, and self-hosted.
-
-        Returns:
-            Account type.
-        """
-        return self._data['type']
-
-    @property
-    def login(self) -> str:
-        """Returns account login.
-
-        Returns:
-            Account login.
-        """
-        return self._data['login']
-
-    @property
-    def server(self) -> str:
-        """Returns MetaTrader server which hosts the account.
-
-        Returns:
-            MetaTrader server which hosts the account.
-        """
-        return self._data['server']
-
-    @property
-    def provisioning_profile_id(self) -> str:
-        """Returns id of the account's provisioning profile.
-
-        Returns:
-            Id of the account's provisioning profile.
-        """
-        return self._data['provisioningProfileId'] if 'provisioningProfileId' in self._data else None
-
-    @property
-    def application(self) -> str:
-        """Returns application name to connect the account to. Currently allowed values are MetaApi and AgiliumTrade.
-
-        Returns:
-            Application name to connect the account to.
-        """
-        return self._data['application']
+        return self._data['state']
 
     @property
     def magic(self) -> int:
@@ -119,15 +75,6 @@ class MetatraderAccount(MetatraderAccountModel):
         return self._data['magic']
 
     @property
-    def state(self) -> str:
-        """Returns account deployment state. One of CREATED, DEPLOYING, DEPLOYED, UNDEPLOYING, UNDEPLOYED, DELETING
-
-        Returns:
-            Account deployment state.
-        """
-        return self._data['state']
-
-    @property
     def connection_status(self) -> str:
         """Returns terminal & broker connection status, one of CONNECTED, DISCONNECTED, DISCONNECTED_FROM_BROKER
 
@@ -137,32 +84,31 @@ class MetatraderAccount(MetatraderAccountModel):
         return self._data['connectionStatus']
 
     @property
-    def access_token(self) -> str:
-        """Returns authorization access token to be used for accessing single account data.
-        Intended to be used in browser API.
+    def quote_streaming_interval_in_seconds(self) -> str:
+        """Returns quote streaming interval in seconds.
 
         Returns:
-            Authorization token.
+            Quote streaming interval in seconds.
         """
-        return self._data['accessToken']
+        return self._data['quoteStreamingIntervalInSeconds']
 
     @property
-    def manual_trades(self) -> bool:
-        """Returns flag indicating if trades should be placed as manual trades on this account.
+    def symbol(self) -> str:
+        """Returns symbol provided by broker.
 
         Returns:
-            Flag indicating if trades should be placed as manual trades on this account.
+            Any symbol provided by broker.
         """
-        return 'manualTrades' in self._data and self._data['manualTrades']
+        return self._data['symbol']
 
     @property
-    def metadata(self) -> Dict:
-        """Returns extra information which can be stored together with your account.
+    def reliability(self) -> str:
+        """Returns reliability value. Possible values are regular and high.
 
         Returns:
-            Extra information which can be stored together with your account.
+            Account reliability value.
         """
-        return self._data['metadata'] if 'metadata' in self._data else None
+        return self._data['reliability']
 
     @property
     def tags(self) -> List[str]:
@@ -174,13 +120,13 @@ class MetatraderAccount(MetatraderAccountModel):
         return self._data['tags'] if 'tags' in self._data else None
 
     @property
-    def copy_factory_roles(self) -> List[str]:
-        """Returns account roles for CopyFactory2 application.
+    def metadata(self) -> Dict:
+        """Returns extra information which can be stored together with your account.
 
         Returns:
-            Account roles for CopyFactory2 application.
+            Extra information which can be stored together with your account.
         """
-        return self._data['copyFactoryRoles'] if 'copyFactoryRoles' in self._data else None
+        return self._data['metadata'] if 'metadata' in self._data else None
 
     @property
     def resource_slots(self) -> int:
@@ -210,6 +156,96 @@ class MetatraderAccount(MetatraderAccountModel):
         return self._data['copyFactoryResourceSlots'] if 'copyFactoryResourceSlots' in self._data else None
 
     @property
+    def region(self) -> str:
+        """Returns account region.
+
+        Returns:
+            Account region value.
+        """
+        return self._data['region']
+
+    @property
+    def name(self) -> str:
+        """Returns human-readable account name.
+
+        Returns:
+            Human-readable account name.
+        """
+        return self._data['name']
+
+    @property
+    def manual_trades(self) -> bool:
+        """Returns flag indicating if trades should be placed as manual trades on this account.
+
+        Returns:
+            Flag indicating if trades should be placed as manual trades on this account.
+        """
+        return 'manualTrades' in self._data and self._data['manualTrades']
+
+    @property
+    def slippage(self) -> float:
+        """Returns default trade slippage in points.
+
+        Returns:
+            Default trade slippage in points.
+        """
+        return 'slippage' in self._data and self._data['slippage']
+
+    @property
+    def provisioning_profile_id(self) -> str:
+        """Returns id of the account's provisioning profile.
+
+        Returns:
+            ID of the account's provisioning profile.
+        """
+        return self._data['provisioningProfileId'] if 'provisioningProfileId' in self._data else None
+
+    @property
+    def login(self) -> str:
+        """Returns account login.
+
+        Returns:
+            Account login.
+        """
+        return self._data['login']
+
+    @property
+    def server(self) -> str:
+        """Returns MetaTrader server which hosts the account.
+
+        Returns:
+            MetaTrader server which hosts the account.
+        """
+        return self._data['server']
+
+    @property
+    def type(self) -> str:
+        """Returns account type. Possible values are cloud, cloud-g1, cloud-g2, and self-hosted.
+
+        Returns:
+            Account type.
+        """
+        return self._data['type']
+
+    @property
+    def version(self) -> int:
+        """Returns version value. Possible values are 4 and 5.
+
+        Returns:
+            MT version.
+        """
+        return self._data['version']
+
+    @property
+    def hash(self) -> float:
+        """Returns hash-code of the account.
+
+        Returns:
+            Hash-code of the account.
+        """
+        return self._data['hash']
+
+    @property
     def base_currency(self) -> str:
         """Returns 3-character ISO currency code of the account base currency. Default value is USD. The setting is to
         be used for copy trading accounts which use national currencies only, such as some Brazilian brokers. You
@@ -221,40 +257,13 @@ class MetatraderAccount(MetatraderAccountModel):
         return self._data['baseCurrency'] if 'baseCurrency' in self._data else None
 
     @property
-    def reliability(self) -> str:
-        """Returns reliability value. Possible values are regular and high.
+    def copy_factory_roles(self) -> List[str]:
+        """Returns account roles for CopyFactory2 application.
 
         Returns:
-            Account reliability value.
+            Account roles for CopyFactory2 application.
         """
-        return self._data['reliability']
-
-    @property
-    def version(self) -> int:
-        """Returns version value. Possible values are 4 and 5.
-
-        Returns:
-            Account version value.
-        """
-        return self._data['version']
-
-    @property
-    def region(self) -> str:
-        """Returns account region.
-
-        Returns:
-            Account region value.
-        """
-        return self._data['region']
-
-    @property
-    def connections(self) -> List[AccountConnection]:
-        """Returns active account connections.
-
-        Returns:
-            Active account connections.
-        """
-        return self._data['connections']
+        return self._data['copyFactoryRoles'] if 'copyFactoryRoles' in self._data else None
 
     @property
     def risk_management_api_enabled(self) -> bool:
@@ -266,6 +275,43 @@ class MetatraderAccount(MetatraderAccountModel):
         return self._data['riskManagementApiEnabled']
 
     @property
+    def metastats_hourly_tarification_enabled(self) -> bool:
+        """Returns flag indicating that MetaStats hourly tarification is enabled on account.
+
+        Returns:
+            Flag indicating that MetaStats hourly tarification is enabled on account.
+        """
+        return self._data['metastatsHourlyTarificationEnabled']
+
+    @property
+    def access_token(self) -> str:
+        """Returns authorization access token to be used for accessing single account data.
+        Intended to be used in browser API.
+
+        Returns:
+            Authorization token.
+        """
+        return self._data['accessToken']
+
+    @property
+    def connections(self) -> List[AccountConnection]:
+        """Returns active account connections.
+
+        Returns:
+            Active account connections.
+        """
+        return self._data['connections']
+
+    @property
+    def primary_replica(self) -> bool:
+        """Returns flag indicating that account is primary.
+
+        Returns:
+            Flag indicating that account is primary.
+        """
+        return self._data['primaryReplica']
+
+    @property
     def user_id(self) -> str:
         """Returns user id.
 
@@ -273,6 +319,24 @@ class MetatraderAccount(MetatraderAccountModel):
             User id.
         """
         return self._data['userId']
+
+    @property
+    def primary_account_id(self) -> str:
+        """Returns primary account id.
+
+        Returns:
+            Primary account id.
+        """
+        return self._data['primaryAccountId']
+
+    @property
+    def account_replicas(self) -> List[MetatraderAccountReplicaDto]:
+        """Returns account replicas from DTO.
+
+        Returns:
+            Account replicas from DTO.
+        """
+        return self._data['accountReplicas']
 
     @property
     def replicas(self) -> List[MetatraderAccountReplica]:
@@ -373,6 +437,25 @@ class MetatraderAccount(MetatraderAccountModel):
         await self._metatraderAccountClient.increase_reliability(self.id)
         await self.reload()
 
+    async def enable_risk_management_api(self):
+        """Enable risk management API for an account. The account will be temporary stopped to perform this action.
+
+        Returns:
+            A coroutine resolving when account risk management is enabled.
+        """
+        await self._metatraderAccountClient.enable_risk_management_api(self.id)
+        await self.reload()
+
+    async def enable_metastats_hourly_tarification(self):
+        """Enable MetaStats hourly tarification for an account. The account will be temporary stopped to perform
+        this action.
+
+        Returns:
+            A coroutine resolving when account MetaStats hourly tarification is enabled.
+        """
+        await self._metatraderAccountClient.enable_metastats_hourly_tarification(self.id)
+        await self.reload()
+
     async def wait_deployed(self, timeout_in_seconds=300, interval_in_milliseconds=1000):
         """Waits until API server has finished deployment and account reached the DEPLOYED state.
 
@@ -467,8 +550,8 @@ class MetatraderAccount(MetatraderAccountModel):
             raise TimeoutException('Timed out waiting for account ' + self.id + ' to connect to the broker')
 
     def get_streaming_connection(self, history_storage: HistoryStorage = None,
-                                 history_start_time: datetime = None) -> StreamingMetaApiConnection:
-        """Connects to MetaApi via streaming connection.
+                                 history_start_time: datetime = None) -> StreamingMetaApiConnectionInstance:
+        """Connects to MetaApi via streaming connection instance.
 
         Args:
             history_storage: Optional history storage.
@@ -480,10 +563,10 @@ class MetatraderAccount(MetatraderAccountModel):
         if self._metaApiWebsocketClient.region and self._metaApiWebsocketClient.region != self.region:
             raise ValidationException(f'Account {self.id} is not on specified region '
                                       f'{self._metaApiWebsocketClient.region}')
-        return self._connectionRegistry.connect(self, history_storage, history_start_time)
+        return self._connectionRegistry.connect_streaming(self, history_storage, history_start_time)
 
-    def get_rpc_connection(self) -> RpcMetaApiConnection:
-        """Connects to MetaApi via RPC connection.
+    def get_rpc_connection(self) -> RpcMetaApiConnectionInstance:
+        """Connects to MetaApi via RPC connection instance.
 
         Returns:
             MetaApi connection.
@@ -491,7 +574,7 @@ class MetatraderAccount(MetatraderAccountModel):
         if self._metaApiWebsocketClient.region and self._metaApiWebsocketClient.region != self.region:
             raise ValidationException(f'Account {self.id} is not on specified region '
                                       f'{self._metaApiWebsocketClient.region}')
-        return RpcMetaApiConnection(self._metaApiWebsocketClient, self)
+        return self._connectionRegistry.connect_rpc(self)
 
     async def update(self, account: MetatraderAccountUpdateDto):
         """Updates MetaTrader account data.

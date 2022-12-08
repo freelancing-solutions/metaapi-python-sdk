@@ -67,15 +67,6 @@ class MetatraderAccountModel(ABC):
 
     @property
     @abstractmethod
-    def application(self):
-        """Returns application name to connect the account to. Currently allowed values are MetaApi and AgiliumTrade.
-
-        Returns:
-            Application name to connect the account to.
-        """
-
-    @property
-    @abstractmethod
     def magic(self):
         """Returns MetaTrader magic to place trades using.
 
@@ -369,7 +360,7 @@ class MetatraderAccountModel(ABC):
 
     @abstractmethod
     async def get_streaming_connection(self, history_storage: HistoryStorage, history_start_time: datetime = None):
-        """Connects to MetaApi via streaming connection.
+        """Connects to MetaApi via streaming connection instance.
 
         Args:
             history_storage: Optional history storage.
@@ -381,7 +372,7 @@ class MetatraderAccountModel(ABC):
 
     @abstractmethod
     async def get_rpc_connection(self):
-        """Connects to MetaApi via RPC connection.
+        """Connects to MetaApi via RPC connection instance.
 
         Returns:
             MetaApi connection.

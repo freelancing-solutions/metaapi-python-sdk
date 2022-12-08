@@ -13,6 +13,7 @@ from typing import Coroutine
 import pytest
 import asyncio
 from asyncio import sleep
+from .connectionRegistryModel import ConnectionRegistryModel
 
 
 class MockClient(MetaApiWebsocketClient):
@@ -128,35 +129,18 @@ class MockAccount(MetatraderAccount):
         }
 
 
-class AutoMockAccount(MetatraderAccount):
-    @property
-    def id(self):
-        return 'accountId'
-
-    @property
-    def reliability(self) -> str:
-        return 'regular'
-
-    @property
-    def synchronization_mode(self):
-        return 'automatic'
-
-
 storage: HistoryStorage = None
 account: MockAccount = None
-auto_account: AutoMockAccount = None
 client: MockClient = None
 client_api_client: ClientApiClient = None
 api: StreamingMetaApiConnection = None
+connection_registry: ConnectionRegistryModel = None
 
 
 @pytest.fixture(autouse=True)
 async def run_around_tests():
     global account
     account = MockAccount(MagicMock(), MagicMock(), MagicMock(), MagicMock(), 'MetaApi')
-    global auto_account
-    auto_account = AutoMockAccount(MagicMock(), MagicMock(), MagicMock(), MagicMock(), MagicMock(), MagicMock(),
-                                   'MetaApi')
     global client
     client = MockClient(MagicMock(), 'token')
     client.get_url_settings = AsyncMock()
@@ -195,10 +179,12 @@ async def run_around_tests():
             ]
         }
     })
+    global connection_registry
+    connection_registry = MagicMock()
+    connection_registry.connect_streaming = MagicMock()
+    connection_registry.remove_streaming = AsyncMock()
     global api
-    registry = MagicMock()
-    registry.connect = MagicMock()
-    api = StreamingMetaApiConnection(client, client_api_client, account, storage, registry)
+    api = StreamingMetaApiConnection(client, client_api_client, account, storage, connection_registry)
     api.terminal_state.specification = MagicMock(return_value={'symbol': 'EURUSD'})
     yield
     api.health_monitor.stop()
@@ -209,7 +195,7 @@ class TestStreamingMetaApiConnection:
     @pytest.mark.asyncio
     async def test_remove_application(self):
         """Should remove application."""
-        await api.connect()
+        await api.connect('instanceId')
         client.remove_application = AsyncMock()
         api.history_storage.clear = AsyncMock()
         await api.remove_application()
@@ -217,299 +203,9 @@ class TestStreamingMetaApiConnection:
         client.remove_application.assert_called_with('accountId')
 
     @pytest.mark.asyncio
-    async def test_create_market_buy_order(self):
-        """Should create market buy order."""
-        await api.connect()
-        trade_result = {
-            'error': 10009,
-            'description': 'TRADE_RETCODE_DONE',
-            'orderId': 46870472
-        }
-        client.trade = AsyncMock(return_value=trade_result)
-        actual = await api.create_market_buy_order('GBPUSD', 0.07, 0.9, 2.0, {'comment': 'comment',
-                                                                              'clientId': 'TE_GBPUSD_7hyINWqAlE'})
-        assert actual == trade_result
-        client.trade.assert_called_with('accountId', {'actionType': 'ORDER_TYPE_BUY', 'symbol': 'GBPUSD',
-                                                      'volume': 0.07, 'stopLoss': 0.9, 'takeProfit': 2.0,
-                                                      'comment': 'comment', 'clientId': 'TE_GBPUSD_7hyINWqAlE'}, None,
-                                        'regular')
-
-    @pytest.mark.asyncio
-    async def test_create_market_buy_order_with_relative_sl_tp(self):
-        """Should create market buy order with relative SL/TP."""
-        await api.connect()
-        trade_result = {
-            'error': 10009,
-            'description': 'TRADE_RETCODE_DONE',
-            'orderId': 46870472
-        }
-        client.trade = AsyncMock(return_value=trade_result)
-        actual = await api.create_market_buy_order('GBPUSD', 0.07, {'value': 0.1, 'units': 'RELATIVE_PRICE'},
-                                                   {'value': 2000, 'units': 'RELATIVE_POINTS'},
-                                                   {'comment': 'comment', 'clientId': 'TE_GBPUSD_7hyINWqAlE'})
-        assert actual == trade_result
-        client.trade.assert_called_with('accountId', {'actionType': 'ORDER_TYPE_BUY', 'symbol': 'GBPUSD',
-                                                      'volume': 0.07, 'stopLoss': 0.1,
-                                                      'stopLossUnits': 'RELATIVE_PRICE', 'takeProfit': 2000,
-                                                      'takeProfitUnits': 'RELATIVE_POINTS', 'comment': 'comment',
-                                                      'clientId': 'TE_GBPUSD_7hyINWqAlE'}, None, 'regular')
-
-    @pytest.mark.asyncio
-    async def test_create_market_sell_order(self):
-        """Should create market sell order."""
-        await api.connect()
-        trade_result = {
-            'error': 10009,
-            'description': 'TRADE_RETCODE_DONE',
-            'orderId': 46870472
-        }
-        client.trade = AsyncMock(return_value=trade_result)
-        actual = await api.create_market_sell_order('GBPUSD', 0.07, 0.9, 2.0, {'comment': 'comment',
-                                                                               'clientId': 'TE_GBPUSD_7hyINWqAlE'})
-        assert actual == trade_result
-        client.trade.assert_called_with('accountId', {'actionType': 'ORDER_TYPE_SELL', 'symbol': 'GBPUSD',
-                                                      'volume': 0.07, 'stopLoss': 0.9, 'takeProfit': 2.0,
-                                                      'comment': 'comment', 'clientId': 'TE_GBPUSD_7hyINWqAlE'}, None,
-                                        'regular')
-
-    @pytest.mark.asyncio
-    async def test_create_limit_buy_order(self):
-        """Should create limit buy order."""
-        await api.connect()
-        trade_result = {
-            'error': 10009,
-            'description': 'TRADE_RETCODE_DONE',
-            'orderId': 46870472
-        }
-        client.trade = AsyncMock(return_value=trade_result)
-        actual = await api.create_limit_buy_order('GBPUSD', 0.07, 1.0, 0.9, 2.0, {'comment': 'comment',
-                                                                                  'clientId': 'TE_GBPUSD_7hyINWqAlE'})
-        assert actual == trade_result
-        client.trade.assert_called_with('accountId', {'actionType': 'ORDER_TYPE_BUY_LIMIT', 'symbol': 'GBPUSD',
-                                                      'volume': 0.07, 'openPrice': 1.0, 'stopLoss': 0.9,
-                                                      'takeProfit': 2.0, 'comment': 'comment',
-                                                      'clientId': 'TE_GBPUSD_7hyINWqAlE'}, None, 'regular')
-
-    @pytest.mark.asyncio
-    async def test_create_limit_sell_order(self):
-        """Should create limit sell order."""
-        await api.connect()
-        trade_result = {
-            'error': 10009,
-            'description': 'TRADE_RETCODE_DONE',
-            'orderId': 46870472
-        }
-        client.trade = AsyncMock(return_value=trade_result)
-        actual = await api.create_limit_sell_order('GBPUSD', 0.07, 1.0, 0.9, 2.0, {'comment': 'comment',
-                                                                                   'clientId': 'TE_GBPUSD_7hyINWqAlE'})
-        assert actual == trade_result
-        client.trade.assert_called_with('accountId', {'actionType': 'ORDER_TYPE_SELL_LIMIT', 'symbol': 'GBPUSD',
-                                                      'volume': 0.07, 'openPrice': 1.0, 'stopLoss': 0.9,
-                                                      'takeProfit': 2.0, 'comment': 'comment',
-                                                      'clientId': 'TE_GBPUSD_7hyINWqAlE'}, None, 'regular')
-
-    @pytest.mark.asyncio
-    async def test_create_stop_buy_order(self):
-        """Should create stop buy order."""
-        await api.connect()
-        trade_result = {
-            'error': 10009,
-            'description': 'TRADE_RETCODE_DONE',
-            'orderId': 46870472
-        }
-        client.trade = AsyncMock(return_value=trade_result)
-        actual = await api.create_stop_buy_order('GBPUSD', 0.07, 1.0, 0.9, 2.0, {'comment': 'comment',
-                                                                                 'clientId': 'TE_GBPUSD_7hyINWqAlE'})
-        assert actual == trade_result
-        client.trade.assert_called_with('accountId', {'actionType': 'ORDER_TYPE_BUY_STOP', 'symbol': 'GBPUSD',
-                                                      'volume': 0.07, 'openPrice': 1.0, 'stopLoss': 0.9,
-                                                      'takeProfit': 2.0, 'comment': 'comment',
-                                                      'clientId': 'TE_GBPUSD_7hyINWqAlE'}, None, 'regular')
-
-    @pytest.mark.asyncio
-    async def test_create_stop_sell_order(self):
-        """Should create stop sell order."""
-        await api.connect()
-        trade_result = {
-            'error': 10009,
-            'description': 'TRADE_RETCODE_DONE',
-            'orderId': 46870472
-        }
-        client.trade = AsyncMock(return_value=trade_result)
-        actual = await api.create_stop_sell_order('GBPUSD', 0.07, 1.0, 0.9, 2.0, {'comment': 'comment',
-                                                                                  'clientId': 'TE_GBPUSD_7hyINWqAlE'})
-        assert actual == trade_result
-        client.trade.assert_called_with('accountId', {'actionType': 'ORDER_TYPE_SELL_STOP', 'symbol': 'GBPUSD',
-                                                      'volume': 0.07, 'openPrice': 1.0, 'stopLoss': 0.9,
-                                                      'takeProfit': 2.0, 'comment': 'comment',
-                                                      'clientId': 'TE_GBPUSD_7hyINWqAlE'}, None, 'regular')
-
-    @pytest.mark.asyncio
-    async def test_create_stop_limit_buy_order(self):
-        """Should create stop limit buy order."""
-        await api.connect()
-        trade_result = {
-            'error': 10009,
-            'description': 'TRADE_RETCODE_DONE',
-            'orderId': 46870472
-        }
-        client.trade = AsyncMock(return_value=trade_result)
-        actual = await api.create_stop_limit_buy_order('GBPUSD', 0.07, 1.5, 1.4, 0.9, 2.0, {
-            'comment': 'comment', 'clientId': 'TE_GBPUSD_7hyINWqAlE'})
-        assert actual == trade_result
-        client.trade.assert_called_with('accountId', {'actionType': 'ORDER_TYPE_BUY_STOP_LIMIT', 'symbol': 'GBPUSD',
-                                                      'volume': 0.07, 'openPrice': 1.5, 'stopLimitPrice': 1.4,
-                                                      'stopLoss': 0.9, 'takeProfit': 2.0, 'comment': 'comment',
-                                                      'clientId': 'TE_GBPUSD_7hyINWqAlE'}, None, 'regular')
-
-    @pytest.mark.asyncio
-    async def test_create_stop_limit_sell_order(self):
-        """Should create stop limit sell order."""
-        await api.connect()
-        trade_result = {
-            'error': 10009,
-            'description': 'TRADE_RETCODE_DONE',
-            'orderId': 46870472
-        }
-        client.trade = AsyncMock(return_value=trade_result)
-        actual = await api.create_stop_limit_sell_order('GBPUSD', 0.07, 1.0, 1.1, 2.0, 0.9, {
-            'comment': 'comment', 'clientId': 'TE_GBPUSD_7hyINWqAlE'})
-        assert actual == trade_result
-        client.trade.assert_called_with('accountId', {'actionType': 'ORDER_TYPE_SELL_STOP_LIMIT', 'symbol': 'GBPUSD',
-                                                      'volume': 0.07, 'openPrice': 1.0, 'stopLimitPrice': 1.1,
-                                                      'stopLoss': 2.0, 'takeProfit': 0.9, 'comment': 'comment',
-                                                      'clientId': 'TE_GBPUSD_7hyINWqAlE'}, None, 'regular')
-
-    @pytest.mark.asyncio
-    async def test_modify_position(self):
-        """Should modify position."""
-        await api.connect()
-        trade_result = {
-            'error': 10009,
-            'description': 'TRADE_RETCODE_DONE',
-            'orderId': 46870472
-        }
-        client.trade = AsyncMock(return_value=trade_result)
-        actual = await api.modify_position('46870472', 2.0, 0.9)
-        assert actual == trade_result
-        client.trade.assert_called_with('accountId', {'actionType': 'POSITION_MODIFY', 'positionId': '46870472',
-                                                      'stopLoss': 2.0, 'takeProfit': 0.9}, None, 'regular')
-
-    @pytest.mark.asyncio
-    async def test_close_position_partially(self):
-        """Should close position partially."""
-        await api.connect()
-        trade_result = {
-            'error': 10009,
-            'description': 'TRADE_RETCODE_DONE',
-            'orderId': 46870472
-        }
-        client.trade = AsyncMock(return_value=trade_result)
-        actual = await api.close_position_partially('46870472', 0.9)
-        assert actual == trade_result
-        client.trade.assert_called_with('accountId', {'actionType': 'POSITION_PARTIAL', 'positionId': '46870472',
-                                                      'volume': 0.9}, None, 'regular')
-
-    @pytest.mark.asyncio
-    async def test_close_position(self):
-        """Should close position."""
-        await api.connect()
-        trade_result = {
-            'error': 10009,
-            'description': 'TRADE_RETCODE_DONE',
-            'orderId': 46870472
-        }
-        client.trade = AsyncMock(return_value=trade_result)
-        actual = await api.close_position('46870472')
-        assert actual == trade_result
-        client.trade.assert_called_with('accountId', {'actionType': 'POSITION_CLOSE_ID', 'positionId': '46870472'},
-                                        None, 'regular')
-
-    @pytest.mark.asyncio
-    async def test_close_position_by_opposite(self):
-        """Should close position by an opposite one."""
-        await api.connect()
-        trade_result = {
-            'error': 10009,
-            'description': 'TRADE_RETCODE_DONE',
-            'positionId': '46870472',
-            'closeByPositionId': '46870482'
-        }
-        client.trade = AsyncMock(return_value=trade_result)
-        actual = await api.close_by('46870472', '46870482', {'comment': 'comment', 'clientId': 'TE_GBPUSD_7hyINWqAlE'})
-        assert actual == trade_result
-        client.trade.assert_called_with('accountId', {'actionType': 'POSITION_CLOSE_BY', 'positionId': '46870472',
-                                                      'closeByPositionId': '46870482', 'comment': 'comment',
-                                                      'clientId': 'TE_GBPUSD_7hyINWqAlE'}, None, 'regular')
-
-    @pytest.mark.asyncio
-    async def test_close_positions_by_symbol(self):
-        """Should close positions by symbol."""
-        await api.connect()
-        trade_result = {
-            'error': 10009,
-            'description': 'TRADE_RETCODE_DONE',
-            'orderId': 46870472
-        }
-        client.trade = AsyncMock(return_value=trade_result)
-        actual = await api.close_positions_by_symbol('EURUSD')
-        assert actual == trade_result
-        client.trade.assert_called_with('accountId', {'actionType': 'POSITIONS_CLOSE_SYMBOL', 'symbol': 'EURUSD'},
-                                        None, 'regular')
-
-    @pytest.mark.asyncio
-    async def test_modify_order(self):
-        """Should modify order."""
-        await api.connect()
-        trade_result = {
-            'error': 10009,
-            'description': 'TRADE_RETCODE_DONE',
-            'orderId': 46870472
-        }
-        client.trade = AsyncMock(return_value=trade_result)
-        actual = await api.modify_order('46870472', 1.0, 2.0, 0.9)
-        assert actual == trade_result
-        client.trade.assert_called_with('accountId', {'actionType': 'ORDER_MODIFY', 'orderId': '46870472',
-                                                      'openPrice': 1.0, 'stopLoss': 2.0, 'takeProfit': 0.9}, None,
-                                        'regular')
-
-    @pytest.mark.asyncio
-    async def test_cancel_order(self):
-        """Should cancel order."""
-        await api.connect()
-        trade_result = {
-            'error': 10009,
-            'description': 'TRADE_RETCODE_DONE',
-            'orderId': 46870472
-        }
-        client.trade = AsyncMock(return_value=trade_result)
-        actual = await api.cancel_order('46870472')
-        assert actual == trade_result
-        client.trade.assert_called_with('accountId', {'actionType': 'ORDER_CANCEL', 'orderId': '46870472'}, None,
-                                        'regular')
-
-    @pytest.mark.asyncio
-    async def test_calculate_margin(self):
-        """Should calculate margin."""
-        await api.connect()
-        margin = {
-            'margin': 110
-        }
-        order = {
-            'symbol': 'EURUSD',
-            'type': 'ORDER_TYPE_BUY',
-            'volume': 0.1,
-            'openPrice': 1.1
-        }
-        client.calculate_margin = AsyncMock(return_value=margin)
-        actual = await api.calculate_margin(order)
-        assert actual == margin
-        client.calculate_margin.assert_called_with('accountId', None, 'regular', order)
-
-    @pytest.mark.asyncio
     async def test_subscribe_to_terminal(self):
         """Should subscribe to terminal."""
-        await api.connect()
+        await api.connect('instanceId')
         await api.subscribe()
         client.ensure_subscribe.assert_any_call('accountId', 0)
         client.ensure_subscribe.assert_any_call('accountId', 1)
@@ -530,10 +226,10 @@ class TestStreamingMetaApiConnection:
     @pytest.mark.asyncio
     async def test_not_subscribe_if_closed(self):
         """Should not subscribe if connection is closed."""
-        await api.connect()
+        await api.connect('instanceId')
         client.ensure_subscribe = AsyncMock()
         client.unsubscribe = AsyncMock()
-        await api.close()
+        await api.close('instanceId')
         try:
             await api.subscribe()
             pytest.fail()
@@ -547,7 +243,7 @@ class TestStreamingMetaApiConnection:
         client.synchronize = AsyncMock()
         with patch('lib.metaApi.streamingMetaApiConnection.random_id', return_value='synchronizationId'):
             api = StreamingMetaApiConnection(client, client_api_client, account, None, MagicMock())
-            await api.connect()
+            await api.connect('instanceId')
             await api.history_storage.on_history_order_added('vint-hill:1:ps-mpa-1',
                                                              {'id': '1', 'type': 'ORDER_TYPE_SELL',
                                                               'state': 'ORDER_STATE_FILLED',
@@ -567,7 +263,7 @@ class TestStreamingMetaApiConnection:
         with patch('lib.metaApi.streamingMetaApiConnection.random_id', return_value='synchronizationId'):
             api = StreamingMetaApiConnection(client, client_api_client, account, None, MagicMock(),
                                              date('2020-10-07T00:00:00.000Z'))
-            await api.connect()
+            await api.connect('instanceId')
             await api.history_storage.on_history_order_added('vint-hill:1:ps-mpa-1',
                                                              {'id': '1', 'type': 'ORDER_TYPE_SELL',
                                                               'state': 'ORDER_STATE_FILLED',
@@ -583,7 +279,7 @@ class TestStreamingMetaApiConnection:
     @pytest.mark.asyncio
     async def test_subscribe_to_market_data(self):
         """Should subscribe to market data."""
-        await api.connect()
+        await api.connect('instanceId')
         client.subscribe_to_market_data = AsyncMock()
         promise = asyncio.create_task(api.subscribe_to_market_data('EURUSD', None))
         api.terminal_state.wait_for_price = AsyncMock(return_value={'time': datetime.fromtimestamp(1000000),
@@ -603,7 +299,7 @@ class TestStreamingMetaApiConnection:
     @pytest.mark.asyncio
     async def test_not_subscribe_if_no_specification(self):
         """Should not subscribe to symbol that has no specification"""
-        await api.connect()
+        await api.connect('instanceId')
         client.subscribe_to_market_data = AsyncMock()
         api.terminal_state.wait_for_price = AsyncMock(return_value={'time': datetime.fromtimestamp(1000000),
                                                                     'symbol': 'EURUSD', 'bid': 1, 'ask': 1.1})
@@ -619,7 +315,7 @@ class TestStreamingMetaApiConnection:
     @pytest.mark.asyncio
     async def test_unsubscribe_from_market_data(self):
         """Should unsubscribe from market data."""
-        await api.connect()
+        await api.connect('instanceId')
         client.subscribe_to_market_data = AsyncMock()
         client.unsubscribe_from_market_data = AsyncMock()
         api.terminal_state.wait_for_price = AsyncMock(return_value={'time': datetime.fromtimestamp(1000000),
@@ -642,7 +338,7 @@ class TestStreamingMetaApiConnection:
     @pytest.mark.asyncio
     async def test_unsubscribe_during_subscription_downgrade(self):
         """Should unsubscribe during market data subscription downgrade."""
-        await api.connect()
+        await api.connect('instanceId')
         api.subscribe_to_market_data = AsyncMock()
         api.unsubscribe_from_market_data = AsyncMock()
         await api.on_subscription_downgraded('vint-hill:1:ps-mpa-1', 'EURUSD', None,
@@ -653,7 +349,7 @@ class TestStreamingMetaApiConnection:
     @pytest.mark.asyncio
     async def test_update_market_data_subscription_on_downgrade(self):
         """Should update market data subscription on downgrade."""
-        await api.connect()
+        await api.connect('instanceId')
         api.subscribe_to_market_data = AsyncMock()
         api.unsubscribe_from_market_data = AsyncMock()
         await api.on_subscription_downgraded('vint-hill:1:ps-mpa-1', 'EURUSD',
@@ -662,44 +358,16 @@ class TestStreamingMetaApiConnection:
         api.unsubscribe_from_market_data.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_save_uptime_stats(self):
-        """Should save uptime stats to the server."""
-        await api.connect()
-        client.save_uptime = AsyncMock()
-        await api.save_uptime({'1h': 100})
-        client.save_uptime.assert_called_with('accountId', {'1h': 100})
-
-    @pytest.mark.asyncio
     async def test_initialize(self):
         """Should initialize listeners, terminal state and history storage for accounts with user sync mode."""
         client.add_synchronization_listener = MagicMock()
         api = StreamingMetaApiConnection(client, client_api_client, account, storage, MagicMock())
-        await api.connect()
+        await api.connect('instanceId')
         assert api.terminal_state
         assert api.history_storage
         client.add_synchronization_listener.assert_any_call('accountId', api)
         client.add_synchronization_listener.assert_any_call('accountId', api.terminal_state)
         client.add_synchronization_listener.assert_any_call('accountId', api.history_storage)
-
-    @pytest.mark.asyncio
-    async def test_add_sync_listeners(self):
-        """Should add synchronization listeners for account with user synchronization mode."""
-        client.add_synchronization_listener = MagicMock()
-        api = StreamingMetaApiConnection(client, client_api_client, account, storage, MagicMock())
-        await api.connect()
-        listener = {}
-        api.add_synchronization_listener(listener)
-        client.add_synchronization_listener.assert_called_with('accountId', listener)
-
-    @pytest.mark.asyncio
-    async def test_remove_sync_listeners(self):
-        """Should remove synchronization listeners."""
-        client.remove_synchronization_listener = MagicMock()
-        api = StreamingMetaApiConnection(client, client_api_client, account, storage, MagicMock())
-        await api.connect()
-        listener = {}
-        api.remove_synchronization_listener(listener)
-        client.remove_synchronization_listener.assert_called_with('accountId', listener)
 
     @pytest.mark.asyncio
     async def test_sync_on_connection(self):
@@ -709,7 +377,7 @@ class TestStreamingMetaApiConnection:
             api = StreamingMetaApiConnection(client, client_api_client, account, storage, MagicMock())
             storage.last_history_order_time = AsyncMock(return_value=date('2020-01-01T00:00:00.000Z'))
             storage.last_deal_time = AsyncMock(return_value=date('2020-01-02T00:00:00.000Z'))
-            await api.connect()
+            await api.connect('instanceId')
             await api.on_connected('vint-hill:1:ps-mpa-1', 1)
             await asyncio.sleep(0.05)
             client.synchronize.assert_called_with('accountId', 1, 'ps-mpa-1', 'synchronizationId',
@@ -722,7 +390,7 @@ class TestStreamingMetaApiConnection:
         with patch('lib.metaApi.streamingMetaApiConnection.random_id', return_value='synchronizationId'):
             client.synchronize = AsyncMock(side_effect=[Exception('test error'), None])
             api = StreamingMetaApiConnection(client, client_api_client, account, storage, MagicMock())
-            await api.connect()
+            await api.connect('instanceId')
             storage.last_history_order_time = AsyncMock(return_value=date('2020-01-01T00:00:00.000Z'))
             storage.last_deal_time = AsyncMock(return_value=date('2020-01-02T00:00:00.000Z'))
             await api.on_connected('vint-hill:1:ps-mpa-1', 1)
@@ -737,12 +405,12 @@ class TestStreamingMetaApiConnection:
         with patch('lib.metaApi.streamingMetaApiConnection.random_id', return_value='synchronizationId'):
             client.synchronize = AsyncMock()
             client.unsubscribe = AsyncMock()
-            api = StreamingMetaApiConnection(client, client_api_client, account, storage, MagicMock())
-            await api.connect()
+            api = StreamingMetaApiConnection(client, client_api_client, account, storage, connection_registry)
+            await api.connect('instanceId')
             await api.history_storage.on_history_order_added('vint-hill:1:ps-mpa-1',
                                                              {'doneTime': date('2020-01-01T00:00:00.000Z')})
             await api.history_storage.on_deal_added('vint-hill:1:ps-mpa-1', {'time': date('2020-01-02T00:00:00.000Z')})
-            await api.close()
+            await api.close('instanceId')
             await api.on_connected('vint-hill:1:ps-mpa-1', 1)
             client.synchronize.assert_not_called()
 
@@ -752,20 +420,54 @@ class TestStreamingMetaApiConnection:
         client.add_synchronization_listener = MagicMock()
         client.remove_synchronization_listener = MagicMock()
         client.unsubscribe = AsyncMock()
-        api = StreamingMetaApiConnection(client, client_api_client, account, storage, MagicMock())
-        await api.connect()
-        await api.close()
-        client.unsubscribe.assert_any_call('accountId')
+        api = StreamingMetaApiConnection(client, client_api_client, account, storage, connection_registry)
+        await api.connect('instanceId')
+        await api.close('instanceId')
         client.remove_synchronization_listener.assert_any_call('accountId', api)
         client.remove_synchronization_listener.assert_any_call('accountId', api.terminal_state)
         client.remove_synchronization_listener.assert_any_call('accountId', api.history_storage)
+        connection_registry.remove_streaming.assert_called_with(account)
 
-    @pytest.mark.timeout(60)
+    @pytest.mark.asyncio
+    async def test_close_connection_if_all_instances_closed(self):
+        """Should close connection only if all instances closed."""
+        client.add_synchronization_listener = MagicMock()
+        client.remove_synchronization_listener = MagicMock()
+        api = StreamingMetaApiConnection(client, client_api_client, account, storage, connection_registry)
+        await api.connect('accountId')
+        await api.connect('accountId')
+        await api.connect('accountId2')
+        await api.connect('accountId3')
+        await api.close('accountId')
+        client.remove_synchronization_listener.assert_not_called()
+        await api.close('accountId3')
+        client.remove_synchronization_listener.assert_not_called()
+        await api.close('accountId2')
+        client.remove_synchronization_listener.assert_any_call('accountId', api)
+        client.remove_synchronization_listener.assert_any_call('accountId', api.terminal_state)
+        client.remove_synchronization_listener.assert_any_call('accountId', api.history_storage)
+        connection_registry.remove_streaming.assert_called_with(account)
+
+    @pytest.mark.asyncio
+    async def test_close_connection_if_all_instances_closed(self):
+        """Should close connection only if all instances closed."""
+        client.add_synchronization_listener = MagicMock()
+        client.remove_synchronization_listener = MagicMock()
+        api = StreamingMetaApiConnection(client, client_api_client, account, storage, connection_registry)
+        await api.close('accountId')
+        client.remove_synchronization_listener.assert_not_called()
+        await api.connect('accountId')
+        await api.close('accountId')
+        client.remove_synchronization_listener.assert_any_call('accountId', api)
+        client.remove_synchronization_listener.assert_any_call('accountId', api.terminal_state)
+        client.remove_synchronization_listener.assert_any_call('accountId', api.history_storage)
+        connection_registry.remove_streaming.assert_called_with(account)
+
     @pytest.mark.asyncio
     async def test_wait_sync_complete_user_mode(self):
         """Should wait until synchronization complete."""
         client.wait_synchronized = AsyncMock()
-        await api.connect()
+        await api.connect('instanceId')
         assert not (await api.is_synchronized('vint-hill:1:ps-mpa-1'))
         api._historyStorage.update_disk_storage = AsyncMock()
         try:
@@ -784,12 +486,11 @@ class TestStreamingMetaApiConnection:
         assert (await api.is_synchronized('vint-hill:1:ps-mpa-1', 'synchronizationId'))
         client.wait_synchronized.assert_called_with('accountId', 1, 'app.*', ANY)
 
-    @pytest.mark.timeout(60)
     @pytest.mark.asyncio
     async def test_wait_sync_complete_replica(self):
         """Should wait synchronize on a replica."""
         client.wait_synchronized = AsyncMock()
-        await api.connect()
+        await api.connect('instanceId')
         assert not (await api.is_synchronized('new-york:1:ps-mpa-1'))
         api._historyStorage.update_disk_storage = AsyncMock()
         try:
@@ -811,7 +512,7 @@ class TestStreamingMetaApiConnection:
     @pytest.mark.asyncio
     async def test_time_out_waiting_for_sync(self):
         """Should time out waiting for synchronization complete."""
-        await api.connect()
+        await api.connect('instanceId')
         try:
             await api.wait_synchronized({'applicationPattern': 'app.*', 'synchronizationId': 'synchronizationId',
                                          'timeoutInSeconds': 1, 'intervalInMilliseconds': 10})
@@ -824,7 +525,7 @@ class TestStreamingMetaApiConnection:
     async def test_initialize_connection(self):
         """Should initialize connection."""
         client.add_account_cache = MagicMock()
-        await api.connect()
+        await api.connect('instanceId')
         api._historyStorage.initialize = AsyncMock()
         await api.initialize()
         api._historyStorage.initialize.assert_called()
@@ -834,7 +535,7 @@ class TestStreamingMetaApiConnection:
     @pytest.mark.asyncio
     async def test_disconnect(self):
         """Should set synchronized false on disconnect."""
-        await api.connect()
+        await api.connect('instanceId')
         client.synchronize = AsyncMock()
         await api.on_connected('vint-hill:1:ps-mpa-1', 2)
         await asyncio.sleep(0.05)
@@ -846,7 +547,7 @@ class TestStreamingMetaApiConnection:
     @pytest.mark.asyncio
     async def test_on_stream_closed(self):
         """Should delete state if stream closed."""
-        await api.connect()
+        await api.connect('instanceId')
         client.synchronize = AsyncMock()
         await api.on_connected('vint-hill:1:ps-mpa-1', 2)
         await asyncio.sleep(0.05)
@@ -859,7 +560,7 @@ class TestStreamingMetaApiConnection:
         """Should create refresh subscriptions job."""
         with patch('lib.metaApi.streamingMetaApiConnection.asyncio.sleep', new=lambda x: sleep(x / 10)):
             with patch('lib.metaApi.streamingMetaApiConnection.uniform', new=MagicMock(return_value=1)):
-                await api.connect()
+                await api.connect('instanceId')
                 client.refresh_market_data_subscriptions = AsyncMock()
                 client.subscribe_to_market_data = AsyncMock()
                 client.add_synchronization_listener = MagicMock()
@@ -877,7 +578,7 @@ class TestStreamingMetaApiConnection:
                 await api.on_synchronization_started('vint-hill:1:ps-mpa-1')
                 await sleep(0.05)
                 assert client.refresh_market_data_subscriptions.call_count == 3
-                await api.close()
+                await api.close('instanceId')
                 await sleep(0.11)
                 assert client.refresh_market_data_subscriptions.call_count == 3
 
@@ -886,7 +587,7 @@ class TestStreamingMetaApiConnection:
         """Should create refresh subscriptions job with a replica."""
         with patch('lib.metaApi.streamingMetaApiConnection.asyncio.sleep', new=lambda x: sleep(x / 10)):
             with patch('lib.metaApi.streamingMetaApiConnection.uniform', new=MagicMock(return_value=1)):
-                await api.connect()
+                await api.connect('instanceId')
                 client.refresh_market_data_subscriptions = AsyncMock()
                 client.subscribe_to_market_data = AsyncMock()
                 client.add_synchronization_listener = MagicMock()
@@ -904,7 +605,7 @@ class TestStreamingMetaApiConnection:
                 await api.on_synchronization_started('new-york:1:ps-mpa-1')
                 await sleep(0.05)
                 assert client.refresh_market_data_subscriptions.call_count == 3
-                await api.close()
+                await api.close('instanceId')
                 await sleep(0.11)
                 assert client.refresh_market_data_subscriptions.call_count == 3
 
@@ -913,7 +614,7 @@ class TestStreamingMetaApiConnection:
         """Should remove subscription job on region unsubscribe."""
         with patch('lib.metaApi.streamingMetaApiConnection.asyncio.sleep', new=lambda x: sleep(x / 10)):
             with patch('lib.metaApi.streamingMetaApiConnection.uniform', new=MagicMock(return_value=1)):
-                await api.connect()
+                await api.connect('instanceId')
                 client.refresh_market_data_subscriptions = AsyncMock()
                 client.subscribe_to_market_data = AsyncMock()
                 client.add_synchronization_listener = MagicMock()
@@ -931,25 +632,14 @@ class TestStreamingMetaApiConnection:
                 await api.on_unsubscribe_region('vint-hill')
                 await sleep(0.11)
                 assert client.refresh_market_data_subscriptions.call_count == 2
-                await api.close()
-
-    @pytest.mark.asyncio
-    async def test_queue_events(self):
-        """Should queue events."""
-        client.queue_event = MagicMock()
-
-        def event_callable():
-            pass
-
-        api.queue_event('test', event_callable)
-        client.queue_event.assert_called_with('accountId', 'test', event_callable)
+                await api.close('instanceId')
 
     @pytest.mark.asyncio
     async def test_clear_region_states_on_socket_reconnect(self):
         """Should clear region states on socket reconnect."""
         with patch('lib.metaApi.streamingMetaApiConnection.asyncio.sleep', new=lambda x: sleep(x / 10)):
             with patch('lib.metaApi.streamingMetaApiConnection.uniform', new=MagicMock(return_value=1)):
-                await api.connect()
+                await api.connect('instanceId')
                 client.refresh_market_data_subscriptions = AsyncMock()
                 client.subscribe_to_market_data = AsyncMock()
                 client.add_synchronization_listener = MagicMock()

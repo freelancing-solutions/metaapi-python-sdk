@@ -19,7 +19,6 @@ domain_client = MagicMock()
 client: MetaApiWebsocketClient = None
 future_close = asyncio.Future()
 fake_server = None
-empty_hash = 'd41d8cd98f00b204e9800998ecf8427e'
 connections = []
 session_id = ''
 account_information = {
@@ -80,6 +79,7 @@ async def run_around_tests():
     client = MetaApiWebsocketClient(domain_client, 'token', {'application': 'application',
                                                              'domain': 'project-stock.agiliumlabs.cloud',
                                                              'requestTimeout': 3, 'useSharedClientApi': True,
+                                                             'disableInternalJobs': True,
                                                              'retryOpts': {'retries': 3, 'minDelayInSeconds': 0.1,
                                                                            'maxDelayInSeconds': 0.5}})
     client.set_url('http://localhost:8080')
@@ -107,6 +107,7 @@ async def run_around_tests():
     client._latencyService.on_unsubscribe = MagicMock()
     client._latencyService.on_deals_synchronized = AsyncMock()
     client._latencyService.get_active_account_instances = MagicMock(return_value=[])
+    client._latencyService.wait_connected_instance = AsyncMock(return_value='accountId:vint-hill:0:ps-mpa-1')
     global session_id
     session_id = client.socket_instances['vint-hill'][0][0]['sessionId']
     client._resolved = True
@@ -213,6 +214,82 @@ async def test_retry_connection_if_timed_out():
                                             'requestId': data['requestId'], 'positions': positions})
 
     asyncio.create_task(delayed_start())
+    client._regionsByAccounts['accountId'] = {'region': 'vint-hill', 'connections': 1}
+    client._accountsByReplicaId['accountId'] = 'accountId'
+    client._accountReplicas['accountId'] = {
+        'vint-hill': 'accountId'
+    }
+    client._connectedHosts = {
+        'accountId:vint-hill:0:ps-mpa-1': 'ps-mpa-1'
+    }
+    client._latencyService.wait_connected_instance = AsyncMock(return_value='accountId:vint-hill:0:ps-mpa-1')
+    actual = await client.get_positions('accountId')
+    positions[0]['time'] = date(positions[0]['time'])
+    positions[0]['updateTime'] = date(positions[0]['updateTime'])
+    assert actual == positions
+
+
+@pytest.mark.asyncio
+async def test_wait_for_connected_instance_before_sending_requests():
+    """Should wait for connected instance before sending requests."""
+    positions = [{
+        'id': '46214692',
+        'type': 'POSITION_TYPE_BUY',
+        'symbol': 'GBPUSD',
+        'magic': 1000,
+        'time': '2020-04-15T02:45:06.521Z',
+        'updateTime': '2020-04-15T02:45:06.521Z',
+        'openPrice': 1.26101,
+        'currentPrice': 1.24883,
+        'currentTickValue': 1,
+        'volume': 0.07,
+        'swap': 0,
+        'profit': -85.25999999999966,
+        'commission': -0.25,
+        'clientId': 'TE_GBPUSD_7hyINWqAlE',
+        'stopLoss': 1.17721,
+        'unrealizedProfit': -85.25999999999901,
+        'realizedProfit': -6.536993168992922e-13
+    }]
+    fake_server = FakeServer()
+    await fake_server.start(6785)
+    client = MetaApiWebsocketClient(domain_client, 'token', {
+        'application': 'application',
+        'domain': 'project-stock.agiliumlabs.cloud', 'requestTimeout': 1.5, 'useSharedClientApi': False,
+        'connectTimeout': 0.1,
+        'retryOpts': {'retries': 3, 'minDelayInSeconds': 0.1, 'maxDelayInSeconds': 0.5}})
+    client._accountsByReplicaId['accountId'] = 'accountId'
+    client.set_url('http://localhost:6785')
+
+    @sio.on('request')
+    async def on_request(sid, data):
+        if data['type'] == 'getPositions' and data['accountId'] == 'accountId' \
+                and data['application'] == 'RPC':
+            await sio.emit('response', {'type': 'response', 'accountId': data['accountId'],
+                                        'requestId': data['requestId'], 'positions': positions})
+        elif data['type'] == 'subscribe':
+            await sio.emit('response', {'type': 'response', 'accountId': data['accountId'],
+                                        'requestId': data['requestId']})
+
+    client._regionsByAccounts['accountId'] = {'region': 'vint-hill', 'connections': 1}
+    client._accountsByReplicaId['accountId'] = 'accountId'
+    client._accountReplicas['accountId'] = {
+        'vint-hill': 'accountId'
+    }
+    client._connectedHosts = {
+        'accountId:vint-hill:0:ps-mpa-1': 'ps-mpa-1'
+    }
+    client._latencyService.on_connected = AsyncMock()
+    client._latencyService.on_disconnected = MagicMock()
+    client._latencyService.on_unsubscribe = MagicMock()
+    client._latencyService.on_deals_synchronized = AsyncMock()
+    client._latencyService.get_active_account_instances = MagicMock(return_value=[])
+
+    async def wait_instance_func(arg):
+        await asyncio.sleep(0.05)
+        return 'accountId:vint-hill:0:ps-mpa-1'
+
+    client._latencyService.wait_connected_instance = AsyncMock(side_effect=wait_instance_func)
     actual = await client.get_positions('accountId')
     positions[0]['time'] = date(positions[0]['time'])
     positions[0]['updateTime'] = date(positions[0]['updateTime'])
@@ -265,10 +342,12 @@ async def test_add_account_cache():
     with freeze_time() as frozen_datetime:
         with patch('lib.clients.metaApi.metaApiWebsocket_client.asyncio.sleep', new=lambda x: sleep(x / 7200)):
             client = MetaApiWebsocketClient(domain_client, 'token', {
-                'application': 'application', 'domain': 'project-stock.agiliumlabs.cloud',
+                'application': 'application', 'domain': 'project-stock.agiliumlabs.cloud', 'disableInternalJobs': True,
                 'requestTimeout': 3})
             client.add_account_cache('accountId2', {'vint-hill': 'accountId2'})
             assert client.get_account_region('accountId2') == 'vint-hill'
+            assert client.account_replicas['accountId2'] == {'vint-hill': 'accountId2'}
+            assert client.accounts_by_replica_id['accountId2'] == 'accountId2'
             client.add_account_cache('accountId2', {'vint-hill': 'accountId2'})
             assert client.get_account_region('accountId2') == 'vint-hill'
             client.remove_account_cache('accountId2')
@@ -276,7 +355,7 @@ async def test_add_account_cache():
             client.remove_account_cache('accountId2')
             assert client.get_account_region('accountId2') == 'vint-hill'
             frozen_datetime.tick(7201)
-            await sleep(0.27)
+            client._clear_account_cache_job()
             assert client.get_account_region('accountId2') is None
             assert 'accountId2' not in client.account_replicas
             assert 'accountId2' not in client.accounts_by_replica_id
@@ -298,7 +377,57 @@ async def test_delay_region_deletion():
         with patch('lib.clients.metaApi.metaApiWebsocket_client.asyncio.sleep', new=lambda x: sleep(x / 7200)):
             frozen_datetime.move_to('2020-10-10 01:00:00.000')
             client = MetaApiWebsocketClient(domain_client, 'token', {
-                'application': 'application', 'domain': 'project-stock.agiliumlabs.cloud',
+                'application': 'application', 'domain': 'project-stock.agiliumlabs.cloud', 'disableInternalJobs': True,
+                'requestTimeout': 3})
+            client.set_url('http://localhost:8080')
+
+            client._socketInstances = {'vint-hill': {0: [], 1: []}}
+            client._regionsByAccounts['accountId'] = {'region': 'vint-hill', 'connections': 1,
+                                                      'lastUsed': datetime.now().timestamp()}
+            client._socketInstancesByAccounts = {0: {'accountId': 0}, 1: {'accountId': 0}}
+            client._connectedHosts = {'accountId:0:ps-mpa-1': 'ps-mpa-1'}
+            await client.connect(1, 'vint-hill')
+            await client.connect(0, 'vint-hill')
+            client._socketInstances['vint-hill'][0][0]['synchronizationThrottler']._accountsBySynchronizationIds = {}
+            client._socketInstances['vint-hill'][1][0]['synchronizationThrottler']._accountsBySynchronizationIds = {}
+            client._latencyService.on_connected = AsyncMock()
+            client._latencyService.on_disconnected = MagicMock()
+            client._latencyService.on_unsubscribe = MagicMock()
+            client._latencyService.on_deals_synchronized = AsyncMock()
+            client._latencyService.get_active_account_instances = MagicMock(return_value=[])
+            client._latencyService.wait_connected_instance = AsyncMock(return_value='accountId:vint-hill:0:ps-mpa-1')
+
+            client.add_account_cache('accountId2', {'vint-hill': 'accountId2'})
+            assert client.get_account_region('accountId2') == 'vint-hill'
+            await client.get_account_information('accountId2')
+            assert client.get_account_region('accountId2') == 'vint-hill'
+            frozen_datetime.move_to('2020-10-10 03:00:05.000')
+            client._clear_account_cache_job()
+            frozen_datetime.move_to('2020-10-10 01:00:00.000')
+            assert client.get_account_region('accountId2') == 'vint-hill'
+            await client.get_account_information('accountId2')
+            client.remove_account_cache('accountId2')
+            frozen_datetime.move_to('2020-10-10 02:35:05.000')
+            client._clear_account_cache_job()
+            frozen_datetime.move_to('2020-10-10 01:00:00.000')
+            assert client.get_account_region('accountId2') == 'vint-hill'
+            frozen_datetime.move_to('2020-10-10 00:30:00.000')
+            await client.get_account_information('accountId2')
+            frozen_datetime.move_to('2020-10-10 02:35:05.000')
+            client._clear_account_cache_job()
+            frozen_datetime.move_to('2020-10-10 01:00:00.000')
+            assert client.get_account_region('accountId2') is None
+            await client.close()
+
+
+@pytest.mark.asyncio
+async def test_clear_cache_including_accounts_with_several_replicas():
+    """Should correctly clear account cache including accounts with several replicas."""
+    with freeze_time() as frozen_datetime:
+        with patch('lib.clients.metaApi.metaApiWebsocket_client.asyncio.sleep', new=lambda x: sleep(x / 7200)):
+            frozen_datetime.move_to('2020-10-10 01:00:00.000')
+            client = MetaApiWebsocketClient(domain_client, 'token', {
+                'application': 'application', 'domain': 'project-stock.agiliumlabs.cloud', 'disableInternalJobs': True,
                 'requestTimeout': 3})
             client.set_url('http://localhost:8080')
 
@@ -312,26 +441,42 @@ async def test_delay_region_deletion():
             client._socketInstances['vint-hill'][0][0]['synchronizationThrottler']._accountsBySynchronizationIds = {}
             client._socketInstances['vint-hill'][1][0]['synchronizationThrottler']._accountsBySynchronizationIds = {}
 
-            client.add_account_cache('accountId2', {'vint-hill': 'accountId2'})
-            assert client.get_account_region('accountId2') == 'vint-hill'
-            await client.get_account_information('accountId2')
-            assert client.get_account_region('accountId2') == 'vint-hill'
-            frozen_datetime.move_to('2020-10-10 03:00:05.000')
-            await sleep(0.27)
+            client.add_account_cache('accountId1', {
+                'vint-hill': 'accountId1',
+                'new-york': 'accountId2'
+            })
+            client.remove_account_cache('accountId1')
+            frozen_datetime.move_to('2020-10-10 04:00:05.000')
+            client._clear_account_cache_job()
+            assert not client.get_account_region('accountId1')
+            assert not client.get_account_region('accountId2')
+            await client.close()
+
+
+@pytest.mark.asyncio
+async def test_clear_cache_added_on_sync_packet():
+    """Should correctly clear account cache added on synchronization packet."""
+    with freeze_time() as frozen_datetime:
+        with patch('lib.clients.metaApi.metaApiWebsocket_client.asyncio.sleep', new=lambda x: sleep(x / 7200)):
             frozen_datetime.move_to('2020-10-10 01:00:00.000')
-            assert client.get_account_region('accountId2') == 'vint-hill'
-            await client.get_account_information('accountId2')
-            client.remove_account_cache('accountId2')
-            frozen_datetime.move_to('2020-10-10 02:35:05.000')
-            await sleep(0.27)
-            frozen_datetime.move_to('2020-10-10 01:00:00.000')
-            assert client.get_account_region('accountId2') == 'vint-hill'
-            frozen_datetime.move_to('2020-10-10 00:30:00.000')
-            await client.get_account_information('accountId2')
-            frozen_datetime.move_to('2020-10-10 02:35:05.000')
-            await sleep(0.27)
-            frozen_datetime.move_to('2020-10-10 01:00:00.000')
-            assert client.get_account_region('accountId2') is None
+            client = MetaApiWebsocketClient(domain_client, 'token', {
+                'application': 'application', 'domain': 'project-stock.agiliumlabs.cloud', 'disableInternalJobs': True,
+                'requestTimeout': 3})
+            client.set_url('http://localhost:8080')
+
+            client._socketInstances = {'vint-hill': {0: [], 1: []}}
+            client._regionsByAccounts['accountId'] = {'region': 'vint-hill', 'connections': 1,
+                                                      'lastUsed': datetime.now().timestamp()}
+            client._socketInstancesByAccounts = {0: {'accountId': 0}, 1: {'accountId': 0}}
+            client._connectedHosts = {'accountId:0:ps-mpa-1': 'ps-mpa-1'}
+            await client.connect(1, 'vint-hill')
+            await client.connect(0, 'vint-hill')
+            client._socketInstances['vint-hill'][0][0]['synchronizationThrottler']._accountsBySynchronizationIds = {}
+            client._socketInstances['vint-hill'][1][0]['synchronizationThrottler']._accountsBySynchronizationIds = {}
+
+            await sio.emit('synchronization', {'type': 'keepalive', 'accountId': 'accountId1'})
+            frozen_datetime.move_to('2020-10-10 04:00:05.000')
+            client._clear_account_cache_job()
             await client.close()
 
 
@@ -1143,8 +1288,8 @@ class TestUnsubscribe:
         client._latencyService.on_unsubscribe.assert_called_with('accountId')
 
     @pytest.mark.asyncio
-    async def test_ignore_not_found_unsubscribe(self):
-        """Should ignore not found exception on unsubscribe."""
+    async def test_not_throw_errors_on_unsubscribe(self):
+        """Should not throw errors on unsubscribe."""
 
         @sio.on('request')
         async def on_request(sid, data):
@@ -1152,11 +1297,7 @@ class TestUnsubscribe:
                                                'details': [{'parameter': 'volume', 'message': 'Required value.'}],
                                                'requestId': data['requestId']})
 
-        try:
-            await client.unsubscribe('accountId')
-            raise Exception('ValidationException expected')
-        except Exception as err:
-            assert err.__class__.__name__ == 'ValidationException'
+        await client.unsubscribe('accountId')
 
         @sio.on('request')
         async def on_request(sid, data):

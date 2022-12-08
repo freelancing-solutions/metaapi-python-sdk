@@ -56,7 +56,6 @@ async def meta_api_synchronization():
                 'password': password,
                 'server': server_name,
                 'provisioningProfileId': profile.id,
-                'application': 'MetaApi',
                 'magic': 1000
             })
         else:
