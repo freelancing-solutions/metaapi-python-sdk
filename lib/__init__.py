@@ -5,4 +5,5 @@ from .clients.metaApi.synchronizationListener import SynchronizationListener
 from .metaApi.models import format_error, format_date, date
 from metaapi_cloud_copyfactory_sdk import CopyFactory, StopoutListener, UserLogListener, TransactionListener
 from metaapi_cloud_metastats_sdk import MetaStats
-from metaapi_cloud_risk_management_sdk import RiskManagement, DrawdownListener
+from .riskManagement import RiskManagement, TrackerEventListener, PeriodStatisticsListener, EquityChartListener, \
+    EquityBalanceListener

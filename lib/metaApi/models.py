@@ -657,6 +657,8 @@ class MetatraderSymbolPrice(TypedDict):
     """Bid price."""
     ask: float
     """Ask price."""
+    equity: float
+    """Account equity."""
     profitTickValue: float
     """Tick value for a profitable position."""
     lossTickValue: float

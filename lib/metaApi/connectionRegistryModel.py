@@ -8,8 +8,8 @@ class ConnectionRegistryModel(ABC):
     """Defines interface for a connection registry class."""
 
     @abstractmethod
-    def connect(self, account: MetatraderAccountModel, history_storage: HistoryStorage,
-                history_start_time: datetime = None):
+    def connect_streaming(self, account: MetatraderAccountModel, history_storage: HistoryStorage,
+                          history_start_time: datetime = None):
         """Creates and returns a new account connection if doesnt exist, otherwise returns old.
 
         Args:
@@ -18,7 +18,34 @@ class ConnectionRegistryModel(ABC):
             history_start_time: History start time.
 
         Returns:
-           Streaming metaapi connection.
+            A coroutine resolving with account connection.
+        """
+
+    @abstractmethod
+    async def remove_streaming(self, account: MetatraderAccountModel):
+        """Removes a streaming connection from registry.
+
+        Args:
+            account: MetaTrader account to remove from registry.
+        """
+
+    @abstractmethod
+    def connect_rpc(self, account: MetatraderAccountModel):
+        """Creates and returns a new account connection if doesnt exist, otherwise returns old.
+
+        Args:
+            account: MetaTrader account to connect to.
+
+        Returns:
+            A coroutine resolving with account connection.
+        """
+
+    @abstractmethod
+    async def remove_rpc(self, account: MetatraderAccountModel):
+        """Removes an RPC connection from registry.
+
+        Args:
+            account: MetaTrader account to remove from registry.
         """
 
     @abstractmethod
@@ -27,4 +54,13 @@ class ConnectionRegistryModel(ABC):
 
         Args:
             account_id: MetaTrader account id to remove.
+        """
+
+    @property
+    @abstractmethod
+    def application(self) -> str:
+        """Returns application type.
+
+        Returns:
+            Application type.
         """

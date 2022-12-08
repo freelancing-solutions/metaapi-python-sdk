@@ -29,9 +29,19 @@ class MetatraderAccountReplica(MetatraderAccountReplicaModel):
         """Returns account replica id.
 
         Returns:
-            Account replica id.
+            Unique account replica id.
         """
         return self._data['_id']
+
+    @property
+    def state(self) -> str:
+        """Returns current account replica state. One of CREATED, DEPLOYING, DEPLOYED, DEPLOY_FAILED, UNDEPLOYING,
+        UNDEPLOYED, UNDEPLOY_FAILED, DELETING, DELETE_FAILED, REDEPLOY_FAILED.
+
+        Returns:
+            Current account replica state.
+        """
+        return self._data['state']
 
     @property
     def magic(self) -> int:
@@ -43,18 +53,8 @@ class MetatraderAccountReplica(MetatraderAccountReplicaModel):
         return self._data['magic']
 
     @property
-    def state(self) -> str:
-        """Returns account replica deployment state. One of CREATED, DEPLOYING, DEPLOYED, UNDEPLOYING,
-        UNDEPLOYED, DELETING.
-
-        Returns:
-            MetaTrader magic to place trades using.
-        """
-        return self._data['state']
-
-    @property
     def connection_status(self) -> str:
-        """Returns terminal & broker connection status, one of CONNECTED, DISCONNECTED, DISCONNECTED_FROM_BROKER
+        """Returns terminal & broker connection status, one of CONNECTED, DISCONNECTED, DISCONNECTED_FROM_BROKER.
 
         Returns:
             Terminal & broker connection status.
@@ -62,13 +62,31 @@ class MetatraderAccountReplica(MetatraderAccountReplicaModel):
         return self._data['connectionStatus']
 
     @property
-    def metadata(self) -> Dict:
-        """Returns extra information which can be stored together with your account replica.
+    def quote_streaming_interval_in_seconds(self) -> str:
+        """Returns quote streaming interval in seconds.
 
         Returns:
-            Extra information which can be stored together with your account replica.
+            Quote streaming interval in seconds.
         """
-        return self._data['metadata'] if 'metadata' in self._data else None
+        return self._data['quoteStreamingIntervalInSeconds']
+
+    @property
+    def symbol(self) -> str:
+        """Returns symbol provided by broker.
+
+        Returns:
+            Any symbol provided by broker.
+        """
+        return self._data['symbol']
+
+    @property
+    def reliability(self) -> str:
+        """Returns reliability value. Possible values are regular and high.
+
+        Returns:
+            Account replica reliability value.
+        """
+        return self._data['reliability']
 
     @property
     def tags(self) -> List[str]:
@@ -80,13 +98,22 @@ class MetatraderAccountReplica(MetatraderAccountReplicaModel):
         return self._data['tags'] if 'tags' in self._data else None
 
     @property
+    def metadata(self) -> Dict:
+        """Returns extra information which can be stored together with your account replica.
+
+        Returns:
+            Extra information which can be stored together with your account replica.
+        """
+        return self._data['metadata'] if 'metadata' in self._data else None
+
+    @property
     def resource_slots(self) -> int:
         """Returns number of resource slots to allocate to account replica. Allocating extra resource slots
         results in better account performance under load which is useful for some applications. E.g. if you have many
         accounts copying the same strategy via CooyFactory API, then you can increase resourceSlots to get a lower
         trade copying latency. Please note that allocating extra resource slots is a paid option. Please note that high
         reliability accounts use redundant infrastructure, so that each resource slot for a high reliability account
-        is billed as 2 standard resource slots. Default is 1.
+        is billed as 2 standard resource slots.
 
         Returns:
             Number of resource slots to allocate to account replica.
@@ -99,21 +126,12 @@ class MetatraderAccountReplica(MetatraderAccountReplicaModel):
         slots results in lower trade copying latency. Please note that allocating extra resource slots is a paid option.
         Please also note that CopyFactory 2 uses redundant infrastructure so that each CopyFactory resource slot is
         billed as 2 standard resource slots. You will be billed for CopyFactory 2 resource slots only if you have
-        added your account replica to CopyFactory 2 by specifying copyFactoryRoles field. Default is 1.
+        added your account replica to CopyFactory 2 by specifying copyFactoryRoles field.
 
         Returns:
             Number of CopyFactory 2 resource slots to allocate to account.
         """
         return self._data['copyFactoryResourceSlots'] if 'copyFactoryResourceSlots' in self._data else None
-
-    @property
-    def reliability(self) -> str:
-        """Returns reliability value. Possible values are regular and high.
-
-        Returns:
-            Account replica reliability value.
-        """
-        return self._data['reliability']
 
     @property
     def region(self) -> str:
@@ -123,6 +141,15 @@ class MetatraderAccountReplica(MetatraderAccountReplicaModel):
             Account region value.
         """
         return self._data['region']
+
+    @property
+    def primary_account_from_dto(self) -> dict:
+        """Returns primary MetaTrader account of the replica from DTO.
+
+        Returns:
+            Primary MetaTrader account of the replica from DTO.
+        """
+        return self._data['primaryAccount']
 
     @property
     def primary_account(self) -> MetatraderAccountModel:

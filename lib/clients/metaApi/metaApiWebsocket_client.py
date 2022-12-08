@@ -113,7 +113,8 @@ class MetaApiWebsocketClient:
                 await asyncio.sleep(30 * 60)
                 self._clear_account_cache_job()
 
-        asyncio.create_task(clear_account_cache_task())
+        if 'disableInternalJobs' not in opts or not opts['disableInternalJobs']:
+            self._clearAccountCacheInterval = asyncio.create_task(clear_account_cache_task())
 
     async def on_out_of_order_packet(self, account_id: str, instance_index: int, expected_sequence_number: int,
                                      actual_sequence_number: int, packet: Dict, received_at: datetime):
@@ -494,6 +495,11 @@ class MetaApiWebsocketClient:
         self._synchronizationListeners = {}
         self._latencyListeners = []
         self._packetOrderer.stop()
+
+    def stop(self):
+        """Stops the client."""
+        self._clearAccountCacheInterval.cancel()
+        self._latencyService.stop()
 
     async def get_account_information(self, account_id: str) -> 'asyncio.Future[MetatraderAccountInformation]':
         """Returns account information for a specified MetaTrader account
@@ -987,21 +993,23 @@ class MetaApiWebsocketClient:
 
         Returns:
             A coroutine which resolves when socket is unsubscribed."""
-        try:
-            region = self.get_account_region(account_id)
-            self._latencyService.on_unsubscribe(account_id)
+        region = self.get_account_region(account_id)
+        self._latencyService.on_unsubscribe(account_id)
 
-            async def unsubscribe_job(instance_number):
+        async def unsubscribe_job(instance_number):
+            try:
                 await self._subscriptionManager.unsubscribe(account_id, int(instance_number))
                 if instance_number in self._socketInstancesByAccounts and \
                         account_id in self._socketInstancesByAccounts[instance_number]:
                     del self._socketInstancesByAccounts[instance_number][account_id]
+            except (NotFoundException, TimeoutException):
+                pass
+            except Exception as err:
+                self._logger.warn(f'{account_id}:{instance_number}: failed to unsubscribe', string_format_error(err))
 
-            await asyncio.gather(
-                *list(map(lambda instance_number: asyncio.create_task(unsubscribe_job(instance_number)),
-                          self._socketInstances[region].keys())))
-        except (NotFoundException, TimeoutException):
-            pass
+        await asyncio.gather(
+            *list(map(lambda instance_number: asyncio.create_task(unsubscribe_job(instance_number)),
+                      self._socketInstances[region].keys())))
 
     async def get_server_time(self, account_id: str) -> ServerTime:
         """Returns server time for a specified MetaTrader account (see
@@ -1104,7 +1112,7 @@ class MetaApiWebsocketClient:
 
         Args:
             listener: Latency listener to remove."""
-        self._latencyListeners = list(filter(lambda l: l != listener, self._latencyListeners))
+        self._latencyListeners = list(filter(lambda lis: lis != listener, self._latencyListeners))
 
     def add_reconnect_listener(self, listener: ReconnectListener, account_id: str):
         """Adds reconnect listener.
@@ -1242,7 +1250,9 @@ class MetaApiWebsocketClient:
         primary_account_id = self._accountsByReplicaId[account_id]
         connected_instances = self._latencyService.get_active_account_instances(primary_account_id)
         connected_instance = connected_instances[0] if len(connected_instances) else None
-        if request['type'] not in ignored_request_types and connected_instance:
+        if request['type'] not in ignored_request_types:
+            if not connected_instance:
+                connected_instance = await self._latencyService.wait_connected_instance(account_id)
             active_region = connected_instance.split(':')[1]
             account_id = self._accountReplicas[primary_account_id][active_region]
 
@@ -1416,7 +1426,8 @@ class MetaApiWebsocketClient:
             if 'synchronizationId' in data and socket_instance:
                 socket_instance['synchronizationThrottler'].update_synchronization_id(data['synchronizationId'])
             region = self.get_account_region(data['accountId'])
-            primary_account_id = self._accountsByReplicaId[data['accountId']]
+            primary_account_id = self._accountsByReplicaId[data['accountId']] if data['accountId'] in \
+                self._accountsByReplicaId else data['accountId']
             instance_id = primary_account_id + ':' + region + ':' + str(instance_number) + ':' + \
                 (data['host'] if 'host' in data else '0')
             instance_index = region + ':' + str(instance_number) + ':' + (data['host'] if 'host' in data else '0')
@@ -2195,11 +2206,12 @@ class MetaApiWebsocketClient:
     def _clear_account_cache_job(self):
         try:
             date = datetime.now().timestamp()
-            for account_id in list(self._regionsByAccounts.keys()):
-                data = self._regionsByAccounts[account_id]
-                if data['connections'] == 0 and date - data['lastUsed'] > 2 * 60 * 60:
-                    primary_account_id = self._accountsByReplicaId[account_id]
-                    replicas = self._accountReplicas[primary_account_id].values()
+            for replica_id in list(self._regionsByAccounts.keys()):
+                data = self._regionsByAccounts[replica_id] if replica_id in self._regionsByAccounts else None
+                if data and data['connections'] == 0 and date - data['lastUsed'] > 2 * 60 * 60:
+                    primary_account_id = self._accountsByReplicaId[replica_id]
+                    replicas = self._accountReplicas[primary_account_id].values() if primary_account_id in \
+                        self._accountReplicas else []
                     for replica in replicas:
                         del self._accountsByReplicaId[replica]
                         del self._regionsByAccounts[replica]

@@ -1,3 +1,28 @@
+20.8.2
+  - fix connection close
+  - fix account and replica models and methods to fit rest api
+  - add browser examples for risk management sdk
+  - do not throw errors if failed to unsubscribe properly
+  - added webpack exports for MetaApi non default classes
+  - improved reliability of rpc connection
+  - added rolling over to the first region if requests on all regions failed in risk management SDK
+  - improved docs for risk management sdk
+  - fixed the queueEvent method
+  - update risk management feature list
+  - it is now possible to prevent subscribeToMarketData from waiting for a quote to arrive
+  - remove application field from create account method
+  - add onError events events to risk management sdk
+  - added tracking tradeDayCount to period statistics stream
+  - fixed stopping internal jobs when closing sdk
+
+20.2.0
+  - merged risk management sdk into the main project
+  - fixed type errors when websocket client clears account cache
+
+20.0.0
+  - refactored connection management to unsubscribe only when all connection instances are closed
+  - breaking change: updated dependency metaapi.cloud-copyfactory-sdk ^5.10.0 -> ^6.0.0
+
 19.7.0
   - fixed resubscribe on disconnect
   - added extra logging to debug connection issues 

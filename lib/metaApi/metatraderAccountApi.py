@@ -1,4 +1,5 @@
 from .metatraderAccount import MetatraderAccount
+from .metatraderAccountReplica import MetatraderAccountReplica
 from ..clients.metaApi.metaApiWebsocket_client import MetaApiWebsocketClient
 from ..clients.metaApi.metatraderAccount_client import MetatraderAccountClient, NewMetatraderAccountDto, AccountsFilter
 from .connectionRegistryModel import ConnectionRegistryModel
@@ -62,6 +63,36 @@ class MetatraderAccountApi:
         return MetatraderAccount(account, self._metatraderAccountClient, self._metaApiWebsocketClient,
                                  self._connectionRegistry, self._expertAdvisorClient, self._historicalMarketDataClient,
                                  self._application)
+
+    async def get_account_replica(self, account_id: str, replica_id: str) -> MetatraderAccountReplica:
+        """Retrieves a MetaTrader account replica by id.
+
+        Args:
+            account_id: MetaTrader account id.
+            replica_id: MetaTrader account replica id.
+
+        Returns:
+            A coroutine resolving with MetaTrader account replica.
+        """
+        account = await self._metatraderAccountClient.get_account(account_id)
+        replica = await self._metatraderAccountClient.get_account_replica(account_id, replica_id)
+        return MetatraderAccountReplica(replica, account, self._metatraderAccountClient)
+
+    async def get_account_replicas(self, account_id: str) -> List[MetatraderAccountReplica]:
+        """Retrieves a MetaTrader account replicas.
+
+        Args:
+            account_id: MetaTrader account id.
+
+        Returns:
+            A coroutine resolving with MetaTrader account replicas.
+        """
+        account = await self._metatraderAccountClient.get_account(account_id)
+        replicas = await self._metatraderAccountClient.get_account_replicas(account_id)
+        if 'items' in replicas:
+            replicas = replicas['items']
+        return list(map(lambda replica: MetatraderAccountReplica(replica, account, self._metatraderAccountClient),
+                        replicas))
 
     async def get_account_by_token(self) -> MetatraderAccount:
         """Retrieves a MetaTrader account by token.

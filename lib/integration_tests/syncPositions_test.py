@@ -58,7 +58,6 @@ class TestSyncPositions:
                     'password': password,
                     'server': server_name,
                     'provisioningProfileId': profile.id,
-                    'application': 'MetaApi',
                     'magic': 1000
                 })
             await account.deploy()

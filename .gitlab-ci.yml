@@ -2,7 +2,7 @@ stages:
   - build
 
 build:
-  image: python:latest
+  image: python:3.10
   stage: build
   script:
     - apt-get update -qy

@@ -205,3 +205,39 @@ async def test_mark_accounts_as_disconnected_on_unsubscribe():
     service.on_unsubscribe('accountIdReplica')
     assert service.get_active_account_instances('accountId') == ['accountId:vint-hill:0:ps-mpa-1']
     assert service.get_synchronized_account_instances('accountId') == ['accountId:vint-hill:0:ps-mpa-1']
+
+
+@pytest.mark.asyncio
+async def test_create_a_promise_and_wait_for_connected_instance():
+    """Should create a promise and wait for connected instance."""
+    async def func_connected():
+        await asyncio.sleep(0.05)
+        await service.on_connected('accountId:vint-hill:0:ps-mpa-1')
+
+    asyncio.create_task(func_connected())
+    instance_id = await service.wait_connected_instance('accountId')
+    assert instance_id == 'accountId:vint-hill:0:ps-mpa-1'
+
+
+@pytest.mark.asyncio
+async def test_wait_for_existing_promise():
+    """Should wait for existing promise."""
+    async def func_connected():
+        await asyncio.sleep(0.1)
+        await service.on_connected('accountId:vint-hill:0:ps-mpa-1')
+
+    asyncio.create_task(func_connected())
+    instance_id = asyncio.create_task(service.wait_connected_instance('accountId'))
+    await asyncio.sleep(0.05)
+    instance_id2 = await service.wait_connected_instance('accountId')
+    instance_id = await instance_id
+    assert instance_id == instance_id2
+    assert instance_id2 == 'accountId:vint-hill:0:ps-mpa-1'
+
+
+@pytest.mark.asyncio
+async def test_return_instance_id_immediately_if_exists():
+    """Should return instance id immediately if exists."""
+    await service.on_connected('accountId:vint-hill:0:ps-mpa-1')
+    instance_id = await service.wait_connected_instance('accountId')
+    assert instance_id == 'accountId:vint-hill:0:ps-mpa-1'

@@ -62,8 +62,17 @@ class MockStorage(MemoryHistoryStorage):
 
 
 class MockRegistry(ConnectionRegistry):
-    async def connect(self, account: MetatraderAccountModel, history_storage: HistoryStorage,
-                      history_start_time: datetime = None):
+    def connect_rpc(self, account: MetatraderAccountModel):
+        pass
+
+    async def remove_rpc(self, account: MetatraderAccountModel):
+        pass
+
+    def connect_streaming(self, account: MetatraderAccountModel, history_storage: HistoryStorage,
+                          history_start_time: datetime = None):
+        pass
+
+    async def remove_streaming(self, account: MetatraderAccountModel):
         pass
 
     def remove(self, account_id: str):
@@ -90,7 +99,6 @@ async def run_around_tests():
         'server': 'ICMarketsSC-Demo',
         'provisioningProfileId': 'f9ce1f12-e720-4b9a-9477-c2d4cb25f076',
         'magic': 123456,
-        'application': 'MetaApi',
         'connectionStatus': 'CONNECTED',
         'state': 'DEPLOYED',
         'region': 'vint-hill',
@@ -110,7 +118,10 @@ async def run_around_tests():
     global registry
     registry = MockRegistry(websocket_client, MagicMock())
     global api
-    registry.connect = AsyncMock()
+    registry.connect_streaming = MagicMock()
+    registry.remove_streaming = AsyncMock()
+    registry.connect_streaming = MagicMock()
+    registry.remove_streaming = AsyncMock()
     registry.remove = MagicMock()
     global ea_client
     ea_client = ExpertAdvisorClient(MagicMock(), MagicMock())
@@ -141,11 +152,38 @@ class TestMetatraderAccountApi:
             'server': 'ICMarketsSC-Demo',
             'provisioningProfileId': 'f9ce1f12-e720-4b9a-9477-c2d4cb25f076',
             'magic': 123456,
-            'application': 'MetaApi',
             'connectionStatus': 'DISCONNECTED',
             'state': 'DEPLOYED',
-            'region': 'vint-hill',
             'type': 'cloud',
+            'quoteStreamingIntervalInSeconds': 2.5,
+            'symbol': 'symbol',
+            'reliability': 'high',
+            'tags': ['tags'],
+            'metadata': 'metadata',
+            'resourceSlots': 1,
+            'copyFactoryResourceSlots': 1,
+            'region': 'region',
+            'manualTrades': False,
+            'slippage': 30,
+            'version': 4,
+            'hash': 12345,
+            'baseCurrency': 'USD',
+            'copyFactoryRoles': ['PROVIDER'],
+            'riskManagementApiEnabled': False,
+            'metastatsHourlyTarificationEnabled': False,
+            'connections': [{
+                'region': 'region',
+                'zone': 'zone',
+                'application': 'application'
+            }],
+            'primaryReplica': True,
+            'userId': 'userId',
+            'primaryAccountId': 'primaryId',
+            'accountReplicas': [{
+                '_id': 'replica0'
+            }, {
+                '_id': 'replica1'
+            }],
             'accessToken': '2RUnoH1ldGbnEneCoqRTgI4QO1XOmVzbH5EVoQsA'
         })
         account = await api.get_account('id')
@@ -155,10 +193,37 @@ class TestMetatraderAccountApi:
         assert account.server == 'ICMarketsSC-Demo'
         assert account.provisioning_profile_id == 'f9ce1f12-e720-4b9a-9477-c2d4cb25f076'
         assert account.magic == 123456
-        assert account.application == 'MetaApi'
         assert account.connection_status == 'DISCONNECTED'
         assert account.state == 'DEPLOYED'
         assert account.type == 'cloud'
+        assert account.quote_streaming_interval_in_seconds == 2.5
+        assert account.symbol == 'symbol'
+        assert account.reliability == 'high'
+        assert account.tags == ['tags']
+        assert account.metadata == 'metadata'
+        assert account.resource_slots == 1
+        assert account.copyfactory_resource_slots == 1
+        assert account.region == 'region'
+        assert not account.manual_trades
+        assert account.slippage == 30
+        assert account.version == 4
+        assert account.hash == 12345
+        assert account.base_currency == 'USD'
+        assert account.copy_factory_roles == ['PROVIDER']
+        assert not account.risk_management_api_enabled
+        assert not account.metastats_hourly_tarification_enabled
+        assert account.connections == [{
+            'region': 'region',
+            'zone': 'zone',
+            'application': 'application'
+        }]
+        assert account.primary_replica is True
+        assert account.user_id == 'userId'
+        assert account.primary_account_id == 'primaryId'
+        for id in range(len(account.replicas)):
+            replica = account.replicas[id]
+            assert replica._data == {'_id': f'replica{id}'}
+
         assert account.access_token == '2RUnoH1ldGbnEneCoqRTgI4QO1XOmVzbH5EVoQsA'
         assert isinstance(account, MetatraderAccount)
         client.get_account.assert_called_with('id')
@@ -173,11 +238,37 @@ class TestMetatraderAccountApi:
             'server': 'ICMarketsSC-Demo',
             'provisioningProfileId': 'f9ce1f12-e720-4b9a-9477-c2d4cb25f076',
             'magic': 123456,
-            'application': 'MetaApi',
             'connectionStatus': 'DISCONNECTED',
             'state': 'DEPLOYED',
-            'region': 'vint-hill',
             'type': 'cloud',
+            'quoteStreamingIntervalInSeconds': 2.5,
+            'symbol': 'symbol',
+            'reliability': 'high',
+            'tags': ['tags'],
+            'metadata': 'metadata',
+            'resourceSlots': 1,
+            'copyFactoryResourceSlots': 1,
+            'region': 'region',
+            'manualTrades': False,
+            'slippage': 30,
+            'version': 4,
+            'hash': 12345,
+            'baseCurrency': 'USD',
+            'copyFactoryRoles': ['PROVIDER'],
+            'riskManagementApiEnabled': False,
+            'metastatsHourlyTarificationEnabled': False,
+            'connections': [{
+                'region': 'region',
+                'zone': 'zone',
+                'application': 'application'
+            }],
+            'primaryReplica': True,
+            'userId': 'userId',
+            'accountReplicas': [{
+                '_id': 'replica0'
+            }, {
+                '_id': 'replica1'
+            }],
             'accessToken': '2RUnoH1ldGbnEneCoqRTgI4QO1XOmVzbH5EVoQsA'
         })
         account = await api.get_account_by_token()
@@ -187,10 +278,36 @@ class TestMetatraderAccountApi:
         assert account.server == 'ICMarketsSC-Demo'
         assert account.provisioning_profile_id == 'f9ce1f12-e720-4b9a-9477-c2d4cb25f076'
         assert account.magic == 123456
-        assert account.application == 'MetaApi'
         assert account.connection_status == 'DISCONNECTED'
         assert account.state == 'DEPLOYED'
         assert account.type == 'cloud'
+        assert account.quote_streaming_interval_in_seconds == 2.5
+        assert account.symbol == 'symbol'
+        assert account.reliability == 'high'
+        assert account.tags == ['tags']
+        assert account.metadata == 'metadata'
+        assert account.resource_slots == 1
+        assert account.copyfactory_resource_slots == 1
+        assert account.region == 'region'
+        assert not account.manual_trades
+        assert account.slippage == 30
+        assert account.version == 4
+        assert account.hash == 12345
+        assert account.base_currency == 'USD'
+        assert account.copy_factory_roles == ['PROVIDER']
+        assert not account.risk_management_api_enabled
+        assert not account.metastats_hourly_tarification_enabled
+        assert account.connections == [{
+            'region': 'region',
+            'zone': 'zone',
+            'application': 'application'
+        }]
+        assert account.primary_replica is True
+        assert account.user_id == 'userId'
+        for id in range(len(account.replicas)):
+            replica = account.replicas[id]
+            assert replica._data == {'_id': f'replica{id}'}
+
         assert account.access_token == '2RUnoH1ldGbnEneCoqRTgI4QO1XOmVzbH5EVoQsA'
         assert isinstance(account, MetatraderAccount)
         client.get_account_by_token.assert_called_with()
@@ -206,7 +323,6 @@ class TestMetatraderAccountApi:
             'server': 'ICMarketsSC-Demo',
             'provisioningProfileId': 'f9ce1f12-e720-4b9a-9477-c2d4cb25f076',
             'magic': 123456,
-            'application': 'MetaApi',
             'connectionStatus': 'DISCONNECTED',
             'state': 'DEPLOYED',
             'region': 'vint-hill',
@@ -220,7 +336,6 @@ class TestMetatraderAccountApi:
             'server': 'ICMarketsSC-Demo',
             'provisioningProfileId': 'f9ce1f12-e720-4b9a-9477-c2d4cb25f076',
             'magic': 123456,
-            'application': 'MetaApi',
             'region': 'vint-hill',
             'type': 'cloud',
             'accessToken': 'NyV5no9TMffJyUts2FjI80wly0so3rVCz4xOqiDx'
@@ -232,7 +347,6 @@ class TestMetatraderAccountApi:
         assert account.server == 'ICMarketsSC-Demo'
         assert account.provisioning_profile_id == 'f9ce1f12-e720-4b9a-9477-c2d4cb25f076'
         assert account.magic == 123456
-        assert account.application == 'MetaApi'
         assert account.connection_status == 'DISCONNECTED'
         assert account.state == 'DEPLOYED'
         assert account.type == 'cloud'
@@ -251,7 +365,6 @@ class TestMetatraderAccountApi:
             'server': 'ICMarketsSC-Demo',
             'provisioningProfileId': 'f9ce1f12-e720-4b9a-9477-c2d4cb25f076',
             'magic': 123456,
-            'application': 'MetaApi',
             'connectionStatus': 'DISCONNECTED',
             'state': 'DEPLOYING',
             'region': 'vint-hill',
@@ -263,7 +376,6 @@ class TestMetatraderAccountApi:
             'server': 'ICMarketsSC-Demo',
             'provisioningProfileId': 'f9ce1f12-e720-4b9a-9477-c2d4cb25f076',
             'magic': 123456,
-            'application': 'MetaApi',
             'connectionStatus': 'CONNECTED',
             'state': 'DEPLOYED',
             'region': 'vint-hill',
@@ -288,7 +400,6 @@ class TestMetatraderAccountApi:
                 'server': 'ICMarketsSC-Demo',
                 'provisioningProfileId': 'f9ce1f12-e720-4b9a-9477-c2d4cb25f076',
                 'magic': 123456,
-                'application': 'MetaApi',
                 'connectionStatus': 'CONNECTED',
                 'state': 'DEPLOYED',
                 'region': 'vint-hill',
@@ -300,7 +411,6 @@ class TestMetatraderAccountApi:
                 'server': 'ICMarketsSC-Demo',
                 'provisioningProfileId': 'f9ce1f12-e720-4b9a-9477-c2d4cb25f076',
                 'magic': 123456,
-                'application': 'MetaApi',
                 'connectionStatus': 'CONNECTED',
                 'state': 'DELETING',
                 'region': 'vint-hill',
@@ -327,7 +437,6 @@ class TestMetatraderAccountApi:
             'server': 'ICMarketsSC-Demo',
             'provisioningProfileId': 'f9ce1f12-e720-4b9a-9477-c2d4cb25f076',
             'magic': 123456,
-            'application': 'MetaApi',
             'connectionStatus': 'DISCONNECTED',
             'state': 'UNDEPLOYED',
             'region': 'vint-hill',
@@ -339,7 +448,6 @@ class TestMetatraderAccountApi:
             'server': 'ICMarketsSC-Demo',
             'provisioningProfileId': 'f9ce1f12-e720-4b9a-9477-c2d4cb25f076',
             'magic': 123456,
-            'application': 'MetaApi',
             'connectionStatus': 'CONNECTED',
             'state': 'DEPLOYING',
             'region': 'vint-hill',
@@ -363,7 +471,6 @@ class TestMetatraderAccountApi:
             'server': 'ICMarketsSC-Demo',
             'provisioningProfileId': 'f9ce1f12-e720-4b9a-9477-c2d4cb25f076',
             'magic': 123456,
-            'application': 'MetaApi',
             'connectionStatus': 'DISCONNECTED',
             'state': 'DEPLOYED',
             'region': 'vint-hill',
@@ -375,7 +482,6 @@ class TestMetatraderAccountApi:
             'server': 'ICMarketsSC-Demo',
             'provisioningProfileId': 'f9ce1f12-e720-4b9a-9477-c2d4cb25f076',
             'magic': 123456,
-            'application': 'MetaApi',
             'connectionStatus': 'CONNECTED',
             'state': 'UNDEPLOYING',
             'region': 'vint-hill',
@@ -400,7 +506,6 @@ class TestMetatraderAccountApi:
             'server': 'ICMarketsSC-Demo',
             'provisioningProfileId': 'f9ce1f12-e720-4b9a-9477-c2d4cb25f076',
             'magic': 123456,
-            'application': 'MetaApi',
             'connectionStatus': 'DISCONNECTED',
             'state': 'DEPLOYED',
             'region': 'vint-hill',
@@ -412,7 +517,6 @@ class TestMetatraderAccountApi:
             'server': 'ICMarketsSC-Demo',
             'provisioningProfileId': 'f9ce1f12-e720-4b9a-9477-c2d4cb25f076',
             'magic': 123456,
-            'application': 'MetaApi',
             'connectionStatus': 'CONNECTED',
             'state': 'UNDEPLOYING',
             'region': 'vint-hill',
@@ -436,7 +540,6 @@ class TestMetatraderAccountApi:
             'server': 'ICMarketsSC-Demo',
             'provisioningProfileId': 'f9ce1f12-e720-4b9a-9477-c2d4cb25f076',
             'magic': 123456,
-            'application': 'MetaApi',
             'connectionStatus': 'DISCONNECTED',
             'state': 'DEPLOYED',
             'region': 'vint-hill',
@@ -448,7 +551,6 @@ class TestMetatraderAccountApi:
             'server': 'ICMarketsSC-Demo',
             'provisioningProfileId': 'f9ce1f12-e720-4b9a-9477-c2d4cb25f076',
             'magic': 123456,
-            'application': 'MetaApi',
             'connectionStatus': 'CONNECTED',
             'state': 'UNDEPLOYING',
             'region': 'vint-hill',
@@ -464,6 +566,76 @@ class TestMetatraderAccountApi:
         assert client.get_account.call_count == 2
 
     @pytest.mark.asyncio
+    async def test_enable_account_risk_management_api(self):
+        """Should enable account risk management api."""
+        client.get_account = AsyncMock(side_effect=[{
+            '_id': 'id',
+            'login': '50194988',
+            'name': 'mt5a',
+            'server': 'ICMarketsSC-Demo',
+            'provisioningProfileId': 'f9ce1f12-e720-4b9a-9477-c2d4cb25f076',
+            'magic': 123456,
+            'application': 'MetaApi',
+            'connectionStatus': 'DISCONNECTED',
+            'state': 'DEPLOYED',
+            'type': 'cloud'
+        }, {
+            '_id': 'id',
+            'login': '50194988',
+            'name': 'mt5a',
+            'server': 'ICMarketsSC-Demo',
+            'provisioningProfileId': 'f9ce1f12-e720-4b9a-9477-c2d4cb25f076',
+            'magic': 123456,
+            'application': 'MetaApi',
+            'connectionStatus': 'CONNECTED',
+            'state': 'UNDEPLOYING',
+            'type': 'cloud',
+            'riskManagementApiEnabled': True
+        }])
+        client.enable_risk_management_api = AsyncMock()
+        account = await api.get_account('id')
+        await account.enable_risk_management_api()
+        assert account.risk_management_api_enabled
+        client.enable_risk_management_api.assert_called_with('id')
+        client.get_account.assert_called_with('id')
+        assert client.get_account.call_count == 2
+
+    @pytest.mark.asyncio
+    async def test_enable_account_metastats_hourly_tarification(self):
+        """Should enable account MetaStats hourly tarification."""
+        client.get_account = AsyncMock(side_effect=[{
+            '_id': 'id',
+            'login': '50194988',
+            'name': 'mt5a',
+            'server': 'ICMarketsSC-Demo',
+            'provisioningProfileId': 'f9ce1f12-e720-4b9a-9477-c2d4cb25f076',
+            'magic': 123456,
+            'application': 'MetaApi',
+            'connectionStatus': 'DISCONNECTED',
+            'state': 'DEPLOYED',
+            'type': 'cloud'
+        }, {
+            '_id': 'id',
+            'login': '50194988',
+            'name': 'mt5a',
+            'server': 'ICMarketsSC-Demo',
+            'provisioningProfileId': 'f9ce1f12-e720-4b9a-9477-c2d4cb25f076',
+            'magic': 123456,
+            'application': 'MetaApi',
+            'connectionStatus': 'CONNECTED',
+            'state': 'UNDEPLOYING',
+            'type': 'cloud',
+            'metastatsHourlyTarificationEnabled': True
+        }])
+        client.enable_metastats_hourly_tarification = AsyncMock()
+        account = await api.get_account('id')
+        await account.enable_metastats_hourly_tarification()
+        assert account.metastats_hourly_tarification_enabled is True
+        client.enable_metastats_hourly_tarification.assert_called_with('id')
+        client.get_account.assert_called_with('id')
+        assert client.get_account.call_count == 2
+
+    @pytest.mark.asyncio
     async def test_wait_for_deployment(self):
         """Should wait for deployment."""
         deploying_account = {
@@ -473,7 +645,6 @@ class TestMetatraderAccountApi:
             'server': 'ICMarketsSC-Demo',
             'provisioningProfileId': 'f9ce1f12-e720-4b9a-9477-c2d4cb25f076',
             'magic': 123456,
-            'application': 'MetaApi',
             'connectionStatus': 'DISCONNECTED',
             'state': 'DEPLOYING',
             'region': 'vint-hill',
@@ -487,7 +658,7 @@ class TestMetatraderAccountApi:
                                                         'server': 'ICMarketsSC-Demo',
                                                         'provisioningProfileId': 'f9ce1f12-e720-4b9a-9477-c2d4cb25f076',
                                                         'magic': 123456,
-                                                        'application': 'MetaApi',
+
                                                         'connectionStatus': 'CONNECTED',
                                                         'state': 'DEPLOYED',
                                                         'region': 'vint-hill',
@@ -510,7 +681,6 @@ class TestMetatraderAccountApi:
             'server': 'ICMarketsSC-Demo',
             'provisioningProfileId': 'f9ce1f12-e720-4b9a-9477-c2d4cb25f076',
             'magic': 123456,
-            'application': 'MetaApi',
             'connectionStatus': 'DISCONNECTED',
             'state': 'DEPLOYING',
             'region': 'vint-hill',
@@ -536,7 +706,6 @@ class TestMetatraderAccountApi:
             'server': 'ICMarketsSC-Demo',
             'provisioningProfileId': 'f9ce1f12-e720-4b9a-9477-c2d4cb25f076',
             'magic': 123456,
-            'application': 'MetaApi',
             'connectionStatus': 'DISCONNECTED',
             'state': 'UNDEPLOYING',
             'region': 'vint-hill',
@@ -550,7 +719,6 @@ class TestMetatraderAccountApi:
                                                         'server': 'ICMarketsSC-Demo',
                                                         'provisioningProfileId': 'f9ce1f12-e720-4b9a-9477-c2d4cb25f076',
                                                         'magic': 123456,
-                                                        'application': 'MetaApi',
                                                         'connectionStatus': 'CONNECTED',
                                                         'state': 'UNDEPLOYED',
                                                         'region': 'vint-hill',
@@ -573,7 +741,6 @@ class TestMetatraderAccountApi:
             'server': 'ICMarketsSC-Demo',
             'provisioningProfileId': 'f9ce1f12-e720-4b9a-9477-c2d4cb25f076',
             'magic': 123456,
-            'application': 'MetaApi',
             'connectionStatus': 'DISCONNECTED',
             'state': 'UNDEPLOYING',
             'region': 'vint-hill',
@@ -599,7 +766,6 @@ class TestMetatraderAccountApi:
             'server': 'ICMarketsSC-Demo',
             'provisioningProfileId': 'f9ce1f12-e720-4b9a-9477-c2d4cb25f076',
             'magic': 123456,
-            'application': 'MetaApi',
             'connectionStatus': 'DISCONNECTED',
             'state': 'DELETING',
             'region': 'vint-hill',
@@ -621,7 +787,6 @@ class TestMetatraderAccountApi:
             'server': 'ICMarketsSC-Demo',
             'provisioningProfileId': 'f9ce1f12-e720-4b9a-9477-c2d4cb25f076',
             'magic': 123456,
-            'application': 'MetaApi',
             'connectionStatus': 'DISCONNECTED',
             'state': 'DELETING',
             'region': 'vint-hill',
@@ -646,7 +811,6 @@ class TestMetatraderAccountApi:
             'server': 'ICMarketsSC-Demo',
             'provisioningProfileId': 'f9ce1f12-e720-4b9a-9477-c2d4cb25f076',
             'magic': 123456,
-            'application': 'MetaApi',
             'connectionStatus': 'DISCONNECTED',
             'state': 'DEPLOYED',
             'region': 'vint-hill',
@@ -660,7 +824,6 @@ class TestMetatraderAccountApi:
                                                         'server': 'ICMarketsSC-Demo',
                                                         'provisioningProfileId': 'f9ce1f12-e720-4b9a-9477-c2d4cb25f076',
                                                         'magic': 123456,
-                                                        'application': 'MetaApi',
                                                         'connectionStatus': 'CONNECTED',
                                                         'state': 'DEPLOYED',
                                                         'region': 'vint-hill',
@@ -682,7 +845,6 @@ class TestMetatraderAccountApi:
             'server': 'ICMarketsSC-Demo',
             'provisioningProfileId': 'f9ce1f12-e720-4b9a-9477-c2d4cb25f076',
             'magic': 123456,
-            'application': 'MetaApi',
             'connectionStatus': 'DISCONNECTED',
             'state': 'DEPLOYED',
             'region': 'vint-hill',
@@ -708,7 +870,6 @@ class TestMetatraderAccountApi:
             'server': 'ICMarketsSC-Demo',
             'provisioningProfileId': 'f9ce1f12-e720-4b9a-9477-c2d4cb25f076',
             'magic': 123456,
-            'application': 'MetaApi',
             'connectionStatus': 'DISCONNECTED',
             'state': 'UNDEPLOYED',
             'region': 'vint-hill',
@@ -730,7 +891,6 @@ class TestMetatraderAccountApi:
             'server': 'ICMarketsSC-Demo',
             'provisioningProfileId': 'f9ce1f12-e720-4b9a-9477-c2d4cb25f076',
             'magic': 123456,
-            'application': 'MetaApi',
             'connectionStatus': 'DISCONNECTED',
             'state': 'UNDEPLOYED',
             'region': 'vint-hill',
@@ -762,7 +922,7 @@ class TestMetatraderAccountApi:
             account = await api.get_account('id')
             storage = MockStorage()
             account.get_streaming_connection(storage)
-            registry.connect.assert_called_with(account, storage, None)
+            registry.connect_streaming.assert_called_with(account, storage, None)
 
     @pytest.mark.asyncio
     async def test_connect_to_terminal_if_in_specified_region(self):
@@ -771,10 +931,8 @@ class TestMetatraderAccountApi:
         client.get_account = AsyncMock(return_value={'_id': 'id', 'region': 'vint-hill'})
         account = await api.get_account('accountId')
         storage = MockStorage()
-        connect_mock = MagicMock()
-        registry.connect = connect_mock
         account.get_streaming_connection(storage)
-        connect_mock.assert_called_with(account, storage, None)
+        registry.connect_streaming.assert_called_with(account, storage, None)
 
     @pytest.mark.asyncio
     async def test_not_connect_to_terminal_if_in_different_region(self):
@@ -837,7 +995,6 @@ class TestMetatraderAccountApi:
             'server': 'ICMarketsSC-Demo',
             'provisioningProfileId': 'f9ce1f12-e720-4b9a-9477-c2d4cb25f076',
             'magic': 123456,
-            'application': 'MetaApi',
             'connectionStatus': 'CONNECTED',
             'state': 'DEPLOYED',
             'region': 'vint-hill',
@@ -849,7 +1006,6 @@ class TestMetatraderAccountApi:
             'server': 'OtherMarkets-Demo',
             'provisioningProfileId': 'f9ce1f12-e720-4b9a-9477-c2d4cb25f076',
             'magic': 123456,
-            'application': 'MetaApi',
             'connectionStatus': 'CONNECTED',
             'state': 'DEPLOYED',
             'region': 'vint-hill',
@@ -1144,7 +1300,6 @@ class TestMetatraderAccountApi:
             'server': 'ICMarketsSC-Demo',
             'provisioningProfileId': 'f9ce1f12-e720-4b9a-9477-c2d4cb25f076',
             'magic': 123456,
-            'application': 'MetaApi',
             'connectionStatus': 'CONNECTED',
             'state': 'DEPLOYED',
             'type': 'cloud'
@@ -1155,7 +1310,6 @@ class TestMetatraderAccountApi:
             'server': 'ICMarketsSC-Demo',
             'provisioningProfileId': 'f9ce1f12-e720-4b9a-9477-c2d4cb25f076',
             'magic': 123456,
-            'application': 'MetaApi',
             'connectionStatus': 'CONNECTED',
             'state': 'DEPLOYED',
             'type': 'cloud',
@@ -1194,6 +1348,105 @@ class TestMetatraderAccountApi:
         assert client.get_account.call_count == 2
 
     @pytest.mark.asyncio
+    async def test_retrieve_mt_account_replica_by_id(self):
+        """Should retrieve MT account replica by id."""
+        client.get_account_replica = AsyncMock(return_value={
+            '_id': 'id',
+            'state': 'DEPLOYED',
+            'magic': 123456,
+            'connectionStatus': 'DISCONNECTED',
+            'quoteStreamingIntervalInSeconds': 2.5,
+            'symbol': 'symbol',
+            'reliability': 'high',
+            'tags': ['tags'],
+            'metadata': 'metadata',
+            'resourceSlots': 1,
+            'copyFactoryResourceSlots': 1,
+            'region': 'region',
+            'primaryAccount': {
+                '_id': 'id',
+                'primaryReplica': True
+            }
+        })
+        replica = await api.get_account_replica('accountId', 'replicaId')
+        assert replica.id == 'id'
+        assert replica.magic == 123456
+        assert replica.connection_status == 'DISCONNECTED'
+        assert replica.state == 'DEPLOYED'
+        assert replica.quote_streaming_interval_in_seconds == 2.5
+        assert replica.symbol == 'symbol'
+        assert replica.reliability == 'high'
+        assert replica.tags == ['tags']
+        assert replica.metadata == 'metadata'
+        assert replica.resource_slots == 1
+        assert replica.copyfactory_resource_slots == 1
+        assert replica.region == 'region'
+        assert replica.primary_account_from_dto == {
+            '_id': 'id',
+            'primaryReplica': True
+        }
+        client.get_account_replica.assert_called_with('accountId', 'replicaId')
+
+    @pytest.mark.asyncio
+    async def test_retrieve_mt_account_replicas(self):
+        """Should retrieve MT account replicas."""
+        client.get_account_replicas = AsyncMock(return_value=[{
+            '_id': 'id0',
+            'state': 'DEPLOYED',
+            'magic': 123456,
+            'connectionStatus': 'DISCONNECTED',
+            'quoteStreamingIntervalInSeconds': 2.5,
+            'symbol': 'symbol',
+            'reliability': 'high',
+            'tags': ['tags'],
+            'metadata': 'metadata',
+            'resourceSlots': 1,
+            'copyFactoryResourceSlots': 1,
+            'region': 'region',
+            'primaryAccount': {
+                '_id': 'id',
+                'primaryReplica': True
+            }
+        }, {
+            '_id': 'id1',
+            'state': 'DEPLOYED',
+            'magic': 123456,
+            'connectionStatus': 'DISCONNECTED',
+            'quoteStreamingIntervalInSeconds': 2.5,
+            'symbol': 'symbol',
+            'reliability': 'high',
+            'tags': ['tags'],
+            'metadata': 'metadata',
+            'resourceSlots': 1,
+            'copyFactoryResourceSlots': 1,
+            'region': 'region',
+            'primaryAccount': {
+                '_id': 'id',
+                'primaryReplica': True
+            }
+        }])
+        replicas = await api.get_account_replicas('accountId')
+        for id in range(len(replicas)):
+            replica = replicas[id]
+            assert replica.id == f'id{id}'
+            assert replica.magic == 123456
+            assert replica.connection_status == 'DISCONNECTED'
+            assert replica.state == 'DEPLOYED'
+            assert replica.quote_streaming_interval_in_seconds == 2.5
+            assert replica.symbol == 'symbol'
+            assert replica.reliability == 'high'
+            assert replica.tags == ['tags']
+            assert replica.metadata == 'metadata'
+            assert replica.resource_slots == 1
+            assert replica.copyfactory_resource_slots == 1
+            assert replica.region == 'region'
+            assert replica.primary_account_from_dto == {
+                '_id': 'id',
+                'primaryReplica': True
+            }
+        client.get_account_replicas.assert_called_with('accountId')
+
+    @pytest.mark.asyncio
     async def test_remove_replica(self):
         """Should remove MT account replica."""
         account = await api.get_account('id')
@@ -1204,7 +1457,6 @@ class TestMetatraderAccountApi:
             'server': 'ICMarketsSC-Demo',
             'provisioningProfileId': 'f9ce1f12-e720-4b9a-9477-c2d4cb25f076',
             'magic': 123456,
-            'application': 'MetaApi',
             'connectionStatus': 'CONNECTED',
             'state': 'DEPLOYED',
             'region': 'vint-hill',
@@ -1238,7 +1490,6 @@ class TestMetatraderAccountApi:
             'server': 'ICMarketsSC-Demo',
             'provisioningProfileId': 'f9ce1f12-e720-4b9a-9477-c2d4cb25f076',
             'magic': 123456,
-            'application': 'MetaApi',
             'connectionStatus': 'CONNECTED',
             'state': 'DEPLOYED',
             'region': 'vint-hill',
@@ -1272,7 +1523,6 @@ class TestMetatraderAccountApi:
             'server': 'ICMarketsSC-Demo',
             'provisioningProfileId': 'f9ce1f12-e720-4b9a-9477-c2d4cb25f076',
             'magic': 123456,
-            'application': 'MetaApi',
             'connectionStatus': 'CONNECTED',
             'state': 'DEPLOYED',
             'region': 'vint-hill',
@@ -1306,7 +1556,6 @@ class TestMetatraderAccountApi:
             'server': 'ICMarketsSC-Demo',
             'provisioningProfileId': 'f9ce1f12-e720-4b9a-9477-c2d4cb25f076',
             'magic': 123456,
-            'application': 'MetaApi',
             'connectionStatus': 'CONNECTED',
             'state': 'DEPLOYED',
             'region': 'vint-hill',
@@ -1340,7 +1589,6 @@ class TestMetatraderAccountApi:
             'server': 'ICMarketsSC-Demo',
             'provisioningProfileId': 'f9ce1f12-e720-4b9a-9477-c2d4cb25f076',
             'magic': 123456,
-            'application': 'MetaApi',
             'connectionStatus': 'CONNECTED',
             'state': 'DEPLOYED',
             'region': 'vint-hill',
@@ -1378,7 +1626,6 @@ class TestMetatraderAccountApi:
             'server': 'ICMarketsSC-Demo',
             'provisioningProfileId': 'f9ce1f12-e720-4b9a-9477-c2d4cb25f076',
             'magic': 123456,
-            'application': 'MetaApi',
             'connectionStatus': 'CONNECTED',
             'state': 'DEPLOYED',
             'region': 'vint-hill',
@@ -1411,7 +1658,6 @@ class TestMetatraderAccountApi:
             'server': 'ICMarketsSC-Demo',
             'provisioningProfileId': 'f9ce1f12-e720-4b9a-9477-c2d4cb25f076',
             'magic': 123456,
-            'application': 'MetaApi',
             'connectionStatus': 'CONNECTED',
             'state': 'DEPLOYED',
             'region': 'vint-hill',
@@ -1439,7 +1685,6 @@ class TestMetatraderAccountApi:
             'server': 'ICMarketsSC-Demo',
             'provisioningProfileId': 'f9ce1f12-e720-4b9a-9477-c2d4cb25f076',
             'magic': 123456,
-            'application': 'MetaApi',
             'connectionStatus': 'CONNECTED',
             'state': 'DEPLOYED',
             'region': 'vint-hill',
@@ -1485,7 +1730,6 @@ class TestMetatraderAccountApi:
             'server': 'ICMarketsSC-Demo',
             'provisioningProfileId': 'f9ce1f12-e720-4b9a-9477-c2d4cb25f076',
             'magic': 123456,
-            'application': 'MetaApi',
             'connectionStatus': 'CONNECTED',
             'state': 'DEPLOYED',
             'region': 'vint-hill',
@@ -1513,7 +1757,6 @@ class TestMetatraderAccountApi:
             'server': 'ICMarketsSC-Demo',
             'provisioningProfileId': 'f9ce1f12-e720-4b9a-9477-c2d4cb25f076',
             'magic': 123456,
-            'application': 'MetaApi',
             'connectionStatus': 'CONNECTED',
             'state': 'DEPLOYED',
             'region': 'vint-hill',
@@ -1559,7 +1802,6 @@ class TestMetatraderAccountApi:
             'server': 'ICMarketsSC-Demo',
             'provisioningProfileId': 'f9ce1f12-e720-4b9a-9477-c2d4cb25f076',
             'magic': 123456,
-            'application': 'MetaApi',
             'connectionStatus': 'CONNECTED',
             'state': 'DEPLOYED',
             'region': 'vint-hill',
@@ -1586,7 +1828,6 @@ class TestMetatraderAccountApi:
             'server': 'ICMarketsSC-Demo',
             'provisioningProfileId': 'f9ce1f12-e720-4b9a-9477-c2d4cb25f076',
             'magic': 123456,
-            'application': 'MetaApi',
             'connectionStatus': 'CONNECTED',
             'state': 'DEPLOYED',
             'region': 'vint-hill',
@@ -1624,7 +1865,6 @@ class TestMetatraderAccountApi:
             'server': 'ICMarketsSC-Demo',
             'provisioningProfileId': 'f9ce1f12-e720-4b9a-9477-c2d4cb25f076',
             'magic': 123456,
-            'application': 'MetaApi',
             'connectionStatus': 'CONNECTED',
             'state': 'DEPLOYED',
             'region': 'vint-hill',
@@ -1651,7 +1891,6 @@ class TestMetatraderAccountApi:
             'server': 'ICMarketsSC-Demo',
             'provisioningProfileId': 'f9ce1f12-e720-4b9a-9477-c2d4cb25f076',
             'magic': 123456,
-            'application': 'MetaApi',
             'connectionStatus': 'CONNECTED',
             'state': 'DEPLOYED',
             'type': 'cloud',

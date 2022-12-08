@@ -40,7 +40,6 @@ class TestMetatraderAccountClient:
             'server': 'ICMarketsSC-Demo',
             'provisioningProfileId': 'f9ce1f12-e720-4b9a-9477-c2d4cb25f076',
             'magic': 123456,
-            'application': 'MetaApi',
             'connectionStatus': 'DISCONNECTED',
             'state': 'DEPLOYED',
             'type': 'cloud',
@@ -80,7 +79,6 @@ class TestMetatraderAccountClient:
             'server': 'ICMarketsSC-Demo',
             'provisioningProfileId': 'f9ce1f12-e720-4b9a-9477-c2d4cb25f076',
             'magic': 123456,
-            'application': 'MetaApi',
             'connectionStatus': 'DISCONNECTED',
             'state': 'DEPLOYED',
             'type': 'cloud',
@@ -105,7 +103,6 @@ class TestMetatraderAccountClient:
             'server': 'ICMarketsSC-Demo',
             'provisioningProfileId': 'f9ce1f12-e720-4b9a-9477-c2d4cb25f076',
             'magic': 123456,
-            'application': 'MetaApi',
             'connectionStatus': 'DISCONNECTED',
             'state': 'DEPLOYED',
             'type': 'cloud',
@@ -113,11 +110,48 @@ class TestMetatraderAccountClient:
         }
         rsps = respx.get(f'{PROVISIONING_API_URL}/users/current/accounts/id/replicas/idReplica') \
             .mock(return_value=Response(200, json=expected))
-        accounts = await account_client.get_account_replica('id', 'idReplica')
+        replica = await account_client.get_account_replica('id', 'idReplica')
         assert rsps.calls[0].request.url == f'{PROVISIONING_API_URL}/users/current/accounts/id/replicas/idReplica'
         assert rsps.calls[0].request.method == 'GET'
         assert rsps.calls[0].request.headers['auth-token'] == 'header.payload.sign'
-        assert accounts == expected
+        assert replica == expected
+
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_retrieve_replicas(self):
+        """Should retrieve MetaTrader account replicas from API."""
+        expected = [{
+            '_id': 'idReplica',
+            'login': '50194988',
+            'name': 'mt5a',
+            'server': 'ICMarketsSC-Demo',
+            'provisioningProfileId': 'f9ce1f12-e720-4b9a-9477-c2d4cb25f076',
+            'magic': 123456,
+            'application': 'MetaApi',
+            'connectionStatus': 'DISCONNECTED',
+            'state': 'DEPLOYED',
+            'type': 'cloud',
+            'tags': ['tag1', 'tag2']
+        }, {
+            '_id': 'idReplica2',
+            'login': '50194988',
+            'name': 'mt5a',
+            'server': 'ICMarketsSC-Demo',
+            'provisioningProfileId': 'f9ce1f12-e720-4b9a-9477-c2d4cb25f076',
+            'magic': 123456,
+            'application': 'MetaApi',
+            'connectionStatus': 'DISCONNECTED',
+            'state': 'DEPLOYED',
+            'type': 'cloud',
+            'tags': ['tag1', 'tag2']
+        }]
+        rsps = respx.get(f'{PROVISIONING_API_URL}/users/current/accounts/id/replicas') \
+            .mock(return_value=Response(200, json=expected))
+        replicas = await account_client.get_account_replicas('id')
+        assert rsps.calls[0].request.url == f'{PROVISIONING_API_URL}/users/current/accounts/id/replicas'
+        assert rsps.calls[0].request.method == 'GET'
+        assert rsps.calls[0].request.headers['auth-token'] == 'header.payload.sign'
+        assert replicas == expected
 
     @respx.mock
     @pytest.mark.asyncio
@@ -130,7 +164,6 @@ class TestMetatraderAccountClient:
             'server': 'ICMarketsSC-Demo',
             'provisioningProfileId': 'f9ce1f12-e720-4b9a-9477-c2d4cb25f076',
             'magic': 123456,
-            'application': 'MetaApi',
             'connectionStatus': 'DISCONNECTED',
             'state': 'DEPLOYED',
             'type': 'cloud'
@@ -170,7 +203,6 @@ class TestMetatraderAccountClient:
             'server': 'ICMarketsSC-Demo',
             'provisioningProfileId': 'f9ce1f12-e720-4b9a-9477-c2d4cb25f076',
             'magic': 123456,
-            'application': 'MetaApi',
             'type': 'cloud',
             'tags': ['tag1']
         }
@@ -505,3 +537,55 @@ class TestMetatraderAccountClient:
             assert err.__str__() == 'You can not invoke increase_reliability method, because you have connected ' + \
                     'with account access token. Please use API access token from ' + \
                     'https://app.metaapi.cloud/token page to invoke this method.'
+
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_enable_risk_management_api_via_api(self):
+        """Should enable risk management API via API."""
+        rsps = respx.post(f'{PROVISIONING_API_URL}/users/current/accounts/id/enable-risk-management-api') \
+            .mock(return_value=Response(204))
+        await account_client.enable_risk_management_api('id')
+        assert rsps.calls[0].request.url == \
+               f'{PROVISIONING_API_URL}/users/current/accounts/id/enable-risk-management-api'
+        assert rsps.calls[0].request.method == 'POST'
+        assert rsps.calls[0].request.headers['auth-token'] == 'header.payload.sign'
+
+    @pytest.mark.asyncio
+    async def test_not_enable_risk_management_api_via_api_with_account_token(self):
+        """Should not enable risk management API via API with account token."""
+        domain_client.token = account_token
+        account_client = MetatraderAccountClient(http_client, domain_client)
+        try:
+            await account_client.enable_risk_management_api('id')
+            pytest.fail()
+        except Exception as err:
+            assert err.__str__() == 'You can not invoke enable_risk_management_api method, ' \
+                                    'because you have connected ' + \
+                                    'with account access token. Please use API access token from ' + \
+                                    'https://app.metaapi.cloud/token page to invoke this method.'
+
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_enable_metastats_hourly_tarification_via_api(self):
+        """Should enable MetaStats hourly tarification via API."""
+        rsps = respx.post(f'{PROVISIONING_API_URL}/users/current/accounts/id/enable-metastats-hourly-tarification') \
+            .mock(return_value=Response(204))
+        await account_client.enable_metastats_hourly_tarification('id')
+        assert rsps.calls[0].request.url == \
+               f'{PROVISIONING_API_URL}/users/current/accounts/id/enable-metastats-hourly-tarification'
+        assert rsps.calls[0].request.method == 'POST'
+        assert rsps.calls[0].request.headers['auth-token'] == 'header.payload.sign'
+
+    @pytest.mark.asyncio
+    async def test_not_enable_metastats_hourly_tarification_via_api_with_account_token(self):
+        """Should not enable MetaStats hourly tarification via API with account token."""
+        domain_client.token = account_token
+        account_client = MetatraderAccountClient(http_client, domain_client)
+        try:
+            await account_client.enable_metastats_hourly_tarification('id')
+            pytest.fail()
+        except Exception as err:
+            assert err.__str__() == 'You can not invoke enable_metastats_hourly_tarification method, ' \
+                                    'because you have connected ' + \
+                                    'with account access token. Please use API access token from ' + \
+                                    'https://app.metaapi.cloud/token page to invoke this method.'

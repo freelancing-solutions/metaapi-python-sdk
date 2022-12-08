@@ -13,7 +13,7 @@ from .models import random_id, string_format_error, MarketDataSubscription, Mark
 from ..clients.errorHandler import ValidationException
 from ..clients.optionsValidator import OptionsValidator
 from datetime import datetime, timedelta
-from typing import Coroutine, List, Optional, Dict, Union, Callable
+from typing import Coroutine, List, Optional, Union, Callable
 from typing_extensions import TypedDict
 from functools import reduce
 import pytz
@@ -96,15 +96,20 @@ class StreamingMetaApiConnection(MetaApiConnection):
         self._stateByInstanceIndex = {}
         self._refreshMarketDataSubscriptionSessions = {}
         self._refreshMarketDataSubscriptionTimeouts = {}
-        self._synchronizationListeners = []
+        self._openedInstances = []
         self._logger = LoggerManager.get_logger('MetaApiConnection')
 
-    async def connect(self):
+    async def connect(self, instance_id: str):
         """Opens the connection. Can only be called the first time, next calls will be ignored.
+
+        Args:
+            instance_id: Connection instance id.
 
         Returns:
             A coroutine resolving when the connection is opened
         """
+        if instance_id not in self._openedInstances:
+            self._openedInstances.append(instance_id)
         if not self._opened:
             self._logger.debug(f'{self._account.id}: Opening connection')
             self._opened = True
@@ -179,7 +184,7 @@ class StreamingMetaApiConnection(MetaApiConnection):
             self._websocketClient.ensure_subscribe(replica_id, 1)
 
     async def subscribe_to_market_data(self, symbol: str, subscriptions: List[MarketDataSubscription] = None,
-                                       timeout_in_seconds: float = None) -> Coroutine:
+                                       timeout_in_seconds: float = None, wait_for_quote: bool = True) -> Coroutine:
         """Subscribes on market data of specified symbol (see
         https://metaapi.cloud/docs/client/websocket/marketDataStreaming/subscribeToMarketData/).
 
@@ -188,6 +193,8 @@ class StreamingMetaApiConnection(MetaApiConnection):
             subscriptions: Array of market data subscription to create or update. Please note that this feature is
             not fully implemented on server-side yet.
             timeout_in_seconds: Timeout to wait for prices in seconds, default is 30.
+            wait_for_quote: if set to false, the method will resolve without waiting for the first quote to arrive.
+            Default is to wait for quote if quotes subscription is requested
 
         Returns:
             Promise which resolves when subscription request was processed.
@@ -220,7 +227,8 @@ class StreamingMetaApiConnection(MetaApiConnection):
                 self._subscriptions[symbol] = {'subscriptions': subscriptions}
             await self._websocketClient.subscribe_to_market_data(self._account.id, symbol, subscriptions,
                                                                  self._account.reliability)
-            return await self.terminal_state.wait_for_price(symbol, timeout_in_seconds)
+            if wait_for_quote and next((s for s in subscriptions if s['type'] == 'quotes'), None):
+                return await self.terminal_state.wait_for_price(symbol, timeout_in_seconds)
 
     def unsubscribe_from_market_data(self, symbol: str, subscriptions: List[MarketDataUnsubscription] = None) \
             -> Coroutine:
@@ -299,18 +307,6 @@ class StreamingMetaApiConnection(MetaApiConnection):
         self._check_is_connection_active()
         return self._subscriptions[symbol]['subscriptions'] if symbol in self._subscriptions else []
 
-    def save_uptime(self, uptime: Dict):
-        """Sends client uptime stats to the server.
-
-        Args:
-            uptime: Uptime statistics to send to the server.
-
-        Returns:
-            A coroutine which resolves when uptime statistics is submitted.
-        """
-        self._check_is_connection_active()
-        return self._websocketClient.save_uptime(self._account.id, uptime)
-
     @property
     def terminal_state(self) -> TerminalState:
         """Returns local copy of terminal state.
@@ -328,24 +324,6 @@ class StreamingMetaApiConnection(MetaApiConnection):
             Local history storage.
         """
         return self._historyStorage
-
-    def add_synchronization_listener(self, listener):
-        """Adds synchronization listener.
-
-        Args:
-            listener: Synchronization listener to add.
-        """
-        self._synchronizationListeners.append(listener)
-        self._websocketClient.add_synchronization_listener(self._account.id, listener)
-
-    def remove_synchronization_listener(self, listener):
-        """Removes synchronization listener for specific account.
-
-        Args:
-            listener: Synchronization listener to remove.
-        """
-        self._synchronizationListeners = list(filter(lambda l: l != listener, self._synchronizationListeners))
-        self._websocketClient.remove_synchronization_listener(self._account.id, listener)
 
     async def on_connected(self, instance_index: str, replicas: int):
         """Invoked when connection to MetaTrader terminal established.
@@ -587,8 +565,7 @@ class StreamingMetaApiConnection(MetaApiConnection):
         synchronization_id = opts['synchronizationId'] if 'synchronizationId' in opts else None
         timeout_in_seconds = opts['timeoutInSeconds'] if 'timeoutInSeconds' in opts else 300
         interval_in_milliseconds = opts['intervalInMilliseconds'] if 'intervalInMilliseconds' in opts else 1000
-        application_pattern = opts['applicationPattern'] if 'applicationPattern' in opts \
-            else ('CopyFactory.*|RPC' if self._account.application == 'CopyFactory' else 'RPC')
+        application_pattern = opts['applicationPattern'] if 'applicationPattern' in opts else 'RPC'
         synchronized = await self.is_synchronized(instance_index, synchronization_id)
         while not synchronized and (start_time + timedelta(seconds=timeout_in_seconds) > datetime.now()):
             await asyncio.sleep(interval_in_milliseconds / 1000)
@@ -612,41 +589,33 @@ class StreamingMetaApiConnection(MetaApiConnection):
         await self._websocketClient.wait_synchronized(account_id, self.get_instance_number(instance_index),
                                                       application_pattern, time_left_in_seconds)
 
-    def queue_event(self, name: str, callable: Callable):
-        """Queues an event for processing among other synchronization events within same account.
+    async def close(self, instance_id: str):
+        """Closes the connection. The instance of the class should no longer be used after this method is invoked.
 
         Args:
-            name: Event label name.
-            callable: Async or regular function to execute.
+            instance_id: Connection instance id.
         """
-        self._websocketClient.queue_event(self._account.id, name, callable)
-
-    async def close(self):
-        """Closes the connection. The instance of the class should no longer be used after this method is invoked."""
-        if not self._closed:
-            self._logger.debug(f'{self._account.id}: Closing connection')
-            self._stateByInstanceIndex = {}
-            self._connection_registry.remove(self._account.id)
-            account_regions = self._account.account_regions
-            await asyncio.gather(*list(map(lambda replica_id: asyncio.create_task(
-                self._websocketClient.unsubscribe(replica_id)), account_regions.values())))
-            self._websocketClient.remove_synchronization_listener(self._account.id, self)
-            self._websocketClient.remove_synchronization_listener(self._account.id, self._terminalState)
-            self._websocketClient.remove_synchronization_listener(self._account.id, self._historyStorage)
-            self._websocketClient.remove_synchronization_listener(self._account.id, self._healthMonitor)
-            for listener in self._synchronizationListeners:
-                self._websocketClient.remove_synchronization_listener(self._account.id, listener)
-            self._synchronizationListeners = []
-            self._websocketClient.remove_reconnect_listener(self)
-            self._healthMonitor.stop()
-            self._refreshMarketDataSubscriptionSessions = {}
-            for instance in list(self._refreshMarketDataSubscriptionTimeouts.keys()):
-                self._refreshMarketDataSubscriptionTimeouts[instance].cancel()
-            self._refreshMarketDataSubscriptionTimeouts = {}
-            for replica_id in account_regions.values():
-                self._websocketClient.remove_account_cache(replica_id)
-            self._closed = True
-            self._logger.debug(f'{self._account.id}: Closed connection')
+        if self._opened:
+            self._openedInstances = list(filter(lambda id: id != instance_id, self._openedInstances))
+            if not len(self._openedInstances) and not self._closed:
+                self._logger.debug(f'{self._account.id}: Closing connection')
+                self._stateByInstanceIndex = {}
+                await self._connection_registry.remove_streaming(self._account)
+                account_regions = self._account.account_regions
+                self._websocketClient.remove_synchronization_listener(self._account.id, self)
+                self._websocketClient.remove_synchronization_listener(self._account.id, self._terminalState)
+                self._websocketClient.remove_synchronization_listener(self._account.id, self._historyStorage)
+                self._websocketClient.remove_synchronization_listener(self._account.id, self._healthMonitor)
+                self._websocketClient.remove_reconnect_listener(self)
+                self._healthMonitor.stop()
+                self._refreshMarketDataSubscriptionSessions = {}
+                for instance in list(self._refreshMarketDataSubscriptionTimeouts.keys()):
+                    self._refreshMarketDataSubscriptionTimeouts[instance].cancel()
+                self._refreshMarketDataSubscriptionTimeouts = {}
+                for replica_id in account_regions.values():
+                    self._websocketClient.remove_account_cache(replica_id)
+                self._closed = True
+                self._logger.debug(f'{self._account.id}: Closed connection')
 
     @property
     def synchronized(self) -> bool:
