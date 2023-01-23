@@ -45,18 +45,12 @@ Query contract specifications and quotes via RPC API
     await connection.connect()
     await connection.wait_synchronized()
 
-    # first, subscribe to market data
-    await connection.subscribe_to_market_data(symbol='GBPUSD')
-
     # read symbols available
     print(await connection.get_symbols())
     # read contract specification
     print(await connection.get_symbol_specification(symbol='GBPUSD'))
     # read current price
     print(await connection.get_symbol_price(symbol='GBPUSD'))
-
-    # unsubscribe from market data when no longer needed
-    await connection.unsubscribe_from_market_data(symbol='GBPUSD')
 
 Query historical market data via RPC API
 ----------------------------------------

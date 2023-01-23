@@ -117,7 +117,7 @@ class StreamingMetaApiConnection(MetaApiConnection):
                 await self.initialize()
                 await self.subscribe()
             except Exception as err:
-                await self.close()
+                await self.close(instance_id)
                 raise err
 
     def remove_application(self):
