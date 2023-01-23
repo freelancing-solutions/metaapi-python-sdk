@@ -1,3 +1,6 @@
+20.8.4
+  - fixed RPC API docs
+
 20.8.3
   - fixed create tracker docs
 

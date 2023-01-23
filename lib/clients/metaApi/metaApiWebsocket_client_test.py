@@ -252,14 +252,14 @@ async def test_wait_for_connected_instance_before_sending_requests():
         'realizedProfit': -6.536993168992922e-13
     }]
     fake_server = FakeServer()
-    await fake_server.start(6785)
+    await fake_server.start(6786)
     client = MetaApiWebsocketClient(domain_client, 'token', {
         'application': 'application',
         'domain': 'project-stock.agiliumlabs.cloud', 'requestTimeout': 1.5, 'useSharedClientApi': False,
         'connectTimeout': 0.1,
         'retryOpts': {'retries': 3, 'minDelayInSeconds': 0.1, 'maxDelayInSeconds': 0.5}})
     client._accountsByReplicaId['accountId'] = 'accountId'
-    client.set_url('http://localhost:6785')
+    client.set_url('http://localhost:6786')
 
     @sio.on('request')
     async def on_request(sid, data):
