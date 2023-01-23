@@ -1,3 +1,6 @@
+20.8.3
+  - fixed create tracker docs
+
 20.8.2
   - fix connection close
   - fix account and replica models and methods to fit rest api

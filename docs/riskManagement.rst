@@ -83,7 +83,7 @@ In order to configure equity tracking you need to:
     risk_management_api = risk_management.risk_management_api
 
     # create a tracker
-    tracker_id = await risk_management_api.create_drawdown_tracker('accountId', {
+    tracker_id = await risk_management_api.create_tracker('accountId', {
         'name': 'Test tracker',
         'period': 'day',
         'absoluteDrawdownThreshold': 100
@@ -106,7 +106,7 @@ See in-code documentation for full definition of possible configuration options.
 Retrieving equity tracking events and statistics
 ================================================
 
-RiskManagement allows you to monitor equity drawdowns on trading accounts.
+RiskManagement allows you to monitor equity profits and drawdowns on trading accounts.
 
 Retrieving tracker events
 --------------------------
