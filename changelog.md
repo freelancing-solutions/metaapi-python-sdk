@@ -1,3 +1,6 @@
+20.9.0
+  - updated equity chart item model
+
 20.8.4
   - fixed RPC API docs
 

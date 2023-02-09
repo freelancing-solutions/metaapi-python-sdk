@@ -174,7 +174,9 @@ class TestEquityTrackingClient:
             'maxBalance': 2000,
             'averageEquity': 1075,
             'minEquity': 50,
-            'maxEquity': 2100
+            'maxEquity': 2100,
+            'startBalance': 100,
+            'startEquity': 150,
         }]
         domain_client.request_api = AsyncMock(return_value=expected)
         actual = await equity_tracking_client.get_equity_chart('accountId', '2022-04-08 09:36:00.000',
