@@ -127,10 +127,14 @@ class EquityChartItem(TypedDict):
     """Minimum equity value during the period."""
     maxEquity: float
     """Maximum equity value during the period."""
+    startBalance: float
+    """Starting balance value observed during the period."""
+    startEquity: float
+    """Starting equity value observed during the period."""
     lastBalance: float
-    """Last balance value observed on the account."""
+    """Last balance value observed during the period."""
     lastEquity: float
-    """Last equity value observed on the account."""
+    """Last equity value observed during the period."""
 
 
 class EquityTrackingClientModel:
